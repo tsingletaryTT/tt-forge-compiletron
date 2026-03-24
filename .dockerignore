@@ -1,0 +1,76 @@
+# Git and version control
+.git
+.gitignore
+.gitattributes
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local data directories (will be mounted as volumes)
+cache/
+results/
+models/
+generated/
+
+# Documentation build artifacts
+docs/_build/
+
+# Backup files
+*.bak
+*.backup
+
+# Large dependencies (will be mounted from host)
+tt-metal/
+tt-forge-fe/
+
+# Docker files (not needed in image)
+.dockerignore
+docker-compose.yml
+docker-build.sh
+docker-run.sh
+
+# Project-specific
+*.log
+*.csv
+*.json.bak

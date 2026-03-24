@@ -1,0 +1,62 @@
+# TT-Forge Compiletron - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# ============================================================================
+# CORE DEPENDENCIES (Required)
+# ============================================================================
+
+# PyTorch and torchvision (required for all models)
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Terminal UI for compilation showcase
+pyfiglet>=0.8.0
+
+# Utilities
+numpy>=1.24.0
+tqdm>=4.65.0
+
+# Testing
+pytest>=7.0.0
+
+# ============================================================================
+# OPTIONAL DEPENDENCIES
+# ============================================================================
+# These are only needed if you plan to run audio/image demos
+# For basic compilation testing, they're not required
+
+# Audio processing (for Whisper and audio models)
+librosa>=0.10.0
+soundfile>=0.12.1
+scipy>=1.10.0
+
+# Image processing (for vision model preprocessing)
+opencv-python>=4.8.0
+matplotlib>=3.7.0
+Pillow>=10.0.0
+
+# HuggingFace ecosystem (for transformer models)
+transformers>=4.30.0
+datasets>=2.14.0
+
+# ============================================================================
+# IMPORTANT: TT-Forge Installation
+# ============================================================================
+#
+# tt-forge CANNOT be installed via pip - it must be built from source
+#
+# Installation steps:
+# 1. Clone the repository:
+#    cd ~
+#    git clone https://github.com/tenstorrent/tt-forge-fe.git
+#
+# 2. Build tt-forge (takes 45-60 minutes):
+#    cd ~/tt-forge-fe
+#    ./build_forge.sh
+#
+# 3. Activate the environment:
+#    source ~/tt-forge-fe/env/activate
+#
+# For detailed instructions, see: docs/FORGE_SETUP.md
+#
+# ============================================================================
