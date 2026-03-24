@@ -3,6 +3,8 @@
 Clean, standalone tool for running Forge compilation demos on Tenstorrent hardware.
 Supports 1 to 32+ chips with automatic detection and parallel execution.
 
+<img width="3840" height="2002" alt="tt-forge-compiletron" src="https://github.com/user-attachments/assets/3e93d7d6-8e02-49f6-92cb-e2d93c6caec2" />
+
 ## 🎯 Features
 
 - **Auto-detection**: Automatically detects hardware (1-32+ chips)
