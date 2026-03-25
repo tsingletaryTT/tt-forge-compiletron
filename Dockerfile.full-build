@@ -1,0 +1,168 @@
+# TT-Forge Compiletron - Full Self-Contained Build
+# This image builds tt-metal and tt-forge-fe from source
+#
+# WARNING: This is a LARGE build:
+# - Build time: 2-3 hours
+# - Final image: ~30GB
+# - Requires: 32GB+ RAM, good CPU, fast internet
+#
+# Use this when you need completely self-contained compilation
+# without any host mounts.
+
+FROM ubuntu:24.04 AS builder
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    # Build essentials
+    build-essential \
+    cmake \
+    ninja-build \
+    git \
+    wget \
+    curl \
+    # Python
+    python3.12 \
+    python3.12-dev \
+    python3.12-venv \
+    python3-pip \
+    # TT-Metal dependencies
+    libhwloc-dev \
+    libnuma-dev \
+    libboost-all-dev \
+    libyaml-cpp-dev \
+    libgtest-dev \
+    libgmock-dev \
+    # Additional tools
+    jq \
+    tmux \
+    patchelf \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up Python
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 && \
+    update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1
+
+WORKDIR /build
+
+# ==============================================================================
+# BUILD TT-METAL
+# ==============================================================================
+
+# Clone tt-metal (pin to specific commit for reproducibility)
+ARG TT_METAL_COMMIT=main
+RUN git clone https://github.com/tenstorrent/tt-metal.git && \
+    cd tt-metal && \
+    git checkout ${TT_METAL_COMMIT} && \
+    git submodule update --init --recursive
+
+# Build tt-metal
+WORKDIR /build/tt-metal
+ENV TT_METAL_HOME=/build/tt-metal
+ENV ARCH_NAME=blackhole
+ENV PYTHONPATH=/build/tt-metal:${PYTHONPATH}
+
+# Install Python dependencies
+RUN python3 -m pip install --break-system-packages --no-cache-dir -r requirements.txt
+
+# Build metal (this takes ~45-60 minutes)
+RUN make build
+
+# ==============================================================================
+# BUILD TT-FORGE-FE
+# ==============================================================================
+
+WORKDIR /build
+
+# Clone tt-forge-fe (pin to specific commit)
+ARG TT_FORGE_COMMIT=main
+RUN git clone https://github.com/tenstorrent/tt-forge-fe.git && \
+    cd tt-forge-fe && \
+    git checkout ${TT_FORGE_COMMIT} && \
+    git submodule update --init --recursive
+
+# Build forge (this takes ~45-60 minutes)
+WORKDIR /build/tt-forge-fe
+ENV TTFORGE_TOOLCHAIN_DIR=/opt/ttforge-toolchain
+ENV PATH=${TTFORGE_TOOLCHAIN_DIR}/bin:${PATH}
+
+# Install forge core dependencies
+RUN python3 -m pip install --break-system-packages --no-cache-dir \
+    -r env/core_requirements.txt
+
+# Build forge
+RUN ./scripts/build_forge.sh
+
+# ==============================================================================
+# FINAL IMAGE
+# ==============================================================================
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install runtime dependencies (smaller subset than build deps)
+RUN apt-get update && apt-get install -y \
+    python3.12 \
+    python3.12-venv \
+    python3-pip \
+    libhwloc15 \
+    libnuma1 \
+    libboost-system1.83.0 \
+    libboost-filesystem1.83.0 \
+    libboost-thread1.83.0 \
+    libyaml-cpp0.8 \
+    git \
+    jq \
+    tmux \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up Python
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 && \
+    update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1
+
+# Copy built artifacts from builder
+COPY --from=builder /build/tt-metal /tt-metal
+COPY --from=builder /build/tt-forge-fe /tt-forge-fe
+COPY --from=builder /opt/ttforge-toolchain /opt/ttforge-toolchain
+
+# Set environment variables
+ENV TT_METAL_HOME=/tt-metal
+ENV TTFORGE_TOOLCHAIN_DIR=/opt/ttforge-toolchain
+ENV TTFORGE_PYTHON_VERSION=python3.12
+ENV TTFORGE_VENV_DIR=/opt/ttforge-toolchain/venv
+ENV ARCH_NAME=blackhole
+ENV PYTHONPATH=/tt-metal:/tt-forge-fe/forge:${PYTHONPATH}
+ENV PATH=/opt/ttforge-toolchain/bin:${PATH}
+
+# Create app directory
+WORKDIR /app
+
+# Copy compiletron application
+COPY requirements.txt .
+RUN pip3 install --break-system-packages --no-cache-dir -r requirements.txt
+
+COPY lib/ ./lib/
+COPY scripts/ ./scripts/
+COPY docs/ ./docs/
+COPY tests/ ./tests/
+COPY compiletron.py .
+COPY setup.sh .
+COPY run_tests.sh .
+COPY README.md .
+COPY *.md .
+
+# Make scripts executable
+RUN chmod +x setup.sh run_tests.sh scripts/*.sh
+
+# Create directories for volumes
+RUN mkdir -p /cache /results /models
+
+# Set up entrypoint
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["help"]

@@ -44,6 +44,110 @@ def cmd_detect(args):
     return 0
 
 
+def cmd_test(args):
+    """Test single chip with a quick model."""
+    import sys
+    from pathlib import Path
+
+    # Get hardware
+    hw = detect_hardware()
+
+    print(f"🧪 TT-Forge Compiletron - Single Chip Test")
+    print(f"==========================================\n")
+
+    if 'error' in hw:
+        print(f"❌ Hardware detection failed: {hw['error']}")
+        return 1
+
+    # Determine chip to test
+    chip_id = args.chip if args.chip is not None else 0
+
+    if chip_id >= hw['num_chips']:
+        print(f"❌ Chip {chip_id} not available")
+        print(f"   Available chips: 0-{hw['num_chips']-1}")
+        return 1
+
+    print(f"Hardware: {get_hardware_summary(hw)}")
+    print(f"Testing chip: {chip_id}")
+    print()
+
+    # Check if Forge is available
+    forge_env = os.environ.get('TTFORGE_TOOLCHAIN_DIR') or os.environ.get('TTMLIR_TOOLCHAIN_DIR')
+
+    if not forge_env:
+        print(f"⚠️  Forge environment not activated!")
+        print(f"\nTo run test:")
+        print(f"  1. Activate Forge: {get_activation_instructions()}")
+        print(f"  2. Run this command again")
+        print(f"\nOr run in Docker:")
+        print(f"  ./docker-run.sh test")
+        return 1
+
+    print(f"✓ Forge environment detected")
+
+    # Check if forge module can be imported
+    try:
+        import forge
+        print(f"✓ Forge module available")
+    except ImportError:
+        print(f"❌ Cannot import forge module")
+        print(f"   Forge may not be properly installed")
+        print(f"   Run: python3 compiletron.py setup check")
+        return 1
+
+    # Get ResNet-18 for testing (fast, reliable)
+    test_model = get_model_by_name("ResNet-18")
+
+    if not test_model:
+        print(f"❌ Test model (ResNet-18) not found")
+        return 1
+
+    print(f"\nTest model: {test_model[0]}")
+    print(f"  Expected time: {test_model[5]['time']:.1f}s")
+    print(f"  Complexity: {test_model[5]['complexity']}")
+    print()
+
+    # Import worker functionality
+    sys.path.insert(0, str(Path(__file__).parent / 'lib'))
+    from worker import compile_and_run
+
+    print(f"🚀 Starting test compilation...\n")
+    print(f"-" * 60)
+
+    try:
+        success, compile_time = compile_and_run(test_model, chip_id)
+
+        if success:
+            print(f"-" * 60)
+            print(f"\n✅ TEST PASSED")
+            print(f"   Chip {chip_id} is working correctly")
+            print(f"   Compilation time: {compile_time:.1f}s")
+            print(f"   Expected time: {test_model[5]['time']:.1f}s")
+
+            if compile_time < test_model[5]['time'] * 1.5:
+                print(f"   ✓ Performance within expected range")
+            else:
+                print(f"   ⚠️  Slower than expected (may be first run)")
+
+            return 0
+        else:
+            print(f"-" * 60)
+            print(f"\n❌ TEST FAILED")
+            print(f"   Compilation failed on chip {chip_id}")
+            print(f"   Time taken: {compile_time:.1f}s")
+            print(f"\n   Troubleshooting:")
+            print(f"   1. Check Forge installation: compiletron setup check")
+            print(f"   2. Check device status: tt-smi")
+            print(f"   3. Try resetting device: tt-smi -r")
+            return 1
+
+    except Exception as e:
+        print(f"-" * 60)
+        print(f"\n❌ TEST ERROR")
+        print(f"   {str(e)}")
+        return 1
+
+
 def cmd_models_list(args):
     """List models command."""
     # Get filtered models
@@ -273,6 +377,190 @@ def cmd_setup_install_forge(args):
         return 1
 
 
+def cmd_results(args):
+    """View compilation results."""
+    from pathlib import Path
+    import csv
+
+    results_dir = Path('results')
+
+    if not results_dir.exists():
+        print("❌ No results directory found")
+        print("   Run compilations first: compiletron run --quick")
+        return 1
+
+    # Find latest results file
+    result_files = sorted(results_dir.glob('results_*.csv'), reverse=True)
+
+    if not result_files:
+        print("❌ No results files found")
+        print("   Run compilations first: compiletron run --quick")
+        return 1
+
+    latest_file = result_files[0]
+
+    print(f"📊 Compilation Results")
+    print(f"=" * 60)
+    print(f"File: {latest_file.name}")
+    print()
+
+    # Read and parse results
+    with open(latest_file, 'r') as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    if not rows:
+        print("❌ Results file is empty")
+        return 1
+
+    successful = sum(1 for r in rows if r['success'] == 'True')
+    failed = sum(1 for r in rows if r['success'] == 'False')
+    total = len(rows)
+
+    compile_times = [float(r['compile_time']) for r in rows if r['success'] == 'True']
+    total_time = sum(compile_times)
+    avg_time = total_time / len(compile_times) if compile_times else 0
+    min_time = min(compile_times) if compile_times else 0
+    max_time = max(compile_times) if compile_times else 0
+
+    # Summary
+    print(f"Summary:")
+    print(f"  Total models: {total}")
+    print(f"  ✅ Successful: {successful} ({successful/total*100:.1f}%)")
+    print(f"  ❌ Failed: {failed} ({failed/total*100:.1f}%)")
+    print()
+
+    if compile_times:
+        print(f"Compilation Times:")
+        print(f"  Total: {total_time:.1f}s ({total_time/60:.1f} min)")
+        print(f"  Average: {avg_time:.1f}s")
+        print(f"  Range: {min_time:.1f}s - {max_time:.1f}s")
+        print()
+
+    # Top 5 fastest
+    if args.verbose and compile_times:
+        successful_rows = [r for r in rows if r['success'] == 'True']
+        fastest = sorted(successful_rows, key=lambda r: float(r['compile_time']))[:5]
+        slowest = sorted(successful_rows, key=lambda r: float(r['compile_time']), reverse=True)[:5]
+
+        print(f"Fastest 5:")
+        for i, row in enumerate(fastest, 1):
+            print(f"  {i}. {row['model']} - {float(row['compile_time']):.1f}s")
+        print()
+
+        print(f"Slowest 5:")
+        for i, row in enumerate(slowest, 1):
+            print(f"  {i}. {row['model']} - {float(row['compile_time']):.1f}s")
+        print()
+
+    # List all files
+    if len(result_files) > 1:
+        print(f"Other result files ({len(result_files)-1}):")
+        for f in result_files[1:6]:  # Show up to 5 more
+            print(f"  {f.name}")
+        if len(result_files) > 6:
+            print(f"  ... and {len(result_files)-6} more")
+
+    return 0
+
+
+def cmd_results_report(args):
+    """Generate markdown report."""
+    from pathlib import Path
+    import csv
+    import datetime
+
+    results_dir = Path('results')
+    result_files = sorted(results_dir.glob('results_*.csv'), reverse=True)
+
+    if not result_files:
+        print("❌ No results files found")
+        return 1
+
+    latest_file = result_files[0]
+    output_file = Path(args.output) if args.output else Path('report.md')
+
+    print(f"Generating report from {latest_file.name}...")
+
+    # Read results
+    with open(latest_file, 'r') as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    # Generate markdown
+    report = []
+    report.append("# TT-Forge Compilation Report\n")
+    report.append(f"**Generated:** {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    report.append(f"**Source:** {latest_file.name}\n\n")
+
+    # Summary
+    successful = sum(1 for r in rows if r['success'] == 'True')
+    failed = sum(1 for r in rows if r['success'] == 'False')
+    total = len(rows)
+
+    compile_times = [float(r['compile_time']) for r in rows if r['success'] == 'True']
+    total_time = sum(compile_times)
+    avg_time = total_time / len(compile_times) if compile_times else 0
+
+    report.append("## Summary\n\n")
+    report.append(f"- **Total Models:** {total}\n")
+    report.append(f"- **Successful:** {successful} ({successful/total*100:.1f}%)\n")
+    report.append(f"- **Failed:** {failed} ({failed/total*100:.1f}%)\n")
+    report.append(f"- **Total Time:** {total_time:.1f}s ({total_time/60:.1f} min)\n")
+    report.append(f"- **Average Time:** {avg_time:.1f}s\n\n")
+
+    # Successful models
+    report.append("## Successful Compilations\n\n")
+    report.append("| Model | Time (s) | Chip |\n")
+    report.append("|-------|----------|------|\n")
+
+    for row in rows:
+        if row['success'] == 'True':
+            report.append(f"| {row['model']} | {float(row['compile_time']):.1f} | {row.get('chip', 0)} |\n")
+
+    # Failed models
+    if failed > 0:
+        report.append("\n## Failed Compilations\n\n")
+        report.append("| Model | Chip |\n")
+        report.append("|-------|------|\n")
+
+        for row in rows:
+            if row['success'] == 'False':
+                report.append(f"| {row['model']} | {row.get('chip', 0)} |\n")
+
+    # Write report
+    with open(output_file, 'w') as f:
+        f.writelines(report)
+
+    print(f"✓ Report saved to: {output_file}")
+
+    return 0
+
+
+def cmd_results_export(args):
+    """Export results to CSV."""
+    from pathlib import Path
+    import shutil
+
+    results_dir = Path('results')
+    result_files = sorted(results_dir.glob('results_*.csv'), reverse=True)
+
+    if not result_files:
+        print("❌ No results files found")
+        return 1
+
+    latest_file = result_files[0]
+    output_file = Path(args.output) if args.output else Path('results.csv')
+
+    print(f"Exporting {latest_file.name} to {output_file}...")
+
+    shutil.copy(latest_file, output_file)
+
+    print(f"✓ Results exported to: {output_file}")
+
+    return 0
+
+
 def cmd_run(args):
     """Run model compilations."""
     import subprocess
@@ -464,6 +752,23 @@ def main():
     # ========== detect command ==========
     parser_detect = subparsers.add_parser('detect', help='Detect hardware')
 
+    # ========== test command ==========
+    parser_test = subparsers.add_parser('test', help='Test single chip')
+    parser_test.add_argument('--chip', type=int, default=0, help='Chip ID to test (default: 0)')
+
+    # ========== results command ==========
+    parser_results = subparsers.add_parser('results', help='View compilation results')
+    results_sub = parser_results.add_subparsers(dest='subcommand')
+
+    results_view = results_sub.add_parser('view', help='View results summary')
+    results_view.add_argument('-v', '--verbose', action='store_true', help='Show detailed stats')
+
+    results_report = results_sub.add_parser('report', help='Generate markdown report')
+    results_report.add_argument('--output', help='Output file (default: report.md)')
+
+    results_export = results_sub.add_parser('export', help='Export to CSV')
+    results_export.add_argument('--output', help='Output file (default: results.csv)')
+
     # ========== models command ==========
     parser_models = subparsers.add_parser('models', help='Model library commands')
     models_sub = parser_models.add_subparsers(dest='subcommand')
@@ -539,6 +844,21 @@ def main():
     # Route to command handlers
     if args.command == 'detect':
         return cmd_detect(args)
+
+    elif args.command == 'test':
+        return cmd_test(args)
+
+    elif args.command == 'results':
+        if not args.subcommand:
+            # Default to view
+            args.verbose = False
+            return cmd_results(args)
+        elif args.subcommand == 'view':
+            return cmd_results(args)
+        elif args.subcommand == 'report':
+            return cmd_results_report(args)
+        elif args.subcommand == 'export':
+            return cmd_results_export(args)
 
     elif args.command == 'models':
         if not args.subcommand:
