@@ -42,6 +42,11 @@ else
     info "tt-forge-fe not found at $FORGE_HOME (skipping mount)"
 fi
 
+# Mount Forge toolchain if available (contains venv with dependencies)
+if [ -d "/opt/ttforge-toolchain" ]; then
+    DOCKER_CMD="$DOCKER_CMD -v /opt/ttforge-toolchain:/opt/ttforge-toolchain:ro"
+fi
+
 # Add persistent volumes
 DOCKER_CMD="$DOCKER_CMD -v compiletron-cache:/cache"
 DOCKER_CMD="$DOCKER_CMD -v compiletron-results:/results"

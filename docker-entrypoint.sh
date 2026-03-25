@@ -142,8 +142,24 @@ main() {
             info "Activating Forge environment..."
             source /tt-forge-fe/env/activate
 
+            # Verify environment is set
+            if [ -z "$TTFORGE_TOOLCHAIN_DIR" ] && [ -z "$TTMLIR_TOOLCHAIN_DIR" ]; then
+                error "Forge environment not properly activated"
+                exit 1
+            fi
+
+            # Add forge module to Python path
+            export PYTHONPATH="/tt-forge-fe/forge:$PYTHONPATH"
+
+            # Use Forge venv Python if available, otherwise system Python
+            if [ -f "/opt/ttforge-toolchain/venv/bin/python3" ]; then
+                PYTHON_CMD="/opt/ttforge-toolchain/venv/bin/python3"
+            else
+                PYTHON_CMD="python3"
+            fi
+
             # Run compilation
-            python3 compiletron.py run "$@"
+            $PYTHON_CMD compiletron.py run "$@"
             ;;
 
         shell|bash|sh)

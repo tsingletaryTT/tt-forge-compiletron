@@ -1,5 +1,15 @@
 # TT-Forge Compiletron - Docker Container
-# Base image with Python 3.12 and build tools
+# Full reference implementation with complete Forge dependencies
+#
+# This image includes ALL dependencies needed for Forge compilation.
+# Image size: ~10GB (includes tensorflow, jax, pytorch, etc.)
+# Build time: ~15-20 minutes
+#
+# NOTE: This is a reference implementation. Users will need to:
+# 1. Mount their tt-metal installation
+# 2. Mount their tt-forge-fe installation
+# 3. Have Tenstorrent hardware available
+
 FROM ubuntu:24.04
 
 # Prevent interactive prompts during build
