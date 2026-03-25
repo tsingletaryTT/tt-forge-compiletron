@@ -38,3 +38,14 @@ results/*.csv
 # OS
 .DS_Store
 Thumbs.db
+
+# Docker artifacts (don't commit built images)
+*.tar
+*.tar.gz
+
+# Build logs and temporary files
+/tmp/
+forge_parallel_*/
+
+# Claude artifacts
+.claude/
