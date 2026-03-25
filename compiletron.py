@@ -283,13 +283,21 @@ def cmd_run(args):
     # Get hardware
     hw = detect_hardware()
 
-    if 'error' in hw:
-        print(f"❌ {hw['error']}")
-        return 1
-
     print(f"🎰 TT-Forge Compiletron - Compilation Run")
     print(f"==========================================")
-    print(f"Hardware: {get_hardware_summary(hw)}")
+
+    if 'error' in hw:
+        print(f"⚠️  Hardware detection failed: {hw['error']}")
+        print(f"    Proceeding with default settings (single chip)")
+        # Set default hardware config
+        hw = {
+            'num_chips': 1,
+            'board_type': 'unknown',
+            'architecture': 'unknown',
+            'devices': []
+        }
+    else:
+        print(f"Hardware: {get_hardware_summary(hw)}")
 
     # Get models
     if args.quick:

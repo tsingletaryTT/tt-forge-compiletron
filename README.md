@@ -61,33 +61,37 @@ python3 -c "from lib.models import *; [print(f'{m[0]}: {m[5][\"time\"]:.1f}s') f
 python3 -c "from lib.models import *; [print(f'{k}: {len(v)} models') for k,v in sorted(get_model_families().items(), key=lambda x: len(x[1]), reverse=True)[:10]]"
 ```
 
-### 🐳 Docker Quick Start (Recommended)
+### 🐳 Docker Quick Start (Reference Implementation)
+
+**Note:** The Docker image is a **reference implementation** showing the complete build process. It includes all 50+ Forge dependencies (~10GB, 15-20 min build time).
 
 ```bash
-# Build container
+# Build full stack container (first time: 15-20 minutes)
 make build
 
-# Detect hardware
-make detect
-
-# Run tests
+# Run tests (no hardware needed)
 make test
 
 # Show model statistics
 make stats
 
-# Compile models
+# Compile models (requires tt-metal/forge mounts + hardware)
 make compile-quick          # 5 fastest models
 make compile-parallel       # 50 models on all chips
 ```
 
-**Benefits:**
-- ✅ Isolated environment (no host conflicts)
-- ✅ Reproducible builds
-- ✅ Easy scheduling and automation
-- ✅ Persistent cache and results
+**What's Included:**
+- ✅ All Forge dependencies (TensorFlow, JAX, PyTorch, ONNX, etc.)
+- ✅ Complete compilation environment
+- ✅ Testing framework (29 tests)
+- ✅ Model library (101 models)
 
-See [CONTAINER_DEPLOYMENT.md](CONTAINER_DEPLOYMENT.md) for complete guide.
+**What You Still Need:**
+- 📦 tt-metal built from source (mounted from host)
+- 📦 tt-forge-fe built from source (mounted from host)
+- 🔌 Tenstorrent hardware with firmware
+
+See [DOCKER_REFERENCE.md](DOCKER_REFERENCE.md) for details and [CONTAINER_DEPLOYMENT.md](CONTAINER_DEPLOYMENT.md) for deployment patterns.
 
 ## 📚 Core Modules (Implemented)
 
