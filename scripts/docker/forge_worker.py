@@ -1,81 +1,45 @@
 #!/usr/bin/env python3
 """
-Worker process for compiling models on a single TT chip.
-Runs inside Docker container with TT_VISIBLE_DEVICES set.
+Docker entry-point for single-chip Forge compilation.
+
+Invoked by run_4way_tmux.sh (docker mode) as:
+  python3 /app/scripts/docker/forge_worker.py <test_name>
+
+TT_VISIBLE_DEVICES is already set in the environment by docker run -e.
+
+Delegates to lib/worker.py which contains the full visual pipeline:
+  - pyfiglet ASCII art banners with rotating Tenstorrent brand colors
+  - [1/3][2/3][3/3] progress steps
+  - 3-second celebration pause between models
+  - Round-robin model distribution: chip N gets models N, N+4, N+8, ...
+  - Per-model colored checklist (✓/✗) on completion
+  - Stays alive so the tmux pane keeps showing results
 """
 import os
 import sys
-import time
-from datetime import datetime
+from pathlib import Path
 
-def log(msg):
-    """Print with timestamp"""
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    chip_id = os.environ.get("TT_VISIBLE_DEVICES", "?")
-    print(f"[{timestamp}] [Chip {chip_id}] {msg}", flush=True)
+# /app is the project root inside the Docker image
+APP_DIR = Path(__file__).resolve().parent.parent.parent  # /app
+sys.path.insert(0, str(APP_DIR))
+
+from lib.worker import run_worker
+from lib.models import MODEL_LIST
+
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: forge_worker.py <test_name>")
-        sys.exit(1)
+    # test_name arg is accepted for compatibility but not used by lib/worker
+    # (it's a label that was meaningful in the old SimpleModel stub)
+    chip_id = int(os.environ.get('TT_VISIBLE_DEVICES', '0'))
 
-    test_name = sys.argv[1]
-    chip_id = os.environ.get("TT_VISIBLE_DEVICES", "unknown")
+    # Round-robin: chip N compiles models N, N+4, N+8, ...
+    stride = 4
+    model_indices = list(range(chip_id, len(MODEL_LIST), stride))
 
-    log("=" * 60)
-    log(f"Starting worker for chip {chip_id}")
-    log(f"Test: {test_name}")
-    log("=" * 60)
+    results_file = Path(f'/tmp/forge_results_chip_{chip_id}.csv')
 
-    try:
-        # Import forge (will be isolated to this chip via TT_VISIBLE_DEVICES)
-        log("Importing forge...")
-        import forge
-        import torch
+    sys.exit(run_worker(chip_id, model_indices, results_file))
 
-        log(f"✓ Forge version: {forge.__version__ if hasattr(forge, '__version__') else 'unknown'}")
-        log(f"✓ Torch version: {torch.__version__}")
 
-        # Create simple test model
-        log("Creating test model...")
-
-        class SimpleModel(torch.nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.linear = torch.nn.Linear(128, 128)
-
-            def forward(self, x):
-                return self.linear(x)
-
-        model = SimpleModel()
-        inputs = torch.randn(1, 128)
-
-        log("✓ Model created")
-
-        # Compile for this chip
-        log(f"Compiling model on chip {chip_id}...")
-        start_time = time.time()
-
-        compiled = forge.compile(
-            model,
-            sample_inputs=[inputs],
-            module_name=f"{test_name}_chip_{chip_id}",
-        )
-
-        elapsed = time.time() - start_time
-        log(f"✓ Compilation completed in {elapsed:.2f}s")
-
-        log("=" * 60)
-        log(f"Worker for chip {chip_id} finished successfully!")
-        log("=" * 60)
-
-        return 0
-
-    except Exception as e:
-        log(f"✗ ERROR: {e}")
-        import traceback
-        traceback.print_exc()
-        return 1
-
-if __name__ == "__main__":
-    sys.exit(main())
+if __name__ == '__main__':
+    main()

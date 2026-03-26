@@ -131,16 +131,18 @@ echo ""
 export TT_VISIBLE_DEVICES=${chip_id}
 export TT_METAL_ARCH_NAME=blackhole
 export TT_MESH_GRAPH_DESC_PATH=${native_mesh}
-echo "  Chip:     ${chip_id}"
-echo "  Models:   ${COUNT}"
-echo "  Mesh:     p100"
+echo "  Chip:       ${chip_id}"
+echo "  Stride:     4 (round-robin across all 4 chips)"
+echo "  Mesh:       p100"
 echo ""
 
-python3 ${PROJECT_DIR}/compiletron.py run --chip ${chip_id} --count ${COUNT}
-
-echo ""
-echo "════ CHIP ${chip_id} DONE ════"
-read -rp "Press Enter to close..."
+# lib/worker.py runs the full visual pipeline:
+#   - pyfiglet ASCII art banners with rotating Tenstorrent colors
+#   - [1/3][2/3][3/3] steps, 3s celebration pause per model
+#   - Round-robin: chip ${chip_id} compiles models ${chip_id}, $((chip_id+4)), $((chip_id+8)), ...
+#   - Colored ✓/✗ checklist on completion, then stays alive
+python3 ${PROJECT_DIR}/lib/worker.py --chip ${chip_id} --stride 4 \
+    --results /tmp/forge_results_chip_${chip_id}.csv
 CHIPSCRIPT
         chmod +x "/tmp/forge_chip_${chip_id}.sh"
     done
