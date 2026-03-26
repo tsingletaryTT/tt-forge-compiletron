@@ -41,6 +41,9 @@ tmux kill-session -t forge_demo 2>/dev/null || true
 # Test name
 TEST_NAME="${1:-demo_test}"
 
+# Use STRICT policy mesh descriptor (bundled in image)
+MESH_DESC_PATH="/app/mesh_graph_descriptors/p100_mesh_graph_descriptor.textproto"
+
 echo -e "${BLUE}Creating 4-pane tmux session...${NC}"
 
 # Create tmux session with 4 panes (2x2 grid)
@@ -60,7 +63,7 @@ for chip_id in {0..3}; do
 
     # Prepare Docker command (don't run yet - user will press Enter)
     tmux send-keys -t forge_demo:0.${chip_id} \
-        "docker run --rm --name forge_chip_${chip_id} --device=/dev/tenstorrent:/dev/tenstorrent -e TT_VISIBLE_DEVICES=${chip_id} -e TT_METAL_ARCH_NAME=blackhole -e TT_MESH_GRAPH_DESC_PATH=/root/.pyenv/versions/3.11.13/lib/python3.11/site-packages/forge/tt-metal/tt_metal/fabric/mesh_graph_descriptors/p100_mesh_graph_descriptor.textproto --entrypoint python3 tt-forge-compiletron:minimal /app/scripts/forge_worker.py ${TEST_NAME}"
+        "docker run --rm --name forge_chip_${chip_id} --device=/dev/tenstorrent:/dev/tenstorrent -e TT_VISIBLE_DEVICES=${chip_id} -e TT_METAL_ARCH_NAME=blackhole -e TT_MESH_GRAPH_DESC_PATH=${MESH_DESC_PATH} -e TT_METAL_HOME= -e TT_METAL_VERSION= -e TT_METAL_DEVICE_ID= --entrypoint python3 tt-forge-compiletron:minimal /app/scripts/docker/forge_worker.py ${TEST_NAME}"
 done
 
 # Make panes even
