@@ -223,7 +223,7 @@ if [[ "$MODE" == "docker" ]]; then
         C-m
 else
     tmux send-keys -t "$P_STA" \
-        "watch -n2 'echo \"Mode: native | Run: ${TEST_NAME}\"; echo \"\"; ps aux | grep \"[c]ompiletron\" | awk \"{printf \\\"  Chip %s  %ss elapsed\\\\n\\\", \\\$NF, \\\$10}\" 2>/dev/null; echo \"\"; echo \"Forge processes: \$(pgrep -c python3 2>/dev/null || echo 0)\"'" \
+        "watch -n2 'echo \"Mode: native | Run: ${TEST_NAME}\"; echo \"\"; ps aux | grep \"[c]ompiletron\|worker.py\" | grep -v grep | awk \"{printf \\\"  Chip %s  %ss elapsed\\\\n\\\", \\\$NF, \\\$10}\" 2>/dev/null; echo \"\"; echo \"Forge processes: \$(pgrep -fc python3 2>/dev/null || echo 0)\"'" \
         C-m
 fi
 
