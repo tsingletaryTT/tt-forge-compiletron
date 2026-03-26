@@ -99,9 +99,13 @@ chip_cmd() {
             python3 /app/scripts/docker/forge_worker.py ${TEST_NAME}; \
             echo ''; echo '${done_msg}'; read -p 'Press Enter to close...'"
     else
-        # Native: activate forge env if available, then run compiletron directly
+        # Native: activate forge env if available, then run compiletron directly.
+        # TT_MESH_GRAPH_DESC_PATH is required for CUSTOM cluster type (P300 single-chip).
+        local native_mesh="${PROJECT_DIR}/mesh_graph_descriptors/p100_mesh_graph_descriptor.textproto"
         echo "source ~/tt-forge-fe/env/activate 2>/dev/null; \
-            TT_VISIBLE_DEVICES=${chip_id} TT_METAL_ARCH_NAME=blackhole \
+            TT_VISIBLE_DEVICES=${chip_id} \
+            TT_METAL_ARCH_NAME=blackhole \
+            TT_MESH_GRAPH_DESC_PATH=${native_mesh} \
             python3 ${PROJECT_DIR}/compiletron.py run \
                 --chip ${chip_id} --count ${COUNT}; \
             echo ''; echo '${done_msg}'; read -p 'Press Enter to close...'"
