@@ -9,6 +9,7 @@ Supports 1 to 32+ chips with automatic detection and parallel execution.
 
 - **Auto-detection**: Automatically detects hardware (1-32+ chips)
 - **Model library**: 101 proven models across 15+ architectures
+- **Model discovery**: Automatically discover new models from Forge repos and HuggingFace
 - **Parallel execution**: Round-robin distribution across all available chips
 - **Rich metadata**: Compilation time estimates, complexity ratings, parameter counts
 - **Flexible CLI**: Filter models by family, complexity, batch size
@@ -83,6 +84,15 @@ python3 compiletron.py results report --output report.md
 
 # Check environment
 python3 compiletron.py setup check
+
+# Discover new models from HuggingFace
+python3 compiletron.py discover huggingface --family resnet --limit 10
+
+# Discover models from Forge repos
+python3 compiletron.py discover forge --verbose
+
+# Save discovered models
+python3 compiletron.py discover huggingface --family bert --save bert_models.json
 ```
 
 **Or use example workflows:**
@@ -198,6 +208,51 @@ print(f"\n50 models on 4 chips: ~{time_est/60:.1f} minutes")
 Simplified model cache management:
 - `get_cache_stats()` - PyTorch cache statistics
 - `clear_cache()` - Clear cached weights
+
+### lib/discovery.py (347 lines)
+Automatic model discovery from multiple sources:
+- **Forge repos**: Scan tt-forge-fe test files for model patterns
+- **HuggingFace**: Search model hub by family, task, popularity
+- **Confidence scoring**: Rate likelihood of successful compilation
+- **Deduplication**: Merge results from multiple sources
+
+**Features:**
+- Pattern matching: `torchvision.models.*`, `timm.create_model()`, `transformers.AutoModel.from_pretrained()`
+- Family detection: Automatically classify models by architecture
+- Metadata: Downloads, tags, pipeline type, confidence score
+- Save/load: Export discovered models to JSON
+
+**Example:**
+```python
+from lib.discovery import *
+
+# Discover from Forge repos
+forge_models = discover_forge_models()
+print(f"Found {len(forge_models)} models in Forge tests")
+
+# Search HuggingFace for ResNet models
+hf_models = discover_huggingface_models(family='resnet', limit=10)
+for model in hf_models:
+    print(f"{model.name} - downloads: {model.metadata['downloads']:,}")
+
+# Combine and deduplicate
+all_models = deduplicate_models(forge_models + hf_models)
+
+# Save for later use
+save_discovered_models(all_models, 'discovered_models.json')
+```
+
+**CLI Usage:**
+```bash
+# Search HuggingFace
+python3 compiletron.py discover huggingface --family vit --limit 20 --verbose
+
+# Scan Forge repos
+python3 compiletron.py discover forge --forge-path ~/tt-forge-fe --save forge_models.json
+
+# Test discovered models
+python3 compiletron.py discover test discovered_models.json --min-confidence 0.7
+```
 
 ## 🏗️ Architecture
 

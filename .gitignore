@@ -32,6 +32,10 @@ generated_modules/
 # Compilation results
 results/*.csv
 
+# Model discovery results
+discovered_*.json
+discovery_results/
+
 # Logs
 *.log
 
