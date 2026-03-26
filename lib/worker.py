@@ -105,26 +105,102 @@ CELEBRATION_FONTS = ['small', 'standard', 'slant']
 
 
 def print_header(chip_id: int, total_models: int):
-    """
-    Print the big TT-FORGE ASCII art startup banner for a chip pane.
-    Matches the print_header() from the original demo_compilation_chunked.py.
-    """
+    """Print demo header — copied directly from demo_compilation_chunked.py"""
     import pyfiglet
-    print()
-    try:
-        banner = pyfiglet.figlet_format("TT-FORGE", font='banner3')
-        print(f"{BOLD}{GREEN}{banner}{RESET}", end='')
-    except Exception:
-        print(f"{BOLD}{GREEN}  TT-FORGE{RESET}\n")
-    print(f"{BOLD}{CYAN}{'═'*80}{RESET}")
+    print(f"\n{BOLD}{GREEN}")
+    banner = pyfiglet.figlet_format("TT-FORGE", font="banner3")
+    print(banner, end='')
+    print(f"{RESET}")
+    print(f"{BOLD}{CYAN}{'='*80}{RESET}")
     print(f"{BOLD}{CYAN}   COMPILATION SHOWCASE - TENSTORRENT BLACKHOLE{RESET}")
-    print(f"{BOLD}{CYAN}{'═'*80}{RESET}\n")
-    print(f"  {YELLOW}Hardware:{RESET}  4x P300C Blackhole chips")
-    print(f"  {YELLOW}Compiler:{RESET}  TT-Forge (TVM-based MLIR pipeline)")
-    print(f"  {YELLOW}Chip:{RESET}      {chip_id}")
-    print(f"  {YELLOW}Models:{RESET}    {total_models} assigned to this chip (round-robin)")
-    print(f"  {YELLOW}Process:{RESET}   PyTorch → TVM → Forge IR → MLIR → TT Binary")
-    print(f"{BOLD}{CYAN}{'═'*80}{RESET}\n")
+    print(f"{BOLD}{CYAN}   CHIP {chip_id}{RESET}")
+    print(f"{BOLD}{CYAN}{'='*80}{RESET}\n")
+    print(f"{YELLOW}Hardware:{RESET} 4x P300C Blackhole chips")
+    print(f"{YELLOW}Compiler:{RESET} TT-Forge-ONNX (TVM-based MLIR pipeline)")
+    print(f"{YELLOW}Models:{RESET} {total_models} in this segment")
+    print(f"{YELLOW}Process:{RESET} PyTorch → TVM → Forge IR → MLIR → TT Binary")
+    print(f"{BOLD}{CYAN}{'='*80}{RESET}\n")
+
+
+def generate_fun_prediction(output, display_name, family):
+    """
+    Generate a factual description of model inference output.
+    Copied directly from demo_compilation_chunked.py.
+    """
+    try:
+        if hasattr(output, 'shape') and len(output.shape) >= 2:
+            batch_size = output.shape[0]
+            num_classes = output.shape[1]
+
+            hash_seed = sum(ord(c) for c in display_name) % 1000
+            random.seed(hash_seed)
+
+            messages = [
+                f"Inference produced {num_classes}-class distribution (batch size: {batch_size})",
+                f"Generated output tensor: {num_classes} classes across {batch_size} sample(s)",
+                f"Successfully computed {num_classes}-dimensional output for {batch_size} input(s)",
+                f"Model output: {batch_size}×{num_classes} probability distribution",
+                f"Inference complete: {num_classes} class predictions generated",
+                f"Forward pass produced {num_classes}-class logits (batch: {batch_size})",
+            ]
+
+            message = random.choice(messages)
+            random.seed()
+            return message
+        return None
+    except Exception:
+        random.seed()
+        return None
+
+
+def print_victory_celebration(chip_id: int, successes: int, total: int, successful_models: list):
+    """
+    Print colorful COMPLETE! celebration organized by model family.
+    Copied directly from demo_compilation_chunked.py.
+    """
+    if successes == 0:
+        return
+
+    import pyfiglet
+    print(f"\n\n{BOLD}{GREEN}")
+    try:
+        victory = pyfiglet.figlet_format("COMPLETE!", font="banner3")
+        print(victory, end='')
+    except Exception:
+        print("\n    COMPLETE!\n")
+    print(f"{RESET}")
+
+    print(f"{BOLD}{CYAN}   {successes}/{total} MODELS COMPILED SUCCESSFULLY{RESET}\n")
+
+    families: dict = {}
+    for model_name in successful_models:
+        family = model_name.split('-')[0].lower()
+        if family not in families:
+            families[family] = []
+        families[family].append(model_name)
+
+    print(f"\n{BOLD}{CYAN}╔══════════════════════════════════════════════════════════════════════╗{RESET}")
+    print(f"{BOLD}{CYAN}║                    MODELS BY ARCHITECTURE FAMILY                     ║{RESET}")
+    print(f"{BOLD}{CYAN}╚══════════════════════════════════════════════════════════════════════╝{RESET}\n")
+
+    sorted_families = sorted(families.items(), key=lambda x: len(x[1]), reverse=True)
+    color_rotation = [GREEN, YELLOW, BLUE, PURPLE, PINK, CYAN, RED]
+    for idx, (family, models) in enumerate(sorted_families):
+        color = color_rotation[idx % len(color_rotation)]
+        family_display = family.replace('_', ' ').title()
+        print(f"{BOLD}{color}{family_display} Family{RESET} ({len(models)} models)")
+        for i in range(0, len(models), 3):
+            batch = models[i:i+3]
+            names = [m.replace(f"{family}-", "").replace("_", " ") for m in batch]
+            print(f"   • " + " • ".join(names))
+        print()
+
+    print(f"{BOLD}{GREEN}╔══════════════════════════════════════════════════════════════════════╗{RESET}")
+    print(f"{BOLD}{GREEN}║                         MISSION COMPLETE                             ║{RESET}")
+    print(f"{BOLD}{GREEN}║{RESET}     {YELLOW}{successes} models compiled and optimized for Blackhole{RESET}           {BOLD}{GREEN}║{RESET}")
+    print(f"{BOLD}{GREEN}║{RESET}     {CYAN}Ready for inference on Tenstorrent hardware{RESET}                {BOLD}{GREEN}║{RESET}")
+    print(f"{BOLD}{GREEN}╚══════════════════════════════════════════════════════════════════════╝{RESET}\n")
+    print(f"{BOLD}{PURPLE}         TENSTORRENT AI ACCELERATION{RESET}\n")
 
 
 class TimeoutException(Exception):
@@ -203,9 +279,8 @@ def compile_and_run(model_spec: Tuple, chip_id: int = 0, font_idx: int = 1) -> T
     print(f"{color}  ★ ═══ {display_name} ═══ ★{RESET}")
     time.sleep(3)  # Celebration pause — let the banner breathe before compilation
 
-    print(f"{BOLD}{CYAN}{'─'*80}{RESET}")
+    print(f"{BOLD}{BLUE}{'─'*80}{RESET}")
     print(f"  {CYAN}Family:{RESET} {family} | {CYAN}Input:{RESET} {input_shape}")
-    print(f"  {CYAN}Expected time:{RESET} {metadata['time']:.1f}s | {CYAN}Complexity:{RESET} {metadata['complexity']}")
 
     start_time = time.time()
 
@@ -287,11 +362,13 @@ def compile_and_run(model_spec: Tuple, chip_id: int = 0, font_idx: int = 1) -> T
 
         total_time = time.time() - start_time
 
-        # Success
+        fun_output = generate_fun_prediction(output, display_name, family)
+
         print(f"  {BOLD}{GREEN}✓ SUCCESS{RESET}")
         print(f"    Compilation: {compile_time:.2f}s | Total: {total_time:.2f}s")
-        if hasattr(output, 'shape'):
-            print(f"    Output shape: {output.shape}")
+        print(f"    Output: {output.shape if hasattr(output, 'shape') else 'N/A'}")
+        if fun_output:
+            print(f"    {CYAN}🎯 {fun_output}{RESET}")
 
         return True, compile_time
 
@@ -305,7 +382,7 @@ def compile_and_run(model_spec: Tuple, chip_id: int = 0, font_idx: int = 1) -> T
     except Exception as e:
         error_time = time.time() - start_time
         print(f"  {BOLD}{RED}✗ FAILED{RESET}")
-        print(f"    Error: {type(e).__name__}: {str(e)[:100]}")
+        print(f"    Error: {type(e).__name__}")
         print(f"    Time: {error_time:.2f}s")
         return False, error_time
 
@@ -393,22 +470,20 @@ def run_worker(chip_id: int, model_indices: list, results_file: Optional[Path] =
         if idx < total:
             time.sleep(0.3)
 
-    # Summary with per-model checklist (matches original demo behavior)
-    print()
-    print("=" * 80)
-    print(f"[Chip {chip_id}] COMPLETE - {successes}/{total} succeeded")
-    print("=" * 80)
-    print()
-    print(f"{BOLD}MODELS TESTED ON CHIP {chip_id}:{RESET}")
-    print()
+    # Victory celebration banner + family breakdown (from original demo)
+    successful_models = [r['model'] for r in results if r['success']]
+    print_victory_celebration(chip_id, successes, total, successful_models)
+
+    # Per-model ✓/✗ checklist
+    print(f"{BOLD}MODELS TESTED ON CHIP {chip_id}:{RESET}\n")
     for r in results:
         mark = "✓" if r['success'] else "✗"
         color = GREEN if r['success'] else RED
         print(f"  {color}{mark}{RESET} {r['model']}")
     print()
-    print("=" * 80)
-    print(f"{CYAN}All done — pane stays open so you can review results{RESET}")
-    print("=" * 80)
+    print(f"{BOLD}{CYAN}{'='*80}{RESET}")
+    print(f"{CYAN}Check stats pane for overall results{RESET}")
+    print(f"{BOLD}{CYAN}{'='*80}{RESET}")
 
     # Save results if requested
     if results_file:
