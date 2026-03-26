@@ -11,6 +11,41 @@ import sys
 import argparse
 from pathlib import Path
 
+# Suppress TF/XLA/CUDA/ABSL stderr noise BEFORE any imports that pull in JAX/TF
+# (huggingface_hub, transformers, etc. import TF at load time and print to raw stderr)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
+class _FilteredStderr:
+    """Drop noisy C-extension stderr lines from XLA/CUDA/ABSL/TVM at import time."""
+    _suppress = [
+        'Unable to register cu',
+        'computation placer already registered',
+        'All log messages before absl::InitializeLog',
+        'In-place operator',
+        'not found in convert_map',
+        'Falling back to out-of-place',
+        'num_batches_tracked not found',
+        'not found in self._parameters',
+        'ConstEval graph:',
+        'WARNING  |',
+        'DEBUG    |',
+    ]
+    def __init__(self, stream): self._s = stream; self._seen = set()
+    def write(self, t):
+        if any(p in t for p in self._suppress): return
+        ts = t.strip()
+        if ts and 'WARNING' in ts:
+            if ts in self._seen: return
+            if len(self._seen) < 1000: self._seen.add(ts)
+        self._s.write(t)
+    def flush(self): self._s.flush()
+    def close(self): pass  # Don't close the underlying stream; needed for atexit/logging shutdown
+    def isatty(self): return self._s.isatty()
+    def fileno(self): return self._s.fileno()
+
+sys.stderr = _FilteredStderr(sys.stderr)
+
 # Add lib directory to path
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 
@@ -89,9 +124,11 @@ def cmd_test(args):
 
     print(f"✓ Forge environment detected")
 
-    # Check if forge module can be imported
+    # Check if forge module can be imported (quiet import suppresses XLA/ABSL noise)
+    sys.path.insert(0, str(Path(__file__).parent / 'lib'))
+    from worker import import_forge_quietly
     try:
-        import forge
+        import_forge_quietly()
         print(f"✓ Forge module available")
     except ImportError:
         print(f"❌ Cannot import forge module")
@@ -688,18 +725,18 @@ def cmd_discover_test(args):
         print(f"   Activate with: {get_activation_instructions()}")
         return 1
 
-    # Check forge module
+    # Import worker first so we can use import_forge_quietly for the availability check
+    sys.path.insert(0, str(Path(__file__).parent / 'lib'))
+    from worker import compile_and_run, import_forge_quietly
+
+    # Check forge module (use quiet import to suppress XLA/ABSL fd-level noise)
     try:
-        import forge
+        import_forge_quietly()
         print(f"✓ Forge module available\n")
     except ImportError:
         print(f"❌ Cannot import forge module")
         print(f"   Forge may not be properly installed")
         return 1
-
-    # Import worker functionality
-    sys.path.insert(0, str(Path(__file__).parent / 'lib'))
-    from worker import compile_and_run
 
     # Results tracking
     results = []
@@ -952,9 +989,11 @@ def cmd_run(args):
 
     print(f"✓ Forge environment detected")
 
-    # Check if forge module can be imported
+    # Check if forge module can be imported (quiet import suppresses XLA/ABSL noise)
+    sys.path.insert(0, str(Path(__file__).parent / 'lib'))
+    from worker import import_forge_quietly
     try:
-        import forge
+        import_forge_quietly()
         print(f"✓ Forge module available")
     except ImportError:
         print(f"❌ Cannot import forge module")
