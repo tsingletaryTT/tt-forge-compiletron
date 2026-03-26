@@ -159,7 +159,7 @@ def compile_and_run(model_spec: Tuple, chip_id: int = 0) -> Tuple[bool, float]:
     print(f"{RESET}")
 
     print(f"{color}  ★ {display_name} ★{RESET}")
-    time.sleep(1)
+    time.sleep(3)  # Celebration pause — let the banner breathe
 
     print(f"{BOLD}{CYAN}{'─'*80}{RESET}")
     print(f"  {CYAN}Family:{RESET} {family} | {CYAN}Input:{RESET} {input_shape}")
@@ -329,10 +329,21 @@ def run_worker(chip_id: int, model_indices: list, results_file: Optional[Path] =
                 'compile_time': 0.0,
             })
 
-    # Summary
+    # Summary with per-model checklist (matches original demo behavior)
     print()
     print("=" * 80)
     print(f"[Chip {chip_id}] COMPLETE - {successes}/{len(model_indices)} succeeded")
+    print("=" * 80)
+    print()
+    print(f"{BOLD}MODELS TESTED ON CHIP {chip_id}:{RESET}")
+    print()
+    for r in results:
+        mark = "✓" if r['success'] else "✗"
+        color = GREEN if r['success'] else RED
+        print(f"  {color}{mark}{RESET} {r['model_name']}")
+    print()
+    print("=" * 80)
+    print(f"{CYAN}All done — pane stays open so you can review results{RESET}")
     print("=" * 80)
 
     # Save results if requested
@@ -348,25 +359,48 @@ def run_worker(chip_id: int, model_indices: list, results_file: Optional[Path] =
                 writer.writeheader()
             writer.writerows(results)
 
+    # Stay alive so the tmux pane keeps showing the checklist.
+    # The shell wrapper can omit its own "Press Enter to close" prompt
+    # because this loop handles it. Ctrl-C or tmux kill exits cleanly.
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
+
     return 0 if failures == 0 else 1
 
 
-# Example usage
 if __name__ == '__main__':
-    # Test compilation of ResNet-18
-    print("Testing worker with ResNet-18...")
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description='TT-Forge single-chip compilation worker',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Round-robin distribution (default):
+  Chip 0 compiles models 0, 4, 8, 12, ...
+  Chip 1 compiles models 1, 5, 9, 13, ...
+  etc.
+
+Example:
+  python3 lib/worker.py --chip 0 --stride 4
+  python3 lib/worker.py --chip 2 --stride 4 --results /tmp/results.csv
+""",
+    )
+    parser.add_argument('--chip', type=int, default=0,
+                        help='Chip ID (also sets start index for round-robin)')
+    parser.add_argument('--stride', type=int, default=4,
+                        help='Round-robin stride: chip N gets models N, N+stride, N+2*stride, ...')
+    parser.add_argument('--results', type=str, default=None,
+                        help='Path to CSV file for saving results')
+    args = parser.parse_args()
+
+    # Add project root to path so lib.models resolves from any CWD
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from lib.models import MODEL_LIST
 
-    # Find ResNet-18
-    resnet18 = None
-    for model in MODEL_LIST:
-        if model[0] == 'ResNet-18':
-            resnet18 = model
-            break
+    model_indices = list(range(args.chip, len(MODEL_LIST), args.stride))
+    results_file = Path(args.results) if args.results else None
 
-    if resnet18:
-        print(f"\nCompiling {resnet18[0]}...")
-        success, time_taken = compile_and_run(resnet18, chip_id=0)
-        print(f"\nResult: {'SUCCESS' if success else 'FAILED'} in {time_taken:.2f}s")
-    else:
-        print("ResNet-18 not found in MODEL_LIST")
+    sys.exit(run_worker(args.chip, model_indices, results_file))
