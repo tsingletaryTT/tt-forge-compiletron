@@ -646,14 +646,16 @@ def cmd_discover_huggingface(args):
 
 
 def cmd_discover_test(args):
-    """Test discovered models."""
+    """Test discovered models by actually compiling them."""
     import json
+    import csv
+    import datetime
     from pathlib import Path
 
     # Load discovered models
     if not Path(args.file).exists():
         print(f"❌ File not found: {args.file}")
-        print(f"   Run 'compiletron discover forge --save' first")
+        print(f"   Run 'compiletron discover huggingface --save' first")
         return 1
 
     print(f"📋 Loading discovered models from {args.file}...")
@@ -686,31 +688,99 @@ def cmd_discover_test(args):
         print(f"   Activate with: {get_activation_instructions()}")
         return 1
 
-    # Test each model
+    # Check forge module
+    try:
+        import forge
+        print(f"✓ Forge module available\n")
+    except ImportError:
+        print(f"❌ Cannot import forge module")
+        print(f"   Forge may not be properly installed")
+        return 1
+
+    # Import worker functionality
+    sys.path.insert(0, str(Path(__file__).parent / 'lib'))
+    from worker import compile_and_run
+
+    # Results tracking
     results = []
+    results_dir = Path('results')
+    results_dir.mkdir(exist_ok=True)
+    results_file = results_dir / f'discovered_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+
     successful = 0
     failed = 0
+    total_compile_time = 0
 
+    # Test each model
     for i, discovered_model in enumerate(models, 1):
         print(f"\n[{i}/{len(models)}] {discovered_model.name}")
         print(f"   Source: {discovered_model.source} | Family: {discovered_model.family}")
         print(f"   Confidence: {discovered_model.confidence:.1f}")
         print(f"-" * 60)
 
-        # Try to compile
-        # For now, skip actual compilation - just report the discovery
-        # TODO: Implement actual test compilation
-        print(f"⚠️  Test compilation not yet implemented")
-        print(f"   This would attempt to load and compile: {discovered_model.name}")
+        try:
+            # Create model loader based on source
+            model_spec = _create_model_spec_from_discovered(discovered_model)
 
-        results.append({
-            'name': discovered_model.name,
-            'family': discovered_model.family,
-            'source': discovered_model.source,
-            'confidence': discovered_model.confidence,
-            'tested': False,
-            'success': None
-        })
+            if not model_spec:
+                print(f"⚠️  Skipping: Unable to create loader for {discovered_model.source} source")
+                results.append({
+                    'model': discovered_model.name,
+                    'family': discovered_model.family,
+                    'source': discovered_model.source,
+                    'success': False,
+                    'compile_time': 0,
+                    'confidence': discovered_model.confidence,
+                    'chip': chip_id
+                })
+                failed += 1
+                continue
+
+            # Try to compile
+            success, compile_time = compile_and_run(model_spec, chip_id)
+
+            if success:
+                print(f"✅ SUCCESS - {compile_time:.1f}s")
+                successful += 1
+                total_compile_time += compile_time
+            else:
+                print(f"❌ FAILED")
+                failed += 1
+
+            results.append({
+                'model': discovered_model.name,
+                'family': discovered_model.family,
+                'source': discovered_model.source,
+                'success': success,
+                'compile_time': compile_time,
+                'confidence': discovered_model.confidence,
+                'chip': chip_id
+            })
+
+        except KeyboardInterrupt:
+            print(f"\n\n⚠️  Interrupted by user")
+            break
+        except Exception as e:
+            print(f"❌ ERROR: {e}")
+            failed += 1
+            results.append({
+                'model': discovered_model.name,
+                'family': discovered_model.family,
+                'source': discovered_model.source,
+                'success': False,
+                'compile_time': 0,
+                'confidence': discovered_model.confidence,
+                'chip': chip_id
+            })
+
+    # Save results
+    if results:
+        with open(results_file, 'w', newline='') as f:
+            fieldnames = ['model', 'family', 'source', 'success', 'compile_time', 'confidence', 'chip']
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(results)
+        print(f"\n📊 Results saved to: {results_file}")
 
     # Summary
     print(f"\n" + "=" * 60)
@@ -719,12 +789,96 @@ def cmd_discover_test(args):
     print(f"  Total models: {len(models)}")
     print(f"  ✅ Successful: {successful}")
     print(f"  ❌ Failed: {failed}")
-    print(f"  ⚠️  Not yet tested: {len(models)}")
+    if successful > 0:
+        print(f"  Success rate: {successful/len(models)*100:.1f}%")
+        print(f"  Total time: {total_compile_time:.1f}s")
+        print(f"  Average time: {total_compile_time/successful:.1f}s")
     print()
-    print(f"Note: Actual compilation testing not yet implemented")
-    print(f"      This command currently just validates discovery results")
 
-    return 0
+    return 0 if failed == 0 else 1
+
+
+def _create_model_spec_from_discovered(discovered_model):
+    """
+    Create a model_spec tuple from a DiscoveredModel.
+
+    Returns:
+        Tuple of (name, family, loader_fn, input_shape, notes, metadata) or None if can't create
+    """
+    import torch
+
+    name = discovered_model.name
+    family = discovered_model.family
+    source = discovered_model.source
+    location = discovered_model.location
+
+    # Default input shape (most vision models use this)
+    input_shape = (1, 3, 224, 224)
+
+    # Create loader function based on source and tags
+    loader_fn = None
+
+    # Check if this is a timm model (even if discovered from HuggingFace)
+    tags = discovered_model.metadata.get('tags', [])
+    is_timm = 'timm' in tags or location.startswith('timm/')
+
+    if is_timm:
+        # TIMM models (may be hosted on HuggingFace)
+        model_name = location.split('/')[-1] if '/' in location else location
+        def loader():
+            import timm
+            model = timm.create_model(model_name, pretrained=True)
+            return model
+        loader_fn = loader
+        actual_source = 'timm'
+
+    elif source == 'huggingface':
+        # HuggingFace models via transformers
+        def loader():
+            from transformers import AutoModel
+            model = AutoModel.from_pretrained(location, trust_remote_code=True)
+            return model
+        loader_fn = loader
+        actual_source = 'huggingface'
+
+    elif source == 'timm':
+        # Direct TIMM models
+        def loader():
+            import timm
+            model = timm.create_model(location, pretrained=True)
+            return model
+        loader_fn = loader
+        actual_source = 'timm'
+
+    elif source == 'forge' and 'torchvision.models' in discovered_model.metadata.get('pattern', ''):
+        # Torchvision models
+        def loader():
+            import torchvision.models as models
+            # Extract model name from location (file path)
+            model_fn = getattr(models, name.lower().replace('-', ''), None)
+            if model_fn:
+                return model_fn(pretrained=True)
+            else:
+                raise ValueError(f"Model {name} not found in torchvision.models")
+        loader_fn = loader
+        actual_source = 'torchvision'
+
+    if not loader_fn:
+        return None
+
+    # Create metadata
+    metadata = {
+        'time': 15.0,  # Default estimate
+        'params': 'unknown',
+        'complexity': 'medium',
+        'success': discovered_model.confidence,
+        'discovered': True,
+        'source': actual_source
+    }
+
+    notes = f"Discovered from {source} (loaded via {actual_source})"
+
+    return (name, family, loader_fn, input_shape, notes, metadata)
 
 
 def cmd_run(args):
