@@ -13,9 +13,77 @@ import warnings
 from pathlib import Path
 from typing import Tuple, Optional
 
-# Suppress warnings aggressively
+# Suppress TensorFlow/XLA warnings before any imports
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'       # Suppress TF C++ warnings
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'       # Disable oneDNN (suppresses related warnings)
+
+# Suppress Python warnings aggressively
 warnings.filterwarnings('ignore')
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings('ignore', message='.*in-place operator.*')
+warnings.filterwarnings('ignore', message='.*num_batches_tracked.*')
+
+
+class FilteredStderr:
+    """
+    Filter stderr to suppress noisy TF/XLA/CUDA/TVM/ABSL warnings.
+
+    These warnings come from C extensions that write directly to stderr
+    before Python's logging system can intercept them. Common sources:
+    - XLA: cuFFT/cuDNN/cuBLAS factory registration (harmless duplicate registrations)
+    - ABSL: 'All log messages before absl::InitializeLog' preamble
+    - computation_placer: 'already registered' (harmless in multi-framework environments)
+    - TVM: in-place operator warnings, num_batches_tracked missing
+    - Forge: ConstEval debug spam, WARNING/DEBUG level chatter
+
+    Also deduplicates repeated warnings to prevent log flooding.
+    """
+    def __init__(self, stream):
+        self.stream = stream
+        self.suppress_patterns = [
+            'Unable to register cu',              # cuFFT, cuDNN, cuBLAS duplicate registrations
+            'computation placer already registered',
+            'All log messages before absl::InitializeLog',
+            'In-place operator',                  # TVM in-place operator warnings
+            'not found in convert_map',           # TVM missing ops (informational only)
+            'Falling back to out-of-place',       # TVM fallback (harmless)
+            'num_batches_tracked not found',      # BatchNorm parameter not in Forge params
+            'not found in self._parameters',      # Same as above, different message form
+            'ConstEval graph:',                   # Forge ConstEval debug spam
+            'WARNING  |',                         # All WARNING level loguru messages
+            'DEBUG    |',                         # All DEBUG level loguru messages
+        ]
+        self.seen_warnings = set()
+        self.max_seen = 1000  # Cap to prevent memory leak on very long runs
+
+    def write(self, text):
+        # Drop lines matching any suppressed pattern
+        if any(pattern in text for pattern in self.suppress_patterns):
+            return
+
+        # Deduplicate repeated WARNING lines
+        text_stripped = text.strip()
+        if text_stripped and 'WARNING' in text_stripped:
+            if text_stripped in self.seen_warnings:
+                return
+            if len(self.seen_warnings) < self.max_seen:
+                self.seen_warnings.add(text_stripped)
+
+        self.stream.write(text)
+
+    def flush(self):
+        self.stream.flush()
+
+    def close(self):
+        pass  # Don't close the underlying stream; required for atexit/logging shutdown
+
+    def isatty(self):
+        return self.stream.isatty()
+
+    def fileno(self):
+        return self.stream.fileno()
 
 
 # Terminal colors
@@ -35,6 +103,30 @@ class TimeoutException(Exception):
 def timeout_handler(signum, frame):
     """Signal handler for timeouts"""
     raise TimeoutException("Operation timed out")
+
+
+def import_forge_quietly():
+    """
+    Import forge while suppressing XLA/CUDA/ABSL noise.
+
+    XLA/ABSL write registration warnings directly to OS fd 2 (not Python's sys.stderr)
+    so Python-level filters can't catch them. We temporarily redirect fd 2 to /dev/null
+    for the duration of the import, then restore it.
+
+    Returns the forge module.
+    Raises ImportError if forge is not available.
+    """
+    saved_fd = os.dup(2)
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(devnull_fd, 2)
+    os.close(devnull_fd)
+    try:
+        sys.path.insert(0, os.path.expanduser("~/tt-forge-fe"))
+        import forge
+        return forge
+    finally:
+        os.dup2(saved_fd, 2)
+        os.close(saved_fd)
 
 
 def compile_and_run(model_spec: Tuple, chip_id: int = 0) -> Tuple[bool, float]:
@@ -76,9 +168,22 @@ def compile_and_run(model_spec: Tuple, chip_id: int = 0) -> Tuple[bool, float]:
     start_time = time.time()
 
     try:
-        # Import forge (do this inside try block)
-        sys.path.insert(0, os.path.expanduser("~/tt-forge-fe"))
-        import forge
+        # Wrap Python sys.stderr to filter loguru/Python-level warnings
+        if not isinstance(sys.stderr, FilteredStderr):
+            sys.stderr = FilteredStderr(sys.stderr)
+
+        # Import forge quietly (redirects fd 2 to /dev/null during import to suppress
+        # XLA/ABSL/CUDA registration noise that writes directly to OS fd 2)
+        forge = import_forge_quietly()
+
+        # Configure logging AFTER forge import to suppress TVM/Forge logger chatter
+        import logging
+        logging.getLogger('tvm.relay.frontend.pytorch').setLevel(logging.CRITICAL)
+        logging.getLogger('tvm.relay').setLevel(logging.CRITICAL)
+        logging.getLogger('tvm').setLevel(logging.CRITICAL)
+        logging.getLogger('forge.tensor').setLevel(logging.INFO)   # Suppress ConstEval DEBUG spam
+        logging.getLogger('forge').setLevel(logging.INFO)          # Only INFO and above for Forge
+        logging.getLogger().setLevel(logging.INFO)                 # Suppress global WARNING spam
 
         # Load model
         print(f"  {YELLOW}[1/3]{RESET} Loading model architecture...")
