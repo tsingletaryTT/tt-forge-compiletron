@@ -97,37 +97,52 @@ python3 compiletron.py setup check
 ./scripts/examples/example-parallel-sweep.sh
 ```
 
-### 🐳 Docker Quick Start (Reference Implementation)
+### 🐳 Docker: Full Source Build
 
-**Note:** The Docker image is a **reference implementation** showing the complete build process. It includes all 50+ Forge dependencies (~10GB, 15-20 min build time).
+**Current approach:** The Docker image compiles **tt-metal** and **tt-forge-fe from source** to ensure compatibility with single-chip isolation via `TT_VISIBLE_DEVICES`.
+
+**Why this approach:**
+- Pre-built `tt-forge-slim` images have topology discovery bugs preventing single-chip isolation
+- Source build ensures matching library versions and STRICT mesh graph descriptor support
+- Enables **4-way parallel compilation** - each container isolated to one chip
+
+**Trade-offs:**
+- **Image size:** ~21GB (includes compiled tt-metal + tt-forge-fe)
+- **Build time:** 2-3 hours (first build, subsequent rebuilds use cache)
+- **Why it's worth it:** Reliable 4-way parallel compilation (4/4 chips, ~6 seconds each)
 
 ```bash
-# Build full stack container (first time: 15-20 minutes)
-make build
+# Build Docker image (2-3 hours, one-time)
+docker build -t tt-forge-compiletron:full .
 
-# Run tests (no hardware needed)
-make test
+# Test single chip
+docker run --rm --device=/dev/tenstorrent:/dev/tenstorrent \
+    --shm-size=16g \
+    -e TT_VISIBLE_DEVICES=0 \
+    tt-forge-compiletron:full \
+    python3 /app/scripts/docker/forge_worker.py test
 
-# Show model statistics
-make stats
-
-# Compile models (requires tt-metal/forge mounts + hardware)
-make compile-quick          # 5 fastest models
-make compile-parallel       # 50 models on all chips
+# Run 4-way parallel (all chips simultaneously)
+./scripts/docker/run_parallel_4chip.sh
 ```
 
-**What's Included:**
-- ✅ All Forge dependencies (TensorFlow, JAX, PyTorch, ONNX, etc.)
-- ✅ Complete compilation environment
-- ✅ Testing framework (29 tests)
-- ✅ Model library (101 models)
+**What's included (self-contained):**
+- ✅ tt-metal compiled from source
+- ✅ tt-forge-fe compiled from source
+- ✅ All dependencies (TensorFlow, JAX, PyTorch, ONNX, etc.)
+- ✅ Mesh graph descriptors for topology configuration
+- ✅ Compiletron application and model library
 
-**What You Still Need:**
-- 📦 tt-metal built from source (mounted from host)
-- 📦 tt-forge-fe built from source (mounted from host)
-- 🔌 Tenstorrent hardware with firmware
+**Future plan:**
+- Migrate to `torch_plugin_tt` plugin-based API when stable
+- This will enable smaller images using PyPI packages
+- Estimated image size reduction: 21GB → 10-15GB
 
-See [DOCKER_REFERENCE.md](DOCKER_REFERENCE.md) for details and [CONTAINER_DEPLOYMENT.md](CONTAINER_DEPLOYMENT.md) for deployment patterns.
+**Known issues with minimal images:**
+- `tt-forge-slim` pre-built images: topology discovery bug (n_log=1, n_phys=2 mismatch)
+- Control plane crashes on chips 1 & 3
+- TT_VISIBLE_DEVICES isolation not working with forge-bundled tt-metal
+- See `Dockerfile.minimal.deprecated` for details
 
 ## 📚 Core Modules (Implemented)
 

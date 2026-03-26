@@ -17,13 +17,14 @@ echo -e "${BLUE}========================================${NC}"
 echo ""
 
 # Check if Docker image exists
-if ! docker image inspect tt-forge-compiletron:minimal &>/dev/null; then
-    echo -e "${RED}✗ Docker image 'tt-forge-compiletron:minimal' not found${NC}"
-    echo -e "  Build it with: docker build -f Dockerfile.minimal -t tt-forge-compiletron:minimal ."
+if ! docker image inspect tt-forge-compiletron:full &>/dev/null; then
+    echo -e "${RED}✗ Docker image 'tt-forge-compiletron:full' not found${NC}"
+    echo -e "  Build it with: docker build -t tt-forge-compiletron:full ."
+    echo -e "  Note: First build takes 2-3 hours (compiles tt-metal + tt-forge-fe from source)"
     exit 1
 fi
 
-echo -e "${GREEN}✓${NC} Docker image found: tt-forge-compiletron:minimal"
+echo -e "${GREEN}✓${NC} Docker image found: tt-forge-compiletron:full"
 
 # Check if chips are available
 if ! ls /dev/tenstorrent* &>/dev/null; then
@@ -47,20 +48,56 @@ TEST_NAME="${1:-parallel_test}"
 echo -e "${BLUE}Launching 4 Docker containers (one per chip)...${NC}"
 echo ""
 
+# Use STRICT policy mesh descriptor (bundled in image)
+# This matches the working tt-forge-creative-demos configuration
+MESH_DESC_PATH="/app/mesh_graph_descriptors/p100_mesh_graph_descriptor.textproto"
+
+# Docker flags for testing different configurations
+# Host has 125GB /dev/shm, Docker default is only 64MB
+DOCKER_SHM_SIZE="${DOCKER_SHM_SIZE:-16g}"     # Override with: DOCKER_SHM_SIZE=32g ./script.sh
+DOCKER_IPC_MODE="${DOCKER_IPC_MODE:-}"        # Override with: DOCKER_IPC_MODE=host ./script.sh
+DOCKER_PRIVILEGED="${DOCKER_PRIVILEGED:-}"    # Override with: DOCKER_PRIVILEGED=true ./script.sh
+
+echo -e "${BLUE}Docker configuration:${NC}"
+echo -e "  Shared memory: ${DOCKER_SHM_SIZE}"
+echo -e "  IPC mode: ${DOCKER_IPC_MODE:-isolated}"
+echo -e "  Privileged: ${DOCKER_PRIVILEGED:-false}"
+echo ""
+
 # Launch all 4 containers in parallel (background)
 for chip_id in {0..3}; do
     echo -e "${BLUE}  Starting chip ${chip_id}...${NC}"
 
-    docker run --rm \
-        --name "forge_chip_${chip_id}" \
+    # Build docker run command with conditional flags
+    DOCKER_CMD="docker run --rm \
+        --name forge_chip_${chip_id} \
         --device=/dev/tenstorrent:/dev/tenstorrent \
-        -e TT_VISIBLE_DEVICES="${chip_id}" \
-        -e TT_METAL_ARCH_NAME="blackhole" \
-        -e TT_MESH_GRAPH_DESC_PATH="/root/.pyenv/versions/3.11.13/lib/python3.11/site-packages/forge/tt-metal/tt_metal/fabric/mesh_graph_descriptors/p100_mesh_graph_descriptor.textproto" \
+        --shm-size=${DOCKER_SHM_SIZE}"
+
+    # Add privileged mode if specified
+    if [ "${DOCKER_PRIVILEGED}" = "true" ]; then
+        DOCKER_CMD="${DOCKER_CMD} --privileged"
+    fi
+
+    # Add IPC mode if specified
+    if [ -n "${DOCKER_IPC_MODE}" ]; then
+        DOCKER_CMD="${DOCKER_CMD} --ipc=${DOCKER_IPC_MODE}"
+    fi
+
+    # Add environment and execution parameters
+    DOCKER_CMD="${DOCKER_CMD} \
+        -e TT_VISIBLE_DEVICES=${chip_id} \
+        -e TT_METAL_ARCH_NAME=blackhole \
+        -e TT_MESH_GRAPH_DESC_PATH=${MESH_DESC_PATH} \
+        -e TT_METAL_HOME= \
+        -e TT_METAL_VERSION= \
+        -e TT_METAL_DEVICE_ID= \
         --entrypoint python3 \
-        tt-forge-compiletron:minimal \
-        /app/scripts/forge_worker.py "${TEST_NAME}" \
-        > "${LOG_DIR}/chip${chip_id}.log" 2>&1 &
+        tt-forge-compiletron:full \
+        /app/scripts/docker/forge_worker.py ${TEST_NAME}"
+
+    # Execute in background
+    eval "${DOCKER_CMD}" > "${LOG_DIR}/chip${chip_id}.log" 2>&1 &
 
     # Store PID
     eval "PID_${chip_id}=$!"
