@@ -179,7 +179,7 @@ chip_cmd() {
 #
 # Split order (status strip first so it spans full width):
 #   1. new-session           → P_TL  (full window)
-#   2. split-window -v 15%   → P_STA (bottom strip, full width)
+#   2. split-window -v 5     → P_STA (bottom strip, 5 lines, full width)
 #   3. split-window -h 50%   → P_TR  (top-right, split from P_TL)
 #   4. split-window -v 50%   → P_BL  (bottom-left, split from P_TL)
 #   5. split-window -v 50%   → P_BR  (bottom-right, split from P_TR)
@@ -190,7 +190,7 @@ tmux kill-session -t "$SESSION" 2>/dev/null || true
 tmux new-session -d -s "$SESSION"
 
 P_TL=$(tmux display-message -t "$SESSION" -p "#{pane_id}")
-P_STA=$(tmux split-window -v -l 15% -t "$P_TL" -P -F "#{pane_id}")
+P_STA=$(tmux split-window -v -l 5 -t "$P_TL" -P -F "#{pane_id}")
 P_TR=$(tmux split-window -h -l 50% -t "$P_TL" -P -F "#{pane_id}")
 P_BL=$(tmux split-window -v -l 50% -t "$P_TL" -P -F "#{pane_id}")
 P_BR=$(tmux split-window -v -l 50% -t "$P_TR" -P -F "#{pane_id}")

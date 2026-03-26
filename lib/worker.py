@@ -294,6 +294,7 @@ def run_worker(chip_id: int, model_indices: list, results_file: Optional[Path] =
     successes = 0
     failures = 0
     results = []
+    total = len(model_indices)
 
     for idx, model_idx in enumerate(model_indices, 1):
         if model_idx >= len(MODEL_LIST):
@@ -303,7 +304,15 @@ def run_worker(chip_id: int, model_indices: list, results_file: Optional[Path] =
         model_spec = MODEL_LIST[model_idx]
         display_name = model_spec[0]
 
-        print(f"\n[Chip {chip_id}] Model {idx}/{len(model_indices)}: {display_name}")
+        # ASCII progress bar — matches original demo_compilation_chunked.py behavior
+        bar_length = 40
+        filled = int(bar_length * (idx - 1) / total) if total else 0
+        bar = '█' * filled + '░' * (bar_length - filled)
+        pct = int(100 * (idx - 1) / total) if total else 0
+        stats = f"{GREEN}✓{successes}{RESET}/{RED}✗{failures}{RESET}"
+        print(f"\n{BOLD}[{bar}] {pct}% ({idx-1}/{total}) {stats}{RESET}")
+
+        print(f"\n[Chip {chip_id}] Model {idx}/{total}: {display_name}")
 
         try:
             success, compile_time = compile_and_run(model_spec, chip_id)
