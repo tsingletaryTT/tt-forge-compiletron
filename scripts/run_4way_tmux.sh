@@ -80,6 +80,13 @@ elif [[ "$MODE" == "native" ]]; then
         echo "✗ compiletron.py not found in $PROJECT_DIR"
         exit 1
     fi
+    # Kill any stale forge/compiletron processes that might hold device locks.
+    # UMD chip locks are not released when processes are killed abruptly.
+    if pkill -0 -f "compiletron.py run" 2>/dev/null; then
+        echo "Killing stale compiletron processes and waiting for device locks to clear..."
+        pkill -f "compiletron.py run" 2>/dev/null || true
+        sleep 2
+    fi
 fi
 
 # ── Build per-chip command ────────────────────────────────────────────────────
@@ -99,10 +106,20 @@ chip_cmd() {
             python3 /app/scripts/docker/forge_worker.py ${TEST_NAME}; \
             echo ''; echo '${done_msg}'; read -p 'Press Enter to close...'"
     else
-        # Native: activate forge env if available, then run compiletron directly.
+        # Native: activate forge env, then run compiletron directly.
         # TT_MESH_GRAPH_DESC_PATH is required for CUSTOM cluster type (P300 single-chip).
+        #
+        # Staggered startup: each chip waits chip_id * 4 seconds before initializing
+        # UMD. Without staggering all 4 chips race to open the same PCIe device and
+        # the losers fail immediately with a lock error.
         local native_mesh="${PROJECT_DIR}/mesh_graph_descriptors/p100_mesh_graph_descriptor.textproto"
+        local stagger=$((chip_id * 4))
+        local stagger_msg=""
+        if [[ $stagger -gt 0 ]]; then
+            stagger_msg="echo '[Chip ${chip_id}] Staggered start: waiting ${stagger}s for earlier chips to initialize...'; sleep ${stagger}; "
+        fi
         echo "source ~/tt-forge-fe/env/activate 2>/dev/null; \
+            ${stagger_msg}\
             TT_VISIBLE_DEVICES=${chip_id} \
             TT_METAL_ARCH_NAME=blackhole \
             TT_MESH_GRAPH_DESC_PATH=${native_mesh} \
