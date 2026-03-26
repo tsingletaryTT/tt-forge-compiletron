@@ -46,10 +46,13 @@ done
 # ── Auto-detect mode ──────────────────────────────────────────────────────────
 
 if [[ -z "$MODE" ]]; then
-    if docker image inspect "$DOCKER_IMAGE" &>/dev/null 2>&1; then
+    # Prefer native if the Forge environment is available; fall back to Docker.
+    if [[ -f ~/tt-forge-fe/env/activate ]]; then
+        MODE="native"
+    elif docker image inspect "$DOCKER_IMAGE" &>/dev/null 2>&1; then
         MODE="docker"
     else
-        MODE="native"
+        MODE="native"  # Let pre-flight checks report the real error
     fi
     echo "Auto-detected mode: $MODE"
 fi
