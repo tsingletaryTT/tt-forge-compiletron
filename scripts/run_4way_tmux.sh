@@ -89,11 +89,67 @@ elif [[ "$MODE" == "native" ]]; then
     fi
 fi
 
-# ── Build per-chip command ────────────────────────────────────────────────────
+# ── Write per-chip launcher scripts (native mode) ────────────────────────────
+#
+# Avoids quoting hell in tmux send-keys by writing real bash scripts to /tmp/.
+# Each pane runs: bash /tmp/forge_chip_N.sh
+# This also makes errors fully visible (no 2>/dev/null suppression).
+
+write_native_scripts() {
+    local native_mesh="${PROJECT_DIR}/mesh_graph_descriptors/p100_mesh_graph_descriptor.textproto"
+    for chip_id in 0 1 2 3; do
+        local stagger=$((chip_id * 4))
+        cat > "/tmp/forge_chip_${chip_id}.sh" << CHIPSCRIPT
+#!/bin/bash
+clear
+echo "┌─────────────────────────────────────┐"
+echo "│  TT-Forge Chip ${chip_id}  (native mode)       │"
+echo "└─────────────────────────────────────┘"
+echo ""
+
+# Activate forge environment
+source ~/tt-forge-fe/env/activate
+if [[ -z "\${TTFORGE_TOOLCHAIN_DIR}" && -z "\${TTMLIR_TOOLCHAIN_DIR}" ]]; then
+    echo "ERROR: Forge env activation failed."
+    echo "  Tried:  source ~/tt-forge-fe/env/activate"
+    echo "  Wanted: TTFORGE_TOOLCHAIN_DIR or TTMLIR_TOOLCHAIN_DIR to be set"
+    read -rp "Press Enter to close..."
+    exit 1
+fi
+echo "✓ Forge env: \${TTFORGE_TOOLCHAIN_DIR:-\${TTMLIR_TOOLCHAIN_DIR}}"
+
+# Staggered startup: chip_id * 4s so UMD initializes sequentially
+# (all 4 chips racing to open PCIe devices simultaneously causes lock failures)
+STAGGER=${stagger}
+if [[ \$STAGGER -gt 0 ]]; then
+    echo ""
+    echo "⏳ Staggered start: waiting \${STAGGER}s for earlier chips to initialize..."
+    sleep \$STAGGER
+fi
+
+echo ""
+export TT_VISIBLE_DEVICES=${chip_id}
+export TT_METAL_ARCH_NAME=blackhole
+export TT_MESH_GRAPH_DESC_PATH=${native_mesh}
+echo "  Chip:     ${chip_id}"
+echo "  Models:   ${COUNT}"
+echo "  Mesh:     p100"
+echo ""
+
+python3 ${PROJECT_DIR}/compiletron.py run --chip ${chip_id} --count ${COUNT}
+
+echo ""
+echo "════ CHIP ${chip_id} DONE ════"
+read -rp "Press Enter to close..."
+CHIPSCRIPT
+        chmod +x "/tmp/forge_chip_${chip_id}.sh"
+    done
+}
+
+# ── Build per-chip tmux command ───────────────────────────────────────────────
 
 chip_cmd() {
     local chip_id=$1
-    local done_msg="════ CHIP ${chip_id} DONE ════"
     if [[ "$MODE" == "docker" ]]; then
         echo "docker run --rm \
             --name forge_chip_${chip_id} \
@@ -104,28 +160,9 @@ chip_cmd() {
             -e TT_MESH_GRAPH_DESC_PATH=${MESH_DESC_PATH} \
             ${DOCKER_IMAGE} \
             python3 /app/scripts/docker/forge_worker.py ${TEST_NAME}; \
-            echo ''; echo '${done_msg}'; read -p 'Press Enter to close...'"
+            echo ''; echo '════ CHIP ${chip_id} DONE ════'; read -p 'Press Enter to close...'"
     else
-        # Native: activate forge env, then run compiletron directly.
-        # TT_MESH_GRAPH_DESC_PATH is required for CUSTOM cluster type (P300 single-chip).
-        #
-        # Staggered startup: each chip waits chip_id * 4 seconds before initializing
-        # UMD. Without staggering all 4 chips race to open the same PCIe device and
-        # the losers fail immediately with a lock error.
-        local native_mesh="${PROJECT_DIR}/mesh_graph_descriptors/p100_mesh_graph_descriptor.textproto"
-        local stagger=$((chip_id * 4))
-        local stagger_msg=""
-        if [[ $stagger -gt 0 ]]; then
-            stagger_msg="echo '[Chip ${chip_id}] Staggered start: waiting ${stagger}s for earlier chips to initialize...'; sleep ${stagger}; "
-        fi
-        echo "source ~/tt-forge-fe/env/activate 2>/dev/null; \
-            ${stagger_msg}\
-            TT_VISIBLE_DEVICES=${chip_id} \
-            TT_METAL_ARCH_NAME=blackhole \
-            TT_MESH_GRAPH_DESC_PATH=${native_mesh} \
-            python3 ${PROJECT_DIR}/compiletron.py run \
-                --chip ${chip_id} --count ${COUNT}; \
-            echo ''; echo '${done_msg}'; read -p 'Press Enter to close...'"
+        echo "bash /tmp/forge_chip_${chip_id}.sh"
     fi
 }
 
@@ -141,6 +178,8 @@ chip_cmd() {
 #   4. split-window -v 50%   → P_BL  (bottom-left, split from P_TL)
 #   5. split-window -v 50%   → P_BR  (bottom-right, split from P_TR)
 
+[[ "$MODE" == "native" ]] && write_native_scripts
+
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 tmux new-session -d -s "$SESSION"
 
@@ -153,8 +192,8 @@ P_BR=$(tmux split-window -v -l 50% -t "$P_TR" -P -F "#{pane_id}")
 # ── Pane titles ───────────────────────────────────────────────────────────────
 
 tmux select-pane -t "$P_TL"  -T "  Chip 0  "
-tmux select-pane -t "$P_TR"  -T "  Chip 2  "
-tmux select-pane -t "$P_BL"  -T "  Chip 1  "
+tmux select-pane -t "$P_TR"  -T "  Chip 1  "
+tmux select-pane -t "$P_BL"  -T "  Chip 2  "
 tmux select-pane -t "$P_BR"  -T "  Chip 3  "
 tmux select-pane -t "$P_STA" -T "  Status [$MODE]  "
 
@@ -166,8 +205,8 @@ tmux set -t "$SESSION" pane-active-border-style "fg=colour214,bold"
 # ── Launch per-chip commands ──────────────────────────────────────────────────
 
 tmux send-keys -t "$P_TL" "$(chip_cmd 0)" C-m
-tmux send-keys -t "$P_TR" "$(chip_cmd 2)" C-m
-tmux send-keys -t "$P_BL" "$(chip_cmd 1)" C-m
+tmux send-keys -t "$P_TR" "$(chip_cmd 1)" C-m
+tmux send-keys -t "$P_BL" "$(chip_cmd 2)" C-m
 tmux send-keys -t "$P_BR" "$(chip_cmd 3)" C-m
 
 # ── Status pane ───────────────────────────────────────────────────────────────
@@ -189,9 +228,9 @@ echo ""
 echo "  Mode: $MODE | Test: $TEST_NAME"
 echo ""
 echo "  ┌──────────────┬──────────────┐"
-echo "  │  Chip 0      │  Chip 2      │"
+echo "  │  Chip 0      │  Chip 1      │"
 echo "  ├──────────────┼──────────────┤"
-echo "  │  Chip 1      │  Chip 3      │"
+echo "  │  Chip 2      │  Chip 3      │"
 echo "  ├──────────────┴──────────────┤"
 echo "  │  Status [$MODE]              │"
 echo "  └─────────────────────────────┘"
