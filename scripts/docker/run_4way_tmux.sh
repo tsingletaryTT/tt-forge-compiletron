@@ -66,71 +66,65 @@ docker_cmd() {
 
 # ── Build deterministic tmux layout ──────────────────────────────────────────
 #
-# Creation order is the key to determinism:
-#   1. new-session          → pane 0 (full window)
-#   2. split-window -v 15%  → pane 1 (bottom 15%, full width) — status bar
-#   3. split-window -h 50%  → pane 2 (top-right)              on pane 0
-#   4. split-window -v 50%  → pane 3 (bottom-left)            on pane 0
-#   5. split-window -v 50%  → pane 4 (bottom-right)           on pane 2
+# Uses pane IDs (%N) captured with -P at creation time.
+# Pane IDs are globally unique and unaffected by base-index / pane-base-index.
 #
-# Result:
-#   pane 0 = top-left    (Chip 0)
-#   pane 2 = top-right   (Chip 2)
-#   pane 3 = bottom-left (Chip 1)
-#   pane 4 = bottom-right(Chip 3)
-#   pane 1 = bottom strip (Status)
+# Split order (bottom strip first = full-width status bar):
+#   1. new-session           → P_TL  (top-left, full window)
+#   2. split-window -v 15%   → P_STA (bottom strip, full width)   split from P_TL
+#   3. split-window -h 50%   → P_TR  (top-right)                  split from P_TL
+#   4. split-window -v 50%   → P_BL  (bottom-left)                split from P_TL
+#   5. split-window -v 50%   → P_BR  (bottom-right)               split from P_TR
 
 tmux new-session -d -s "$SESSION"
 
-# Create bottom status strip first — this way it spans the full width
-tmux split-window -v -p 15 -t "$SESSION:0.0"
+# Capture initial pane ID (top-left)
+P_TL=$(tmux display-message -t "$SESSION" -p "#{pane_id}")
 
-# Split top area left|right
-tmux select-pane -t "$SESSION:0.0"
-tmux split-window -h -p 50 -t "$SESSION:0.0"
+# Step 2: full-width status bar (split from top-left pane, so it spans full width)
+P_STA=$(tmux split-window -v -p 15 -t "$P_TL" -P -F "#{pane_id}")
 
-# Split top-left into top/bottom
-tmux select-pane -t "$SESSION:0.0"
-tmux split-window -v -p 50 -t "$SESSION:0.0"
+# Step 3: top-right (split top-left horizontally)
+P_TR=$(tmux split-window -h -p 50 -t "$P_TL" -P -F "#{pane_id}")
 
-# Split top-right into top/bottom
-tmux select-pane -t "$SESSION:0.2"
-tmux split-window -v -p 50 -t "$SESSION:0.2"
+# Step 4: bottom-left (split top-left vertically)
+P_BL=$(tmux split-window -v -p 50 -t "$P_TL" -P -F "#{pane_id}")
 
-# ── Assign pane titles ────────────────────────────────────────────────────────
+# Step 5: bottom-right (split top-right vertically)
+P_BR=$(tmux split-window -v -p 50 -t "$P_TR" -P -F "#{pane_id}")
 
-tmux select-pane -t "$SESSION:0.0" -T "Chip 0"
-tmux select-pane -t "$SESSION:0.2" -T "Chip 2"
-tmux select-pane -t "$SESSION:0.3" -T "Chip 1"
-tmux select-pane -t "$SESSION:0.4" -T "Chip 3"
-tmux select-pane -t "$SESSION:0.1" -T "Status"
+# ── Pane titles ───────────────────────────────────────────────────────────────
 
-# Enable pane titles in status bar
+tmux select-pane -t "$P_TL"  -T "  Chip 0  "
+tmux select-pane -t "$P_TR"  -T "  Chip 2  "
+tmux select-pane -t "$P_BL"  -T "  Chip 1  "
+tmux select-pane -t "$P_BR"  -T "  Chip 3  "
+tmux select-pane -t "$P_STA" -T "  Status  "
+
 tmux set -t "$SESSION" pane-border-status top
 tmux set -t "$SESSION" pane-border-format " #{pane_title} "
 tmux set -t "$SESSION" pane-border-style "fg=colour240"
-tmux set -t "$SESSION" pane-active-border-style "fg=colour250,bold"
+tmux set -t "$SESSION" pane-active-border-style "fg=colour214,bold"
 
-# ── Launch Docker containers in each chip pane ────────────────────────────────
+# ── Launch Docker containers ──────────────────────────────────────────────────
 
-tmux send-keys -t "$SESSION:0.0" "$(docker_cmd 0)" C-m
-tmux send-keys -t "$SESSION:0.2" "$(docker_cmd 2)" C-m
-tmux send-keys -t "$SESSION:0.3" "$(docker_cmd 1)" C-m
-tmux send-keys -t "$SESSION:0.4" "$(docker_cmd 3)" C-m
+tmux send-keys -t "$P_TL"  "$(docker_cmd 0)" C-m
+tmux send-keys -t "$P_TR"  "$(docker_cmd 2)" C-m
+tmux send-keys -t "$P_BL"  "$(docker_cmd 1)" C-m
+tmux send-keys -t "$P_BR"  "$(docker_cmd 3)" C-m
 
-# ── Status pane: watch which containers are still running ─────────────────────
+# ── Status pane: live docker container watch ──────────────────────────────────
 
-tmux send-keys -t "$SESSION:0.1" \
-    "watch -n2 'echo \"forge containers:\"; docker ps --filter name=forge_chip --format \"  {{.Names}}  status={{.Status}}\" 2>/dev/null || echo \"  (none running)\"; echo \"\"; echo \"Chips done: \$(docker ps -a --filter name=forge_chip --filter status=exited --format \"{{.Names}}\" 2>/dev/null | wc -l)/4\"'" \
+tmux send-keys -t "$P_STA" \
+    "watch -n2 'echo \"Running containers:\"; docker ps --filter name=forge_chip --format \"  {{.Names}}  {{.Status}}\" 2>/dev/null || echo \"  (none)\"; echo \"\"; echo \"Done: \$(docker ps -a --filter name=forge_chip --filter status=exited --format x 2>/dev/null | wc -l)/4 chips\"'" \
     C-m
 
-# Focus top-left chip pane
-tmux select-pane -t "$SESSION:0.0"
+# Focus top-left
+tmux select-pane -t "$P_TL"
 
 # ── Attach ────────────────────────────────────────────────────────────────────
 
 echo ""
-echo "  Layout:"
 echo "  ┌──────────────┬──────────────┐"
 echo "  │  Chip 0      │  Chip 2      │"
 echo "  ├──────────────┼──────────────┤"
@@ -139,8 +133,8 @@ echo "  ├──────────────┴────────
 echo "  │  Status (docker watch)      │"
 echo "  └─────────────────────────────┘"
 echo ""
-echo "  Ctrl+B + arrow = navigate panes"
-echo "  Ctrl+B + D     = detach"
+echo "  Ctrl+B + arrow keys = navigate panes"
+echo "  Ctrl+B + D          = detach"
 echo "  tmux attach -t $SESSION  = reattach"
 echo ""
 
