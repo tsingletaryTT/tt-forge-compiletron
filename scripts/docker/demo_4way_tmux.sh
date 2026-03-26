@@ -17,9 +17,10 @@ echo -e "${BLUE}========================================${NC}"
 echo ""
 
 # Check if Docker image exists
-if ! docker image inspect tt-forge-compiletron:minimal &>/dev/null; then
-    echo -e "${RED}✗ Docker image 'tt-forge-compiletron:minimal' not found${NC}"
-    echo -e "  Build it with: docker build -f Dockerfile.minimal -t tt-forge-compiletron:minimal ."
+if ! docker image inspect tt-forge-compiletron:full &>/dev/null; then
+    echo -e "${RED}✗ Docker image 'tt-forge-compiletron:full' not found${NC}"
+    echo -e "  Build it with: docker build -t tt-forge-compiletron:full ."
+    echo -e "  Note: First build takes 2-3 hours (compiles tt-metal + tt-forge-fe from source)"
     exit 1
 fi
 
@@ -63,7 +64,7 @@ for chip_id in {0..3}; do
 
     # Prepare Docker command (don't run yet - user will press Enter)
     tmux send-keys -t forge_demo:0.${chip_id} \
-        "docker run --rm --name forge_chip_${chip_id} --device=/dev/tenstorrent:/dev/tenstorrent -e TT_VISIBLE_DEVICES=${chip_id} -e TT_METAL_ARCH_NAME=blackhole -e TT_MESH_GRAPH_DESC_PATH=${MESH_DESC_PATH} -e TT_METAL_HOME= -e TT_METAL_VERSION= -e TT_METAL_DEVICE_ID= --entrypoint python3 tt-forge-compiletron:minimal /app/scripts/docker/forge_worker.py ${TEST_NAME}"
+        "docker run --rm --name forge_chip_${chip_id} --device=/dev/tenstorrent:/dev/tenstorrent --shm-size=16g -e TT_VISIBLE_DEVICES=${chip_id} -e TT_METAL_ARCH_NAME=blackhole -e TT_MESH_GRAPH_DESC_PATH=${MESH_DESC_PATH} tt-forge-compiletron:full python3 /app/scripts/docker/forge_worker.py ${TEST_NAME}"
 done
 
 # Make panes even
