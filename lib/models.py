@@ -274,7 +274,8 @@ MODEL_LIST_PART2 = [
 MODEL_LIST.extend(MODEL_LIST_PART2)
 
 # Total: 108 models
-print(f"Loaded {len(MODEL_LIST)} models")
+if __name__ == '__main__':
+    print(f"Loaded {len(MODEL_LIST)} models")
 
 
 # ============================================================================

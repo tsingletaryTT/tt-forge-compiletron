@@ -178,7 +178,7 @@ for chip_id, model_ids in dist:
 ```
 
 ### lib/models.py (561 lines)
-Model library with 101 models:
+Model library with 108 models:
 - **15+ families**: ResNet, VGG, EfficientNet, DenseNet, Swin, ViT, etc.
 - **Rich metadata**: Compile time, parameters, complexity, success rate
 - **Filtering**: By family, batch size, complexity, input size
@@ -322,7 +322,7 @@ See [tests/README.md](tests/README.md) for detailed documentation.
 
 ## 📖 Model Library
 
-### Model Families (101 models)
+### Model Families (108 models)
 
 | Family | Count | Examples | Complexity |
 |--------|-------|----------|------------|
@@ -367,17 +367,6 @@ Edit `lib/models.py` and add to `MODEL_LIST`:
  {'time': 10.0, 'success': 1.0, 'params': '25M', 'complexity': 'medium'}),
 ```
 
-### Creating CLI
-
-The full CLI implementation is in the plan but not yet coded. Key components needed:
-- `compiletron.py` - Main CLI with subcommands
-- `lib/worker.py` - Worker process for compilation
-- `lib/forge_setup.py` - Forge installation helper
-- `scripts/run_parallel.sh` - Multi-chip orchestrator
-- `scripts/view_logs.sh` - Tmux viewer
-
-See `/home/ttuser/.claude/plans/noble-discovering-backus.md` for complete implementation plan.
-
 ## 📝 Implementation Status
 
 ### ✅ Completed Features
@@ -385,26 +374,26 @@ See `/home/ttuser/.claude/plans/noble-discovering-backus.md` for complete implem
 **Core Infrastructure:**
 - [x] Project structure with lib/, scripts/, docs/, tests/
 - [x] `requirements.txt` - All 50+ Forge dependencies
-- [x] `lib/hardware.py` (248 lines) - Full N-chip support (1-32+ chips)
-- [x] `lib/models.py` (561 lines) - 101 models with rich metadata
-- [x] `lib/cache.py` (71 lines) - Model cache management
-- [x] `lib/worker.py` (203 lines) - Compilation worker process
-- [x] `lib/forge_setup.py` (197 lines) - Forge installation helper
+- [x] `lib/hardware.py` - Full N-chip support (1-32+ chips)
+- [x] `lib/models.py` - 108 models with rich metadata
+- [x] `lib/cache.py` - Model cache management
+- [x] `lib/worker.py` - Full visual compilation worker (pyfiglet banners, rotating fonts/colors, progress bar, checklist)
+- [x] `lib/forge_setup.py` - Forge installation helper
 
 **CLI Tool:**
-- [x] `compiletron.py` (900+ lines) - Complete CLI with all commands
+- [x] `compiletron.py` - Complete CLI with all commands
   - `detect` - Hardware detection
   - `test` - Single-chip validation
   - `models` - Model discovery (list, families, info, quick, stress, stats, estimate)
   - `cache` - Cache management
   - `setup` - Environment setup and Forge installation
-  - `run` - Compilation execution (single/parallel, quick/stress)
+  - `run` - Compilation execution (single chip or `--parallel` to launch 4-way tmux grid)
   - `results` - View results (summary, report, export)
 
 **Orchestration:**
-- [x] `scripts/run_parallel.sh` (150 lines) - Multi-chip orchestrator
-- [x] `scripts/view_logs.sh` (120 lines) - Flexible tmux layouts (1-16+ chips)
-- [x] `setup.sh` (200 lines) - Automated installation script
+- [x] `scripts/run_4way_tmux.sh` - 4-way parallel tmux grid (native + docker modes)
+- [x] `scripts/docker/forge_worker.py` - Docker per-chip worker
+- [x] `setup.sh` - Automated installation script
 
 **Documentation:**
 - [x] `docs/FORGE_SETUP.md` - Detailed Forge installation guide

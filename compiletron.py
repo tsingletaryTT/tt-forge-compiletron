@@ -1004,13 +1004,11 @@ def cmd_run(args):
     # Single chip or parallel?
     if args.parallel and num_chips > 1:
         print(f"\n🚀 Parallel Mode - {num_chips} chips")
-        print(f"\nFor parallel execution, use the orchestrator script:")
-        print(f"  cd ~/code/tt-forge-compiletron")
-        print(f"  bash scripts/run_parallel.sh")
-        print(f"\nOr run in tmux:")
-        print(f"  bash scripts/view_logs.sh")
-        print()
-        return 0
+        print(f"   Launching 4-way tmux grid...\n")
+        tmux_script = Path(__file__).parent / "scripts" / "run_4way_tmux.sh"
+        import subprocess
+        result = subprocess.run(["bash", str(tmux_script)], check=False)
+        return result.returncode
 
     # Single chip compilation
     print(f"\n🚀 Starting single-chip compilation...")
