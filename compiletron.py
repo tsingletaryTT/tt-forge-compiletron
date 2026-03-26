@@ -21,6 +21,10 @@ from models import (
 )
 from cache import ModelCache
 from forge_setup import check_forge_environment, check_dependencies, print_environment_status, get_activation_instructions
+from discovery import (
+    discover_forge_models, discover_huggingface_models, deduplicate_models,
+    filter_by_family, save_discovered_models, load_discovered_models
+)
 
 
 def cmd_detect(args):
@@ -561,6 +565,168 @@ def cmd_results_export(args):
     return 0
 
 
+def cmd_discover_forge(args):
+    """Discover models from Forge repositories."""
+    print("🔍 Scanning TT-Forge repositories for models...")
+    print()
+
+    models = discover_forge_models(args.forge_path)
+
+    if not models:
+        print("❌ No models found")
+        print("   Make sure tt-forge-fe is installed at ~/tt-forge-fe")
+        return 1
+
+    # Deduplicate
+    models = deduplicate_models(models)
+
+    print(f"✓ Found {len(models)} unique models\n")
+
+    # Group by family
+    families = {}
+    for model in models:
+        families.setdefault(model.family, []).append(model)
+
+    # Show by family
+    for family, family_models in sorted(families.items()):
+        print(f"{family}: {len(family_models)} models")
+        if args.verbose:
+            for m in family_models[:3]:
+                print(f"  • {m.name} ({m.source}) - confidence: {m.confidence:.1f}")
+            if len(family_models) > 3:
+                print(f"  • ... and {len(family_models) - 3} more")
+
+    # Save option
+    if args.save:
+        output_file = args.save
+        save_discovered_models(models, output_file)
+        print(f"\n✓ Saved to {output_file}")
+
+    return 0
+
+
+def cmd_discover_huggingface(args):
+    """Discover models from HuggingFace."""
+    print(f"🔍 Searching HuggingFace for models...")
+    if args.family:
+        print(f"   Family: {args.family}")
+    if args.task:
+        print(f"   Task: {args.task}")
+    print(f"   Limit: {args.limit}")
+    print()
+
+    models = discover_huggingface_models(
+        family=args.family,
+        task=args.task,
+        limit=args.limit
+    )
+
+    if not models:
+        print("❌ No models found")
+        return 1
+
+    print(f"✓ Found {len(models)} models\n")
+
+    # Show models
+    for i, model in enumerate(models, 1):
+        downloads = model.metadata.get('downloads', 0)
+        print(f"{i}. {model.name}")
+        print(f"   Family: {model.family} | Downloads: {downloads:,} | Confidence: {model.confidence:.1f}")
+        if args.verbose and model.metadata.get('tags'):
+            tags = model.metadata['tags'][:5]
+            print(f"   Tags: {', '.join(tags)}")
+
+    # Save option
+    if args.save:
+        output_file = args.save
+        save_discovered_models(models, output_file)
+        print(f"\n✓ Saved to {output_file}")
+
+    return 0
+
+
+def cmd_discover_test(args):
+    """Test discovered models."""
+    import json
+    from pathlib import Path
+
+    # Load discovered models
+    if not Path(args.file).exists():
+        print(f"❌ File not found: {args.file}")
+        print(f"   Run 'compiletron discover forge --save' first")
+        return 1
+
+    print(f"📋 Loading discovered models from {args.file}...")
+    models = load_discovered_models(args.file)
+
+    # Filter by confidence if requested
+    if args.min_confidence:
+        models = [m for m in models if m.confidence >= args.min_confidence]
+        print(f"   Filtered to {len(models)} models with confidence >= {args.min_confidence}")
+
+    # Limit count
+    if args.count:
+        models = models[:args.count]
+
+    print(f"\n🧪 Testing {len(models)} discovered models")
+    print(f"=" * 60)
+
+    # Check hardware
+    hw = detect_hardware()
+    if 'error' in hw:
+        print(f"⚠️  Hardware detection failed, using chip 0")
+        chip_id = 0
+    else:
+        chip_id = args.chip if args.chip is not None else 0
+
+    # Check Forge
+    forge_env = os.environ.get('TTFORGE_TOOLCHAIN_DIR') or os.environ.get('TTMLIR_TOOLCHAIN_DIR')
+    if not forge_env:
+        print(f"\n❌ Forge environment not activated!")
+        print(f"   Activate with: {get_activation_instructions()}")
+        return 1
+
+    # Test each model
+    results = []
+    successful = 0
+    failed = 0
+
+    for i, discovered_model in enumerate(models, 1):
+        print(f"\n[{i}/{len(models)}] {discovered_model.name}")
+        print(f"   Source: {discovered_model.source} | Family: {discovered_model.family}")
+        print(f"   Confidence: {discovered_model.confidence:.1f}")
+        print(f"-" * 60)
+
+        # Try to compile
+        # For now, skip actual compilation - just report the discovery
+        # TODO: Implement actual test compilation
+        print(f"⚠️  Test compilation not yet implemented")
+        print(f"   This would attempt to load and compile: {discovered_model.name}")
+
+        results.append({
+            'name': discovered_model.name,
+            'family': discovered_model.family,
+            'source': discovered_model.source,
+            'confidence': discovered_model.confidence,
+            'tested': False,
+            'success': None
+        })
+
+    # Summary
+    print(f"\n" + "=" * 60)
+    print(f"DISCOVERY TEST SUMMARY")
+    print(f"=" * 60)
+    print(f"  Total models: {len(models)}")
+    print(f"  ✅ Successful: {successful}")
+    print(f"  ❌ Failed: {failed}")
+    print(f"  ⚠️  Not yet tested: {len(models)}")
+    print()
+    print(f"Note: Actual compilation testing not yet implemented")
+    print(f"      This command currently just validates discovery results")
+
+    return 0
+
+
 def cmd_run(args):
     """Run model compilations."""
     import subprocess
@@ -808,6 +974,31 @@ def main():
     models_estimate.add_argument('--count', type=int, help='Number of models')
     models_estimate.add_argument('--chips', type=int, help='Number of chips (default: auto-detect)')
 
+    # ========== discover command ==========
+    parser_discover = subparsers.add_parser('discover', help='Discover new models')
+    discover_sub = parser_discover.add_subparsers(dest='subcommand')
+
+    # discover forge
+    discover_forge = discover_sub.add_parser('forge', help='Scan Forge repositories')
+    discover_forge.add_argument('--forge-path', help='Path to tt-forge-fe (default: ~/tt-forge-fe)')
+    discover_forge.add_argument('-v', '--verbose', action='store_true', help='Show model details')
+    discover_forge.add_argument('--save', help='Save results to JSON file')
+
+    # discover huggingface
+    discover_hf = discover_sub.add_parser('huggingface', help='Search HuggingFace model hub')
+    discover_hf.add_argument('--family', help='Model family (e.g., resnet, bert)')
+    discover_hf.add_argument('--task', help='Task type (e.g., image-classification)')
+    discover_hf.add_argument('--limit', type=int, default=20, help='Max models to return')
+    discover_hf.add_argument('-v', '--verbose', action='store_true', help='Show model details')
+    discover_hf.add_argument('--save', help='Save results to JSON file')
+
+    # discover test
+    discover_test = discover_sub.add_parser('test', help='Test discovered models')
+    discover_test.add_argument('file', help='JSON file with discovered models')
+    discover_test.add_argument('--chip', type=int, help='Chip to test on (default: 0)')
+    discover_test.add_argument('--count', type=int, help='Limit number to test')
+    discover_test.add_argument('--min-confidence', type=float, help='Minimum confidence (0.0-1.0)')
+
     # ========== cache command ==========
     parser_cache = subparsers.add_parser('cache', help='Cache management')
     cache_sub = parser_cache.add_subparsers(dest='subcommand')
@@ -878,6 +1069,17 @@ def main():
             return cmd_models_stats(args)
         elif args.subcommand == 'estimate':
             return cmd_models_estimate(args)
+
+    elif args.command == 'discover':
+        if not args.subcommand:
+            print("Usage: compiletron discover {forge,huggingface,test}")
+            return 1
+        elif args.subcommand == 'forge':
+            return cmd_discover_forge(args)
+        elif args.subcommand == 'huggingface':
+            return cmd_discover_huggingface(args)
+        elif args.subcommand == 'test':
+            return cmd_discover_test(args)
 
     elif args.command == 'cache':
         if not args.subcommand:
