@@ -151,15 +151,19 @@ CHIPSCRIPT
 chip_cmd() {
     local chip_id=$1
     if [[ "$MODE" == "docker" ]]; then
+        # --entrypoint python3 bypasses docker-entrypoint.sh, which otherwise
+        # receives 'python3' as its $1 command, hits the '*' fallback, and runs
+        # "python3 compiletron.py python3 ..." — passing python3 as a subcommand.
         echo "docker run --rm \
             --name forge_chip_${chip_id} \
             --device=/dev/tenstorrent:/dev/tenstorrent \
             --shm-size=16g \
+            --entrypoint python3 \
             -e TT_VISIBLE_DEVICES=${chip_id} \
             -e TT_METAL_ARCH_NAME=blackhole \
             -e TT_MESH_GRAPH_DESC_PATH=${MESH_DESC_PATH} \
             ${DOCKER_IMAGE} \
-            python3 /app/scripts/docker/forge_worker.py ${TEST_NAME}; \
+            /app/scripts/docker/forge_worker.py ${TEST_NAME}; \
             echo ''; echo '════ CHIP ${chip_id} DONE ════'; read -p 'Press Enter to close...'"
     else
         echo "bash /tmp/forge_chip_${chip_id}.sh"
