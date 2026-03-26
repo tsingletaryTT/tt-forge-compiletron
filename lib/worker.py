@@ -86,13 +86,45 @@ class FilteredStderr:
         return self.stream.fileno()
 
 
-# Terminal colors
-GREEN = '\033[92m'
-RED = '\033[91m'
-CYAN = '\033[96m'
+# Terminal colors — full Tenstorrent brand palette
+GREEN  = '\033[92m'
+RED    = '\033[91m'
+CYAN   = '\033[96m'
 YELLOW = '\033[93m'
-BOLD = '\033[1m'
-RESET = '\033[0m'
+BOLD   = '\033[1m'
+RESET  = '\033[0m'
+PURPLE = '\033[95m'
+BLUE   = '\033[94m'
+PINK   = '\033[95m'   # same escape as PURPLE
+
+# Rotating per-model color palette (matches original demo)
+TT_COLORS = [PURPLE, CYAN, RED, PINK, BLUE]
+
+# Rotating figlet fonts — long names (>25 chars) always use 'small'
+CELEBRATION_FONTS = ['small', 'standard', 'slant']
+
+
+def print_header(chip_id: int, total_models: int):
+    """
+    Print the big TT-FORGE ASCII art startup banner for a chip pane.
+    Matches the print_header() from the original demo_compilation_chunked.py.
+    """
+    import pyfiglet
+    print()
+    try:
+        banner = pyfiglet.figlet_format("TT-FORGE", font='banner3')
+        print(f"{BOLD}{GREEN}{banner}{RESET}", end='')
+    except Exception:
+        print(f"{BOLD}{GREEN}  TT-FORGE{RESET}\n")
+    print(f"{BOLD}{CYAN}{'═'*80}{RESET}")
+    print(f"{BOLD}{CYAN}   COMPILATION SHOWCASE - TENSTORRENT BLACKHOLE{RESET}")
+    print(f"{BOLD}{CYAN}{'═'*80}{RESET}\n")
+    print(f"  {YELLOW}Hardware:{RESET}  4x P300C Blackhole chips")
+    print(f"  {YELLOW}Compiler:{RESET}  TT-Forge (TVM-based MLIR pipeline)")
+    print(f"  {YELLOW}Chip:{RESET}      {chip_id}")
+    print(f"  {YELLOW}Models:{RESET}    {total_models} assigned to this chip (round-robin)")
+    print(f"  {YELLOW}Process:{RESET}   PyTorch → TVM → Forge IR → MLIR → TT Binary")
+    print(f"{BOLD}{CYAN}{'═'*80}{RESET}\n")
 
 
 class TimeoutException(Exception):
@@ -129,13 +161,14 @@ def import_forge_quietly():
         os.close(saved_fd)
 
 
-def compile_and_run(model_spec: Tuple, chip_id: int = 0) -> Tuple[bool, float]:
+def compile_and_run(model_spec: Tuple, chip_id: int = 0, font_idx: int = 1) -> Tuple[bool, float]:
     """
     Compile model and run inference with timeout and retry logic.
 
     Args:
         model_spec: Model tuple (display_name, family, loader, input_shape, notes, metadata)
         chip_id: Chip ID for logging
+        font_idx: 1-based model counter; drives font and color rotation
 
     Returns:
         (success, compile_time) tuple
@@ -145,21 +178,30 @@ def compile_and_run(model_spec: Tuple, chip_id: int = 0) -> Tuple[bool, float]:
 
     display_name, family, model_loader, input_shape, notes, metadata = model_spec
 
-    # Color rotation for visual variety
-    colors = [CYAN, GREEN, YELLOW]
-    color = colors[chip_id % len(colors)]
+    # Per-model font and color rotation — matches original demo_compilation_chunked.py
+    font  = CELEBRATION_FONTS[font_idx % len(CELEBRATION_FONTS)]
+    color = TT_COLORS[font_idx % len(TT_COLORS)]
+    # Long names overflow wider fonts — force compact
+    if len(display_name) > 25:
+        font = 'small'
 
-    # Print model banner
+    # Print model banner with rotating font and brand color
     print(f"\n{BOLD}{color}")
     try:
-        banner = pyfiglet.figlet_format(display_name, font='standard')
+        banner = pyfiglet.figlet_format(display_name, font=font)
         print(banner, end='')
-    except:
-        print(f"\n  {display_name}\n")
+    except Exception:
+        # Try next font in rotation before falling back to plain text
+        try:
+            fallback_font = CELEBRATION_FONTS[(font_idx + 1) % len(CELEBRATION_FONTS)]
+            banner = pyfiglet.figlet_format(display_name, font=fallback_font)
+            print(banner, end='')
+        except Exception:
+            print(f"\n  {display_name}\n")
     print(f"{RESET}")
 
-    print(f"{color}  ★ {display_name} ★{RESET}")
-    time.sleep(3)  # Celebration pause — let the banner breathe
+    print(f"{color}  ★ ═══ {display_name} ═══ ★{RESET}")
+    time.sleep(3)  # Celebration pause — let the banner breathe before compilation
 
     print(f"{BOLD}{CYAN}{'─'*80}{RESET}")
     print(f"  {CYAN}Family:{RESET} {family} | {CYAN}Input:{RESET} {input_shape}")
@@ -284,11 +326,11 @@ def run_worker(chip_id: int, model_indices: list, results_file: Optional[Path] =
     print(f"[Chip {chip_id}] Staggered startup delay: {startup_delay:.2f}s")
     time.sleep(startup_delay)
 
-    # Set environment for this chip
-    print(f"[Chip {chip_id}] Worker started")
     print(f"[Chip {chip_id}] TT_VISIBLE_DEVICES={os.environ.get('TT_VISIBLE_DEVICES')}")
-    print(f"[Chip {chip_id}] Models: {len(model_indices)} total")
     print()
+
+    # Big TT-FORGE startup banner — matches original demo
+    print_header(chip_id, len(model_indices))
 
     # Compile each model
     successes = 0
@@ -304,6 +346,15 @@ def run_worker(chip_id: int, model_indices: list, results_file: Optional[Path] =
         model_spec = MODEL_LIST[model_idx]
         display_name = model_spec[0]
 
+        # Milestone banner every 5 models starting at 6 — matches original
+        if idx > 1 and idx % 5 == 1:
+            import pyfiglet
+            try:
+                milestone_banner = pyfiglet.figlet_format(f"Model #{idx}", font="banner")
+                print(f"\n{BOLD}{CYAN}{milestone_banner}{RESET}")
+            except Exception:
+                print(f"\n{BOLD}{CYAN}  ── Model #{idx} ──{RESET}\n")
+
         # ASCII progress bar — matches original demo_compilation_chunked.py behavior
         bar_length = 40
         filled = int(bar_length * (idx - 1) / total) if total else 0
@@ -315,7 +366,7 @@ def run_worker(chip_id: int, model_indices: list, results_file: Optional[Path] =
         print(f"\n[Chip {chip_id}] Model {idx}/{total}: {display_name}")
 
         try:
-            success, compile_time = compile_and_run(model_spec, chip_id)
+            success, compile_time = compile_and_run(model_spec, chip_id, font_idx=idx)
             if success:
                 successes += 1
             else:
@@ -323,7 +374,7 @@ def run_worker(chip_id: int, model_indices: list, results_file: Optional[Path] =
 
             results.append({
                 'chip_id': chip_id,
-                'model_name': display_name,
+                'model': display_name,
                 'success': success,
                 'compile_time': compile_time,
             })
@@ -333,15 +384,19 @@ def run_worker(chip_id: int, model_indices: list, results_file: Optional[Path] =
             failures += 1
             results.append({
                 'chip_id': chip_id,
-                'model_name': display_name,
+                'model': display_name,
                 'success': False,
                 'compile_time': 0.0,
             })
 
+        # Brief pause between models for readability — matches original
+        if idx < total:
+            time.sleep(0.3)
+
     # Summary with per-model checklist (matches original demo behavior)
     print()
     print("=" * 80)
-    print(f"[Chip {chip_id}] COMPLETE - {successes}/{len(model_indices)} succeeded")
+    print(f"[Chip {chip_id}] COMPLETE - {successes}/{total} succeeded")
     print("=" * 80)
     print()
     print(f"{BOLD}MODELS TESTED ON CHIP {chip_id}:{RESET}")
@@ -349,7 +404,7 @@ def run_worker(chip_id: int, model_indices: list, results_file: Optional[Path] =
     for r in results:
         mark = "✓" if r['success'] else "✗"
         color = GREEN if r['success'] else RED
-        print(f"  {color}{mark}{RESET} {r['model_name']}")
+        print(f"  {color}{mark}{RESET} {r['model']}")
     print()
     print("=" * 80)
     print(f"{CYAN}All done — pane stays open so you can review results{RESET}")
@@ -363,7 +418,7 @@ def run_worker(chip_id: int, model_indices: list, results_file: Optional[Path] =
         # Append to CSV
         write_header = not results_file.exists()
         with open(results_file, 'a', newline='') as f:
-            writer = csv.DictWriter(f, fieldnames=['chip_id', 'model_name', 'success', 'compile_time'])
+            writer = csv.DictWriter(f, fieldnames=['chip_id', 'model', 'success', 'compile_time'])
             if write_header:
                 writer.writeheader()
             writer.writerows(results)
