@@ -52,10 +52,11 @@ class FilteredStderr:
             'num_batches_tracked not found',      # BatchNorm parameter not in Forge params
             'not found in self._parameters',      # Same as above, different message form
             'ConstEval graph:',                   # Forge ConstEval debug spam
-            'WARNING  |',                         # loguru WARNING (forge/TVM uppercase format)
-            '| warning |',                        # loguru warning (tt-metal/TTNN lowercase format)
-            'DEBUG    |',                         # loguru DEBUG level
-            '| debug |',                          # loguru debug (tt-metal/TTNN lowercase format)
+            'WARNING',                            # any loguru/logging WARNING line
+            '| warning',                          # tt-metal/TTNN lowercase loguru warning
+            'warning |',                          # same, less strict leading context
+            'DEBUG',                              # any loguru/logging DEBUG line
+            '| debug',                            # tt-metal/TTNN lowercase loguru debug
             'Always | ',                          # loguru ALWAYS level (device init noise)
             'E Device',                           # TT device enumeration noise
         ]
@@ -325,7 +326,18 @@ def compile_and_run(model_spec: Tuple, chip_id: int = 0, font_idx: int = 1) -> T
                     print(f"    {YELLOW}Retry {attempt}/{max_retries} (waiting {retry_delay}s)...{RESET}")
                     time.sleep(retry_delay)
 
-                output = compiled_model(sample_input)
+                # Redirect fd 2 during inference to suppress TTNN C++-level
+                # op warnings (op_slicing, conv2d, DRAM layout) that write
+                # directly to the OS file descriptor, bypassing FilteredStderr.
+                _saved = os.dup(2)
+                _null = os.open(os.devnull, os.O_WRONLY)
+                os.dup2(_null, 2)
+                os.close(_null)
+                try:
+                    output = compiled_model(sample_input)
+                finally:
+                    os.dup2(_saved, 2)
+                    os.close(_saved)
 
                 # Cancel alarm on success
                 signal.alarm(0)
