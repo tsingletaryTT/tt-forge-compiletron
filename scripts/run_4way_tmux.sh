@@ -105,9 +105,9 @@ write_native_scripts() {
         cat > "/tmp/forge_chip_${chip_id}.sh" << CHIPSCRIPT
 #!/bin/bash
 clear
-echo "┌─────────────────────────────────────┐"
-echo "│  TT-Forge Chip ${chip_id}  (native mode)       │"
-echo "└─────────────────────────────────────┘"
+echo "┌─────────────────────────────────────"
+echo "│  TT-Forge Chip ${chip_id}  (native mode)"
+echo "│"
 echo ""
 
 # Activate forge environment
@@ -233,13 +233,12 @@ tmux select-pane -t "$P_TL"
 echo ""
 echo "  Mode: $MODE | Test: $TEST_NAME"
 echo ""
-echo "  ┌──────────────┬──────────────┐"
-echo "  │  Chip 0      │  Chip 1      │"
-echo "  ├──────────────┼──────────────┤"
-echo "  │  Chip 2      │  Chip 3      │"
-echo "  ├──────────────┴──────────────┤"
-echo "  │  Status [$MODE]              │"
-echo "  └─────────────────────────────┘"
+echo "  ┌──────────────┬──────────────"
+echo "  │  Chip 0      │  Chip 1"
+echo "  ├──────────────┼──────────────"
+echo "  │  Chip 2      │  Chip 3"
+echo "  ├──────────────┴──────────────"
+echo "  │  Status [$MODE]"
 echo ""
 echo "  Ctrl+B + arrow keys = navigate panes"
 echo "  Ctrl+B + D          = detach"

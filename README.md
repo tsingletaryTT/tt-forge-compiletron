@@ -50,13 +50,12 @@ python3 compiletron.py results report --output report.md
 `scripts/run_4way_tmux.sh` opens a tmux session with this layout:
 
 ```
-┌──────────────┬──────────────┐
-│  Chip 0      │  Chip 1      │
-├──────────────┼──────────────┤
-│  Chip 2      │  Chip 3      │
-├──────────────┴──────────────┤
-│  [████░░] progress per chip │
-└─────────────────────────────┘
+┌──────────────┬──────────────
+│  Chip 0      │  Chip 1
+├──────────────┼──────────────
+│  Chip 2      │  Chip 3
+├──────────────┴──────────────
+│  [████░░] progress per chip
 ```
 
 Each pane runs `lib/worker.py` independently. Models are distributed
