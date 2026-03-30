@@ -52,8 +52,10 @@ class FilteredStderr:
             'num_batches_tracked not found',      # BatchNorm parameter not in Forge params
             'not found in self._parameters',      # Same as above, different message form
             'ConstEval graph:',                   # Forge ConstEval debug spam
-            'WARNING  |',                         # loguru WARNING level (noisy, not useful)
+            'WARNING  |',                         # loguru WARNING (forge/TVM uppercase format)
+            '| warning |',                        # loguru warning (tt-metal/TTNN lowercase format)
             'DEBUG    |',                         # loguru DEBUG level
+            '| debug |',                          # loguru debug (tt-metal/TTNN lowercase format)
             'Always | ',                          # loguru ALWAYS level (device init noise)
             'E Device',                           # TT device enumeration noise
         ]
