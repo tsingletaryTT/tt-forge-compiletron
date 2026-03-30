@@ -17,6 +17,12 @@ from typing import Tuple, Optional
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'       # Suppress TF C++ warnings
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'       # Disable oneDNN (suppresses related warnings)
 
+# Silence tt-metal's C++ logger (UMD, Device, cluster init messages).
+# These write to stdout — not stderr — so fd redirects can't catch them.
+# FATAL shows only hard crashes; everything below (info/warning) is suppressed.
+# forge's Python loguru is a separate logger and is unaffected by this.
+os.environ.setdefault('TT_METAL_LOGGER_LEVEL', 'FATAL')
+
 # Suppress Python warnings aggressively
 warnings.filterwarnings('ignore')
 warnings.filterwarnings('ignore', category=UserWarning)
@@ -218,28 +224,42 @@ def timeout_handler(signum, frame):
     raise TimeoutException("Operation timed out")
 
 
+def decouple_stderr_from_fd2():
+    """
+    Permanently silence fd 2 while keeping Python's loguru/stderr visible.
+
+    The problem: C++ libraries (UMD, TTNN, XLA, ABSL) write directly to OS
+    fd 2, bypassing Python's sys.stderr object entirely.  Pattern-matching in
+    FilteredStderr can never catch these.
+
+    The fix:
+      1. Duplicate the current fd 2 (terminal) to a new, private fd.
+      2. Wrap that private fd in a Python file object and install FilteredStderr
+         on top of it.  Python loguru → FilteredStderr → terminal_fd → visible.
+      3. Point fd 2 at /dev/null.  All C-level writes disappear silently.
+
+    After this call sys.stderr.fileno() returns terminal_fd, not 2, so nothing
+    breaks for code that probes the file descriptor.
+    """
+    terminal_fd = os.dup(2)                                   # save real terminal
+    terminal_writer = os.fdopen(terminal_fd, 'w', buffering=1, errors='replace')
+    sys.stderr = FilteredStderr(terminal_writer)              # Python writes here
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(devnull_fd, 2)                                    # fd 2 → /dev/null
+    os.close(devnull_fd)
+
+
 def import_forge_quietly():
     """
-    Import forge while suppressing XLA/CUDA/ABSL noise.
+    Import forge, adding the forge path first.
 
-    XLA/ABSL write registration warnings directly to OS fd 2 (not Python's sys.stderr)
-    so Python-level filters can't catch them. We temporarily redirect fd 2 to /dev/null
-    for the duration of the import, then restore it.
-
-    Returns the forge module.
-    Raises ImportError if forge is not available.
+    fd 2 is already /dev/null after decouple_stderr_from_fd2(), so any
+    XLA/ABSL/CUDA noise during import is already silenced.  This function
+    exists to add the path and return the module cleanly.
     """
-    saved_fd = os.dup(2)
-    devnull_fd = os.open(os.devnull, os.O_WRONLY)
-    os.dup2(devnull_fd, 2)
-    os.close(devnull_fd)
-    try:
-        sys.path.insert(0, os.path.expanduser("~/tt-forge-fe"))
-        import forge
-        return forge
-    finally:
-        os.dup2(saved_fd, 2)
-        os.close(saved_fd)
+    sys.path.insert(0, os.path.expanduser("~/tt-forge-fe"))
+    import forge
+    return forge
 
 
 def compile_and_run(model_spec: Tuple, chip_id: int = 0, font_idx: int = 1) -> Tuple[bool, float]:
@@ -326,18 +346,7 @@ def compile_and_run(model_spec: Tuple, chip_id: int = 0, font_idx: int = 1) -> T
                     print(f"    {YELLOW}Retry {attempt}/{max_retries} (waiting {retry_delay}s)...{RESET}")
                     time.sleep(retry_delay)
 
-                # Redirect fd 2 during inference to suppress TTNN C++-level
-                # op warnings (op_slicing, conv2d, DRAM layout) that write
-                # directly to the OS file descriptor, bypassing FilteredStderr.
-                _saved = os.dup(2)
-                _null = os.open(os.devnull, os.O_WRONLY)
-                os.dup2(_null, 2)
-                os.close(_null)
-                try:
-                    output = compiled_model(sample_input)
-                finally:
-                    os.dup2(_saved, 2)
-                    os.close(_saved)
+                output = compiled_model(sample_input)
 
                 # Cancel alarm on success
                 signal.alarm(0)
@@ -399,12 +408,11 @@ def run_worker(chip_id: int, model_indices: list, results_file: Optional[Path] =
         model_indices: List of model indices to compile on this chip
         results_file: Optional CSV file to save results
     """
-    # Install FilteredStderr immediately — BEFORE importing torch/forge so
-    # CUDA init noise, XLA registrations, and loguru chatter are caught from
-    # the very first byte.  Matches forge_worker.py from tt-forge-creative-demos
-    # which calls redirect_output_to_log() as the first thing in main().
+    # Decouple Python's stderr from fd 2, then silence fd 2 permanently.
+    # C++ UMD/TTNN/XLA noise writes to fd 2 directly — it now goes to /dev/null.
+    # Python forge loguru writes through FilteredStderr to a saved terminal fd.
     if not isinstance(sys.stderr, FilteredStderr):
-        sys.stderr = FilteredStderr(sys.stderr)
+        decouple_stderr_from_fd2()
 
     # Configure Python logging to CRITICAL for TVM/Forge before any imports
     import logging
