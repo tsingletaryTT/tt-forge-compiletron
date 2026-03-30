@@ -219,16 +219,13 @@ tmux send-keys -t "$P_BL" "$(chip_cmd 2)" C-m
 tmux send-keys -t "$P_BR" "$(chip_cmd 3)" C-m
 
 # ── Status pane ───────────────────────────────────────────────────────────────
+# Renders live ASCII progress bars for all 4 chips using status files written
+# by lib/worker.py to /tmp/compiletron_chip_N.status
 
-if [[ "$MODE" == "docker" ]]; then
-    tmux send-keys -t "$P_STA" \
-        "watch -n2 'echo \"Running containers:\"; docker ps --filter name=forge_chip --format \"  {{.Names}}  {{.Status}}\" 2>/dev/null || echo \"  (none)\"; echo \"\"; echo \"Done: \$(docker ps -a --filter name=forge_chip --filter status=exited --format x 2>/dev/null | wc -l)/4 chips\"'" \
-        C-m
-else
-    tmux send-keys -t "$P_STA" \
-        "watch -n2 'echo \"Mode: native | Run: ${TEST_NAME}\"; echo \"\"; ps aux | grep \"[c]ompiletron\|worker.py\" | grep -v grep | awk \"{printf \\\"  Chip %s  %ss elapsed\\\\n\\\", \\\$NF, \\\$10}\" 2>/dev/null; echo \"\"; echo \"Forge processes: \$(pgrep -fc python3 2>/dev/null || echo 0)\"'" \
-        C-m
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+tmux send-keys -t "$P_STA" \
+    "watch -n1 -t '${SCRIPT_DIR}/status_display.sh'" \
+    C-m
 
 # Focus top-left and attach
 tmux select-pane -t "$P_TL"

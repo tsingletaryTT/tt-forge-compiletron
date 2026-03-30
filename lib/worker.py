@@ -440,6 +440,19 @@ def run_worker(chip_id: int, model_indices: list, results_file: Optional[Path] =
         stats = f"{GREEN}✓{successes}{RESET}/{RED}✗{failures}{RESET}"
         print(f"\n{BOLD}[{bar}] {pct}% ({idx-1}/{total}) {stats}{RESET}")
 
+        # Write machine-readable status for the bottom status pane
+        try:
+            with open(f'/tmp/compiletron_chip_{chip_id}.status', 'w') as _sf:
+                _sf.write(f"chip_id={chip_id}\n")
+                _sf.write(f"current={idx - 1}\n")
+                _sf.write(f"total={total}\n")
+                _sf.write(f"successes={successes}\n")
+                _sf.write(f"failures={failures}\n")
+                _sf.write(f"model={display_name}\n")
+                _sf.write(f"done=0\n")
+        except OSError:
+            pass
+
         print(f"\n[Chip {chip_id}] Model {idx}/{total}: {display_name}")
 
         try:
@@ -497,6 +510,19 @@ def run_worker(chip_id: int, model_indices: list, results_file: Optional[Path] =
             if write_header:
                 writer.writeheader()
             writer.writerows(results)
+
+    # Update status file to mark this chip done
+    try:
+        with open(f'/tmp/compiletron_chip_{chip_id}.status', 'w') as _sf:
+            _sf.write(f"chip_id={chip_id}\n")
+            _sf.write(f"current={total}\n")
+            _sf.write(f"total={total}\n")
+            _sf.write(f"successes={successes}\n")
+            _sf.write(f"failures={failures}\n")
+            _sf.write(f"model=DONE\n")
+            _sf.write(f"done=1\n")
+    except OSError:
+        pass
 
     # Stay alive so the tmux pane keeps showing the checklist.
     # The shell wrapper can omit its own "Press Enter to close" prompt
