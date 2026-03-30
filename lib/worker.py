@@ -52,8 +52,13 @@ class FilteredStderr:
             'num_batches_tracked not found',      # BatchNorm parameter not in Forge params
             'not found in self._parameters',      # Same as above, different message form
             'ConstEval graph:',                   # Forge ConstEval debug spam
-            'WARNING  |',                         # All WARNING level loguru messages
-            'DEBUG    |',                         # All DEBUG level loguru messages
+            'WARNING  |',                         # loguru WARNING level
+            'DEBUG    |',                         # loguru DEBUG level
+            'INFO  |',                            # loguru INFO level (forge internal chatter)
+            'TRACE |',                            # loguru TRACE level
+            'tt_metal',                           # tt-metal device/runtime messages
+            'Always | ',                          # loguru ALWAYS level (device init messages)
+            'E Device',                           # TT device enumeration noise
         ]
         self.seen_warnings = set()
         self.max_seen = 1000  # Cap to prevent memory leak on very long runs
@@ -285,22 +290,9 @@ def compile_and_run(model_spec: Tuple, chip_id: int = 0, font_idx: int = 1) -> T
     start_time = time.time()
 
     try:
-        # Wrap Python sys.stderr to filter loguru/Python-level warnings
-        if not isinstance(sys.stderr, FilteredStderr):
-            sys.stderr = FilteredStderr(sys.stderr)
-
-        # Import forge quietly (redirects fd 2 to /dev/null during import to suppress
-        # XLA/ABSL/CUDA registration noise that writes directly to OS fd 2)
-        forge = import_forge_quietly()
-
-        # Configure logging AFTER forge import to suppress TVM/Forge logger chatter
-        import logging
-        logging.getLogger('tvm.relay.frontend.pytorch').setLevel(logging.CRITICAL)
-        logging.getLogger('tvm.relay').setLevel(logging.CRITICAL)
-        logging.getLogger('tvm').setLevel(logging.CRITICAL)
-        logging.getLogger('forge.tensor').setLevel(logging.INFO)   # Suppress ConstEval DEBUG spam
-        logging.getLogger('forge').setLevel(logging.INFO)          # Only INFO and above for Forge
-        logging.getLogger().setLevel(logging.INFO)                 # Suppress global WARNING spam
+        # forge and logging are already configured in run_worker() before this
+        # call, so we just grab the cached module here.
+        import forge
 
         # Load model
         print(f"  {YELLOW}[1/3]{RESET} Loading model architecture...")
@@ -396,6 +388,30 @@ def run_worker(chip_id: int, model_indices: list, results_file: Optional[Path] =
         model_indices: List of model indices to compile on this chip
         results_file: Optional CSV file to save results
     """
+    # Install FilteredStderr immediately — BEFORE importing torch/forge so
+    # CUDA init noise, XLA registrations, and loguru chatter are caught from
+    # the very first byte.  Matches forge_worker.py from tt-forge-creative-demos
+    # which calls redirect_output_to_log() as the first thing in main().
+    if not isinstance(sys.stderr, FilteredStderr):
+        sys.stderr = FilteredStderr(sys.stderr)
+
+    # Configure Python logging to CRITICAL for TVM/Forge before any imports
+    import logging
+    logging.getLogger('tvm.relay.frontend.pytorch').setLevel(logging.CRITICAL)
+    logging.getLogger('tvm.relay').setLevel(logging.CRITICAL)
+    logging.getLogger('tvm').setLevel(logging.CRITICAL)
+    logging.getLogger('forge.tensor').setLevel(logging.INFO)
+    logging.getLogger('forge').setLevel(logging.INFO)
+    logging.getLogger().setLevel(logging.INFO)
+
+    # Import forge once here (quiet fd-level redirect) so forge module is
+    # cached before the model loop — subsequent compile_and_run() calls use
+    # the cache and don't trigger fresh XLA/ABSL noise.
+    try:
+        import_forge_quietly()
+    except ImportError:
+        pass  # will fail gracefully inside compile_and_run with a clear error
+
     from lib.models import MODEL_LIST
 
     # Stagger startup to avoid race conditions
