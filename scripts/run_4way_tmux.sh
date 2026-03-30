@@ -189,6 +189,9 @@ chip_cmd() {
 
 [[ "$MODE" == "native" ]] && write_native_scripts
 
+# Clear status files from any previous run so the status pane starts zeroed
+rm -f /tmp/compiletron_chip_{0,1,2,3}.status
+
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 tmux new-session -d -s "$SESSION"
 
