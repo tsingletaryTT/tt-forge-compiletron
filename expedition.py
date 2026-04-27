@@ -47,67 +47,79 @@ def _scan_forge_models(bestiary_compiled_ids: set[str]) -> list[dict]:
         return []
 
     # Make the forge-models tree importable so we can load loader modules.
+    # The path is removed in the finally block below to avoid polluting
+    # sys.path for the remainder of the process.
     sys.path.insert(0, str(forge_models_root))
     items = []
 
-    for loader_py in sorted(forge_models_root.rglob("loader.py")):
-        # Skip hidden directories and private packages (leading _ or .).
-        if any(p.startswith("_") or p.startswith(".") for p in loader_py.parts):
-            continue
-
-        rel = loader_py.relative_to(forge_models_root)
-        # model_id is the directory path relative to forge-models root, minus the
-        # trailing "loader.py" segment — e.g. "facebook/bart-large-cnn".
-        model_id = "/".join(rel.parts[:-1])
-
-        if model_id in bestiary_compiled_ids:
-            continue
-
-        # Convert path to dotted module path for importlib.
-        module_path = ".".join(rel.parts[:-1]) + ".loader"
-
-        try:
-            import importlib
-            mod = importlib.import_module(module_path)
-            from base import ForgeModel
-            cls_name = None
-            for name in dir(mod):
-                obj = getattr(mod, name)
-                try:
-                    if isinstance(obj, type) and issubclass(obj, ForgeModel) and obj is not ForgeModel:
-                        cls_name = name
-                        break
-                except Exception:
-                    continue
-            if cls_name is None:
+    try:
+        for loader_py in sorted(forge_models_root.rglob("loader.py")):
+            # Skip hidden directories and private packages (leading _ or .).
+            # Filter on the *relative* path only — absolute path components such
+            # as a home directory that starts with '.' would otherwise cause all
+            # models to be silently skipped.
+            rel = loader_py.relative_to(forge_models_root)
+            if any(p.startswith("_") or p.startswith(".") for p in rel.parts):
                 continue
 
-            # Instantiate the class (no args) to call _get_model_info().
-            instance = obj()
-            info = instance._get_model_info()
-            # ModelInfo.task and ModelInfo.source may be enum instances; use .value
-            # if available so we get clean strings in the queue JSON.
-            task = info.task.value if hasattr(info.task, "value") else str(info.task)
-            source = info.source.value if hasattr(info.source, "value") else str(info.source)
+            # model_id is the directory path relative to forge-models root, minus the
+            # trailing "loader.py" segment — e.g. "facebook/bart-large-cnn".
+            model_id = "/".join(rel.parts[:-1])
 
-        except Exception:
-            # Any import/reflection failure is non-fatal: skip this loader.
-            continue
+            if model_id in bestiary_compiled_ids:
+                continue
 
-        items.append({
-            "model_id": model_id,
-            # Derive a human-readable display name from the first path component.
-            "display_name": model_id.split("/")[0].replace("_", " ").title(),
-            "task": task,
-            "source": source,
-            "rarity": "familiar",       # seed models are known quantities
-            "hf_downloads": None,
-            "hf_created_at": None,
-            "mesh_chips": 1,
-            "loader_module": module_path,
-            "loader_class": cls_name,
-            "is_frontier": False,
-        })
+            # Convert path to dotted module path for importlib.
+            module_path = ".".join(rel.parts[:-1]) + ".loader"
+
+            try:
+                import importlib
+                mod = importlib.import_module(module_path)
+                from base import ForgeModel
+                cls_name = None
+                for name in dir(mod):
+                    obj = getattr(mod, name)
+                    try:
+                        if isinstance(obj, type) and issubclass(obj, ForgeModel) and obj is not ForgeModel:
+                            cls_name = name
+                            break
+                    except Exception:
+                        continue
+                if cls_name is None:
+                    continue
+
+                # Instantiate the class (no args) to call _get_model_info().
+                instance = obj()
+                info = instance._get_model_info()
+                # ModelInfo.task and ModelInfo.source may be enum instances; use .value
+                # if available so we get clean strings in the queue JSON.
+                task = info.task.value if hasattr(info.task, "value") else str(info.task)
+                source = info.source.value if hasattr(info.source, "value") else str(info.source)
+
+            except Exception:
+                # Any import/reflection failure is non-fatal: skip this loader.
+                continue
+
+            items.append({
+                "model_id": model_id,
+                # Derive a human-readable display name from the first path component.
+                "display_name": model_id.split("/")[0].replace("_", " ").title(),
+                "task": task,
+                "source": source,
+                "rarity": "familiar",       # seed models are known quantities
+                "hf_downloads": None,
+                "hf_created_at": None,
+                "mesh_chips": 1,
+                "loader_module": module_path,
+                "loader_class": cls_name,
+                "is_frontier": False,
+            })
+    finally:
+        # Always restore sys.path even if an unexpected exception occurs mid-scan.
+        try:
+            sys.path.remove(str(forge_models_root))
+        except ValueError:
+            pass
 
     return items
 
@@ -254,8 +266,9 @@ def _print_run_summary(num_chips: int, run_number: int) -> None:
             rows = list(csv.DictReader(f))
         successes = [r for r in rows if r.get("status") == "success"]
         failures  = [r for r in rows if r.get("status") == "failed"]
-        # pts column may be empty for failed rows; default to 0.
-        total_pts = sum(int(r.get("pts", 0)) for r in rows)
+        # pts column may be empty string for failed rows; `or 0` coerces ""
+        # to 0 before int() conversion, avoiding a ValueError crash.
+        total_pts = sum(int(r.get("pts") or 0) for r in rows)
         first_evers = [r for r in successes if r.get("first_ever") == "True"]
         chip_results.append({
             "chip_id": chip_id,
@@ -268,8 +281,20 @@ def _print_run_summary(num_chips: int, run_number: int) -> None:
     # Rank chips by descending points for the leaderboard.
     chip_results.sort(key=lambda x: -x["pts"])
 
-    medals = ["🥇", "🥈", "🥉", "  "]
     W = 72
+
+    # Guard: if no CSV files were found (all workers failed to write), print a
+    # clear diagnostic message and return early rather than showing a misleading
+    # "EXPEDITION COMPLETE" banner with no rows.
+    if not chip_results:
+        print(f"\n{'═'*W}")
+        print(f"  EXPEDITION #{run_number:03d} — NO RESULTS")
+        print(f"  No per-chip CSV files found in /tmp.")
+        print(f"  Workers may not have completed. Check /tmp/expedition_results_chip*.csv")
+        print(f"{'═'*W}\n")
+        return
+
+    medals = ["🥇", "🥈", "🥉", "  "]
     print(f"\n{'═'*W}")
     print(f"  EXPEDITION #{run_number:03d} COMPLETE")
     print(f"{'═'*W}")
