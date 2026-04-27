@@ -106,3 +106,56 @@ class TestBuildDynamicLoader:
         )
         result = build_dynamic_loader(model)
         assert result is None
+
+    def test_loader_has_input_type_and_model_id(self):
+        model = FrontierModel(
+            model_id="openai/whisper-large-v3",
+            pipeline_tag="automatic-speech-recognition",
+            downloads=10_000_000,
+            created_at=None,
+            rarity=Rarity.LEGENDARY,
+            newness=Newness.ESTABLISHED,
+        )
+        loader = build_dynamic_loader(model)
+        assert loader._input_type == "audio"
+        assert loader._model_id == "openai/whisper-large-v3"
+
+
+class TestDiscoverFrontierAPIFallback:
+    def test_returns_empty_when_api_raises(self):
+        with patch("lib.expedition.hf_discover.HfApi") as MockApi:
+            MockApi.return_value.list_models.side_effect = Exception("network error")
+            result = discover_frontier(compiled_ids=set(), known_model_ids=set())
+        assert result == []
+
+    def test_returns_empty_when_hfapi_none(self):
+        import lib.expedition.hf_discover as mod
+        original = mod.HfApi
+        try:
+            mod.HfApi = None
+            result = discover_frontier(compiled_ids=set(), known_model_ids=set())
+            assert result == []
+        finally:
+            mod.HfApi = original
+
+
+class TestMeshChipsDetection:
+    def test_deepseek_model_gets_mesh_4(self):
+        mock = _mock_model("deepseek-ai/DeepSeek-R1", "text-generation", downloads=1_000_000, days_ago=30)
+        mock.safetensors = None
+        result = _model_to_frontier(mock)
+        assert result.mesh_chips == 4
+
+    def test_regular_model_gets_mesh_1(self):
+        mock = _mock_model("google/bert-base", "fill-mask", downloads=5_000_000, days_ago=200)
+        mock.safetensors = None
+        result = _model_to_frontier(mock)
+        assert result.mesh_chips == 1
+
+    def test_large_param_count_gets_mesh_4(self):
+        mock = _mock_model("org/some-giant-model", "text-generation", downloads=1_000, days_ago=5)
+        # Simulate safetensors with 45B params
+        mock.safetensors = MagicMock()
+        mock.safetensors.total = int(45e9)
+        result = _model_to_frontier(mock)
+        assert result.mesh_chips == 4

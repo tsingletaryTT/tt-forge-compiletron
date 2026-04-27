@@ -6,6 +6,7 @@ newest first) and filters them against already-compiled and known-library IDs
 to surface zero-day compilation targets for Expedition Mode.
 """
 from __future__ import annotations
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional, Callable
@@ -56,6 +57,12 @@ _TAG_TO_AUTO = {
 # benefit from (and may require) multi-chip mesh configurations.
 _LARGE_MOE_PATTERNS = ["deepseek", "mixtral", "qwen", "kimi"]
 
+# Parameter count threshold (in billions) above which a model is flagged for
+# multi-chip mesh placement regardless of architecture name.
+_LARGE_PARAM_THRESHOLD_B = 40
+
+_log = logging.getLogger(__name__)
+
 
 @dataclass
 class FrontierModel:
@@ -104,9 +111,20 @@ def _model_to_frontier(hf_model) -> FrontierModel:
     # already excluded anything in compiled_ids.
     newness = compute_newness(created_str, is_first_ever=True)
 
-    # Heuristic: large MoE models likely need multi-chip mesh placement.
+    # Multi-chip detection: name-based MoE heuristic OR parameter count >40B.
     model_id_lower = hf_model.id.lower()
-    mesh_chips = 4 if any(p in model_id_lower for p in _LARGE_MOE_PATTERNS) else 1
+    moe_name_match = any(p in model_id_lower for p in _LARGE_MOE_PATTERNS)
+    # safetensors metadata carries total parameter count when available.
+    large_param = False
+    try:
+        safetensors = getattr(hf_model, "safetensors", None)
+        if safetensors is not None:
+            total = getattr(safetensors, "total", None)
+            if isinstance(total, (int, float)) and total > 0:
+                large_param = total / 1e9 > _LARGE_PARAM_THRESHOLD_B
+    except Exception:
+        pass
+    mesh_chips = 4 if (moe_name_match or large_param) else 1
 
     return FrontierModel(
         model_id=hf_model.id,
@@ -167,6 +185,7 @@ def discover_frontier(
         # Skip models with no pipeline tag or an unsupported task type.
         tag = getattr(m, "pipeline_tag", None)
         if not tag or tag not in _SUPPORTED_TAGS:
+            _log.debug("skipped_unsupported_task model=%s tag=%s", m.id, tag)
             continue
         # Skip models we already know about or have already compiled.
         if m.id in compiled_ids or m.id in known_model_ids:
