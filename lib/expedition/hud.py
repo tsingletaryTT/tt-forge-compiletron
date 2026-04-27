@@ -34,7 +34,7 @@ class ChipState:
         successes:      Total successful compilations.
         failures:       Total failed compilations.
         current_model:  Model identifier currently being compiled.
-        current_index:  1-based position in the model queue.
+        current_index:  Zero-based position in the model queue.
         total_models:   Total number of models in this Expedition.
         done:           True once the chip has finished all its models.
     """
@@ -98,6 +98,11 @@ class ChipHUD:
         success counter, and extends the current streak (updating best_streak
         if the new value is higher).
 
+        **Call contract:** call either ``record_success`` OR ``record_failure``
+        for each compile attempt — never both. Do NOT pass a failure-path
+        ScoreResult (pts=-10) to this method; that would double-count the
+        penalty since ``record_failure`` deducts independently.
+
         Args:
             model_id: Identifier of the model that compiled successfully.
             score:    ScoreResult produced by the scorer for this compilation.
@@ -156,4 +161,6 @@ class ChipHUD:
             f"model={s.current_model}",
             f"done={1 if s.done else 0}",
         ]
-        path.write_text("\n".join(lines) + "\n")
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        tmp.replace(path)
