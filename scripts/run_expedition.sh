@@ -78,12 +78,15 @@ CHIPSCRIPT
     chmod +x "/tmp/expedition_chip_${chip_id}.sh"
 done
 
-# Build tmux layout
+# Build tmux layout:
+#   1. Split window into left/right halves first (horizontal) — both span full height.
+#   2. Split each half top/bottom — gives equal 2×2 chip panes.
+#   3. Add a full-width (-f) 5-line status strip at the bottom; tmux redistributes
+#      the remaining height equally across all four chip panes.
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 tmux new-session -d -s "$SESSION"
 
 P_TL=$(tmux display-message -t "$SESSION" -p "#{pane_id}")
-P_STA=$(tmux split-window -v -l 6 -t "$P_TL" -P -F "#{pane_id}")
 
 if [[ "$NUM_CHIPS" -ge 2 ]]; then
     P_TR=$(tmux split-window -h -l 50% -t "$P_TL" -P -F "#{pane_id}")
@@ -94,6 +97,9 @@ fi
 if [[ "$NUM_CHIPS" -ge 4 ]]; then
     P_BR=$(tmux split-window -v -l 50% -t "$P_TR" -P -F "#{pane_id}")
 fi
+
+# Full-width status strip (-f spans the entire window width, not just the pane).
+P_STA=$(tmux split-window -v -l 5 -f -t "$P_TL" -P -F "#{pane_id}")
 
 # Pane titles
 tmux select-pane -t "$P_TL"  -T "  Chip 0 — Expedition #$(printf '%03d' $RUN_NUMBER)  "
@@ -116,7 +122,7 @@ tmux send-keys -t "$P_TL" "bash /tmp/expedition_chip_0.sh" C-m
 # Status strip — reads expedition_chip_N.status files
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 tmux send-keys -t "$P_STA" \
-    "watch -n1 -t '${SCRIPT_DIR}/status_display.sh --expedition'" \
+    "watch -n0.5 -t '${SCRIPT_DIR}/status_display.sh --expedition'" \
     C-m
 
 tmux select-pane -t "$P_TL"

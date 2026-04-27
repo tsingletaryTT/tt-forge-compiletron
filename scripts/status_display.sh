@@ -85,15 +85,25 @@ for chip in 0 1 2 3; do
     fi
 
     if [[ -f "$file" ]]; then
-        chip_id=$(grep '^chip_id='    "$file" | cut -d= -f2)
-        current=$(grep '^current='    "$file" | cut -d= -f2)
-        total=$(grep '^total='        "$file" | cut -d= -f2)
-        succ=$(grep '^successes='     "$file" | cut -d= -f2)
-        fail=$(grep '^failures='      "$file" | cut -d= -f2)
-        model=$(grep '^model='        "$file" | cut -d= -f2-)
-        done=$(grep '^done='          "$file" | cut -d= -f2)
-        pts=$(grep '^pts='            "$file" | cut -d= -f2)
-        streak=$(grep '^streak='      "$file" | cut -d= -f2)
+        # Parse all fields in a single read pass — avoids launching 9 grep
+        # subprocesses per chip per refresh cycle.
+        chip_id="" current="" total="" succ="" fail="" model="" done_val="" pts="" streak=""
+        while IFS= read -r line; do
+            key="${line%%=*}"
+            val="${line#*=}"
+            case "$key" in
+                chip_id)   chip_id="$val" ;;
+                current)   current="$val" ;;
+                total)     total="$val" ;;
+                successes) succ="$val" ;;
+                failures)  fail="$val" ;;
+                model)     model="$val" ;;
+                done)      done_val="$val" ;;
+                pts)       pts="$val" ;;
+                streak)    streak="$val" ;;
+            esac
+        done < "$file"
+        done="$done_val"
 
         printf "${BOLD}${YELLOW}C%d${RESET} " "$chip"
         if [[ "$MODE" == "expedition" ]]; then

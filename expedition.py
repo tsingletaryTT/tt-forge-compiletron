@@ -244,6 +244,60 @@ def _interleave(seed: list, frontier: list, seed_ratio: float) -> list:
     return result
 
 
+# ── Pre-download ─────────────────────────────────────────────────────────────
+
+def _predownload_queues(chip_queues: list[list[dict]]) -> None:
+    """Pre-fetch HuggingFace weights for all frontier models before compile starts.
+
+    Collects unique frontier model IDs across all chip queues and calls
+    snapshot_download so that weights land in the local HF cache.  This puts
+    all chips on equal footing at compile time — none stalls waiting for a
+    download that others finished earlier.
+
+    Forge-model seed entries skip this step; their weights are pulled by the
+    loader's own from_pretrained call and are typically already cached.
+    """
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError:
+        print("  huggingface_hub not available — skipping pre-download")
+        return
+
+    # Collect unique frontier model IDs (de-duplicate across chips).
+    seen: dict[str, dict] = {}
+    for queue in chip_queues:
+        for item in queue:
+            if item.get("is_frontier") and item["model_id"] not in seen:
+                seen[item["model_id"]] = item
+
+    if not seen:
+        print("  No frontier models to pre-download.")
+        return
+
+    # Large binary formats we can't use — skip to save bandwidth and disk.
+    ignore = ["*.msgpack", "*.h5", "flax_model*", "tf_model*", "rust_model*", "*.ot"]
+
+    total = len(seen)
+    print(f"\n  Pre-downloading {total} frontier model(s) to HF cache...")
+    ok = fail = 0
+    for i, (model_id, item) in enumerate(seen.items(), 1):
+        task = item.get("task", "")
+        label = f"{model_id} ({task})" if task else model_id
+        print(f"  [{i:>{len(str(total))}}/{total}] {label[:60]:<62}", end="", flush=True)
+        try:
+            snapshot_download(model_id, ignore_patterns=ignore, local_files_only=False)
+            print("✓")
+            ok += 1
+        except Exception as e:
+            print(f"✗  {str(e)[:50]}")
+            fail += 1
+
+    status = f"✓{ok}"
+    if fail:
+        status += f"  ✗{fail} (will download at compile time)"
+    print(f"\n  Pre-download complete — {status}\n")
+
+
 # ── Run summary ──────────────────────────────────────────────────────────────
 
 def _print_run_summary(num_chips: int, run_number: int) -> None:
@@ -387,8 +441,10 @@ def main():
                        help="Number of chips (0=auto-detect)")
     run_p.add_argument("--limit",          type=int, default=0,
                        help="Max models per chip (0=unlimited)")
-    run_p.add_argument("--seed-only",      action="store_true")
-    run_p.add_argument("--frontier-only",  action="store_true")
+    run_p.add_argument("--seed-only",        action="store_true")
+    run_p.add_argument("--frontier-only",    action="store_true")
+    run_p.add_argument("--no-predownload",   action="store_true",
+                       help="Skip pre-downloading HF weights (faster start, unequal footing)")
 
     sub.add_parser("summary", help="Print bestiary summary")
 
@@ -405,6 +461,7 @@ def main():
         args.limit = 0
         args.seed_only = False
         args.frontier_only = False
+        args.no_predownload = False
 
     # ── Hardware detection ────────────────────────────────────────────────────
     from lib.hardware import detect_hardware, get_hardware_summary
@@ -431,6 +488,10 @@ def main():
         frontier_only=args.frontier_only,
         limit_per_chip=args.limit,
     )
+
+    # ── Pre-download weights for fairness ────────────────────────────────────
+    if not args.no_predownload:
+        _predownload_queues(chip_queues)
 
     # ── Write per-chip queue JSON to /tmp ─────────────────────────────────────
     # expedition_worker.py reads these files at startup.
