@@ -208,8 +208,6 @@ def _decode_masked_lm(output: Any, tokenizer: Any, inputs: Any) -> str:
     try:
         # Expected shape: (batch, seq_len, vocab_size)
         if hasattr(output, "shape") and len(output.shape) == 3:
-            import torch  # noqa: F401 — used implicitly via tensor ops
-
             # Try to find the [MASK] position from the input ids.
             mask_pos = None
             if inputs is not None:
@@ -220,11 +218,10 @@ def _decode_masked_lm(output: Any, tokenizer: Any, inputs: Any) -> str:
                     input_ids = inputs.input_ids
                 if input_ids is not None and hasattr(tokenizer, "mask_token_id"):
                     mask_id = tokenizer.mask_token_id
-                    ids = (
-                        input_ids[0].tolist()
-                        if hasattr(input_ids[0], "tolist")
-                        else list(input_ids[0])
-                    )
+                    # Handle (batch, seq) tensors, (seq,) 1-D tensors, and plain lists.
+                    ndim = len(input_ids.shape) if hasattr(input_ids, "shape") else 1
+                    seq = input_ids[0] if ndim > 1 else input_ids
+                    ids = seq.tolist() if hasattr(seq, "tolist") else list(seq)
                     if mask_id in ids:
                         mask_pos = ids.index(mask_id)
 
@@ -283,9 +280,15 @@ def _decode_qa(output: Any, tokenizer: Any, inputs: Any) -> str:
                     if hasattr(input_ids[0], "tolist")
                     else list(input_ids[0])
                 )
+                # Clamp to sequence length to guard against out-of-range predictions.
+                seq_len = len(ids)
+                start_idx = min(start_idx, seq_len - 1)
+                end_idx = min(end_idx, seq_len - 1)
                 answer_ids = ids[start_idx : end_idx + 1]
                 answer = tokenizer.decode(answer_ids, skip_special_tokens=True)
-                return f"answer: {answer!r} (tokens {start_idx}–{end_idx})"
+                if answer:
+                    return f"answer: {answer!r} (tokens {start_idx}–{end_idx})"
+                return f"answer span empty (tokens {start_idx}–{end_idx}, seq_len={seq_len})"
 
         return f"answer span: tokens {start_idx}–{end_idx}"
     except Exception:
@@ -351,8 +354,10 @@ def decode(
     model_info:
         Metadata including the model's task string used for dispatch.
     inputs:
-        Original model inputs (unused by most decoders; passed through for
-        future decoders that need the prompt/image to contextualise output).
+        Original model inputs. Used by masked_lm (to locate the [MASK] token
+        position) and qa (to decode the answer span text). Unused by image
+        and audio decoders. Pass None if inputs are unavailable — those two
+        decoders will fall back gracefully.
     tokenizer:
         Optional tokenizer used by language/speech decoders.
 
