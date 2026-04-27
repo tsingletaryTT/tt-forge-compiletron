@@ -205,6 +205,21 @@ def build_queues(
 
     # Interleave seed (60 %) and frontier (40 %) for a balanced run.
     all_items = _interleave(seed_items, frontier_items, seed_ratio=0.6)
+
+    # Final deduplication pass — belt-and-suspenders guard against any upstream
+    # source (HF pagination, symlinked loader.py paths, etc.) producing the same
+    # model_id twice, which would send it to two different chips via round-robin.
+    seen: set[str] = set()
+    deduped: list[dict] = []
+    for item in all_items:
+        mid = item["model_id"]
+        if mid not in seen:
+            seen.add(mid)
+            deduped.append(item)
+    if len(deduped) < len(all_items):
+        print(f"  Deduplicated {len(all_items) - len(deduped)} duplicate model(s)")
+    all_items = deduped
+
     print(f"  Total queue: {len(all_items)} models across {num_chips} chip(s)")
 
     # Round-robin distribution across chips.

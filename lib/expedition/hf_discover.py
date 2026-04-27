@@ -181,6 +181,7 @@ def discover_frontier(
         return []
 
     results = []
+    seen_ids: set[str] = set()
     for m in hf_models:
         # Skip models with no pipeline tag or an unsupported task type.
         tag = getattr(m, "pipeline_tag", None)
@@ -190,6 +191,11 @@ def discover_frontier(
         # Skip models we already know about or have already compiled.
         if m.id in compiled_ids or m.id in known_model_ids:
             continue
+        # The HF API can return the same repo twice (multiple tags, pagination
+        # artifacts) — deduplicate so no model reaches two chip queues.
+        if m.id in seen_ids:
+            continue
+        seen_ids.add(m.id)
         results.append(_model_to_frontier(m))
 
     return results
