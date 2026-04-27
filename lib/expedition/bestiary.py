@@ -19,6 +19,10 @@ class Bestiary:
       failed      — keyed by model_id, retry-tracking only (no scoring penalty beyond initial -10)
       chip_totals — keyed by str(chip_index), cumulative all-time scores
 
+    Note: `compiled` and `failed` are NOT mutually exclusive. A model that
+    fails first and later succeeds appears in both dicts. Use is_compiled()
+    to determine whether any successful compilation exists.
+
     The file is NOT auto-saved on mutation; callers must invoke save() explicitly
     (typically at the end of a run or after each batch of mutations to avoid data
     loss on crash).
@@ -91,7 +95,6 @@ class Bestiary:
                 "first_chip": chip,
                 "run": run,
                 "best_time_s": time_s,
-                "attempts": 0,
                 "successes": 0,
                 "source": source,
                 "task": task,
@@ -101,7 +104,6 @@ class Bestiary:
                 "artifact": artifact,
             }
         entry = self._data["compiled"][model_id]
-        entry["attempts"] += 1
         entry["successes"] += 1
         # Track the fastest compilation time across all chips/runs.
         if time_s < entry["best_time_s"]:
@@ -164,14 +166,15 @@ class Bestiary:
     # ── persistence ───────────────────────────────────────────────────────────
 
     def save(self) -> None:
-        """Write current state to disk, creating parent directories as needed.
+        """Write current state to disk via an atomic rename.
 
-        The file is written atomically via write_text, which replaces the old
-        file in a single OS call. Not crash-safe for very large files, but
-        acceptable for the typical bestiary size (<10 MB).
+        Writes to a sibling .tmp file first, then renames into place, so a
+        crash during save never leaves a truncated or corrupt bestiary.json.
         """
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self._data, indent=2))
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(self._data, indent=2), encoding="utf-8")
+        tmp.replace(self.path)
 
     def save_artifact(
         self,
@@ -204,7 +207,7 @@ class Bestiary:
         filename = _sanitize_model_id(model_id) + ".txt"
         path = artifacts_dir / filename
         header = f"{model_id} · {task} · {compiled_at} · chip-{chip} · run-{run}"
-        path.write_text(f"{header}\n{artifact_text}")
+        path.write_text(f"{header}\n{artifact_text}", encoding="utf-8")
         return path
 
     def load_artifact(
@@ -221,7 +224,7 @@ class Bestiary:
         path = Path(artifacts_dir) / (_sanitize_model_id(model_id) + ".txt")
         if not path.exists():
             return None
-        return path.read_text()
+        return path.read_text(encoding="utf-8")
 
     # ── private ───────────────────────────────────────────────────────────────
 
@@ -235,7 +238,10 @@ class Bestiary:
         """
         if self.path.exists():
             try:
-                return json.loads(self.path.read_text())
+                data = json.loads(self.path.read_text(encoding="utf-8"))
+                for key in ("compiled", "failed", "chip_totals"):
+                    data.setdefault(key, {})
+                return data
             except (json.JSONDecodeError, OSError):
                 pass
         return {"compiled": {}, "failed": {}, "chip_totals": {}}

@@ -1,7 +1,7 @@
 import json
 import pytest
 from pathlib import Path
-from lib.expedition.bestiary import Bestiary, _sanitize_model_id
+from lib.expedition.bestiary import Bestiary
 
 @pytest.fixture
 def tmp_bestiary(tmp_path):
@@ -37,7 +37,7 @@ class TestBestiaryRecordSuccess:
         assert entry["run"] == 1
         assert entry["artifact"] == "Mr. Gorbachev, tear down this wall."
         assert entry["successes"] == 1
-        assert entry["attempts"] == 1
+        assert "attempts" not in entry  # only successes tracked; failures tracked in failed dict
 
     def test_repeat_success_increments_counters(self, tmp_bestiary):
         for _ in range(3):
@@ -53,7 +53,6 @@ class TestBestiaryRecordSuccess:
             )
         entry = tmp_bestiary.compiled["openai/whisper-large-v3"]
         assert entry["successes"] == 3
-        assert entry["attempts"] == 3
 
     def test_best_time_updated(self, tmp_bestiary):
         tmp_bestiary.record_success(
@@ -111,6 +110,17 @@ class TestBestiaryIsCompiled:
             hf_downloads=None, hf_created_at=None, artifact="out",
         )
         assert tmp_bestiary.is_compiled("x") is True
+
+    def test_success_after_failure_dual_membership(self, tmp_bestiary):
+        # compiled and failed are not mutually exclusive; document this behavior
+        tmp_bestiary.record_failure("m", run=1, error="oom")
+        tmp_bestiary.record_success(
+            model_id="m", chip=0, run=2, time_s=30.0,
+            task="t", source="s", rarity="common",
+            hf_downloads=None, hf_created_at=None, artifact="a",
+        )
+        assert tmp_bestiary.is_compiled("m")
+        assert "m" in tmp_bestiary.failed
 
 class TestBestiaryPersistence:
     def test_save_and_reload(self, tmp_path):
@@ -195,3 +205,20 @@ class TestBestiaryArtifacts:
             artifact_text="x", artifacts_dir=tmp_path / "artifacts",
         )
         assert "openai_whisper-large-v3.txt" == out.name
+
+    def test_failure_artifact_with_error_string(self, tmp_path, tmp_bestiary):
+        # Callers (expedition_worker) use save_artifact for epic fails too
+        error = "RuntimeError: rotary embedding shape mismatch"
+        out = tmp_bestiary.save_artifact(
+            model_id="mistralai/Mistral-7B-v0.3",
+            task="text-generation",
+            compiled_at="2026-04-27T15:00:00",
+            chip=3,
+            run=5,
+            artifact_text=error,
+            artifacts_dir=tmp_path / "artifacts",
+        )
+        assert out.exists()
+        content = out.read_text()
+        assert "rotary embedding" in content
+        assert "chip-3" in content
