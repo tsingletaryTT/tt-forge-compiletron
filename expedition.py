@@ -145,12 +145,12 @@ def _banner(run_number: int, num_chips: int, hw_summary: str) -> None:
     inner = w - 4
     sub = f"Run #{run_number:03d}  ·  {num_chips}× {hw_summary}"
     print()
-    print(f"  {_TEAL}╔{'═' * inner}╗{_RST}")
-    print(f"  {_TEAL}║{_RST}  {_BOLD}{_WHT}{'⚡  EXPEDITION MODE':<{inner-2}}{_RST}{_TEAL}║{_RST}")
-    print(f"  {_TEAL}║{_RST}  {_DIM}{'tt-forge-compiletron':<{inner-2}}{_RST}{_TEAL}║{_RST}")
-    print(f"  {_TEAL}║{_RST}{'':>{inner}}{_TEAL}║{_RST}")
-    print(f"  {_TEAL}║{_RST}  {_TEAL}{sub:<{inner-2}}{_RST}{_TEAL}║{_RST}")
-    print(f"  {_TEAL}╚{'═' * inner}╝{_RST}")
+    print(f"  {_TEAL}╔{'═' * inner}{_RST}")
+    print(f"  {_TEAL}║{_RST}  {_BOLD}{_WHT}⚡  EXPEDITION MODE{_RST}")
+    print(f"  {_TEAL}║{_RST}  {_DIM}tt-forge-compiletron{_RST}")
+    print(f"  {_TEAL}║{_RST}")
+    print(f"  {_TEAL}║{_RST}  {_TEAL}{sub}{_RST}")
+    print(f"  {_TEAL}╚{'═' * inner}{_RST}")
 
 
 # Rarity display: maps rarity string → (ANSI prefix, fixed-width glyph+label).
