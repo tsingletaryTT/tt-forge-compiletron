@@ -11,6 +11,16 @@ Invoked by run_expedition.sh as:
       --results /tmp/expedition_results_chipN.csv
 """
 from __future__ import annotations
+
+# Ensure the project root is in sys.path regardless of how this script is
+# invoked (python3 /abs/path/expedition_worker.py puts the script's own
+# directory first, not the repo root — breaking all lib.* imports).
+import sys as _sys
+from pathlib import Path as _Path
+_project_root = str(_Path(__file__).resolve().parent.parent.parent)
+if _project_root not in _sys.path:
+    _sys.path.insert(0, _project_root)
+
 import argparse
 import csv
 import json
