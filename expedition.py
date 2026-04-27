@@ -445,6 +445,8 @@ def main():
     run_p.add_argument("--frontier-only",    action="store_true")
     run_p.add_argument("--no-predownload",   action="store_true",
                        help="Skip pre-downloading HF weights (faster start, unequal footing)")
+    run_p.add_argument("--monitor",          action="store_true",
+                       help="Add a tt-smi hardware monitor pane in the center column")
 
     sub.add_parser("summary", help="Print bestiary summary")
 
@@ -462,6 +464,7 @@ def main():
         args.seed_only = False
         args.frontier_only = False
         args.no_predownload = False
+        args.monitor = False
 
     # ── Hardware detection ────────────────────────────────────────────────────
     from lib.hardware import detect_hardware, get_hardware_summary
@@ -506,8 +509,10 @@ def main():
     script = PROJECT_DIR / "scripts" / "run_expedition.sh"
     env = {**os.environ, "EXPEDITION_RUN": str(run_number),
            "EXPEDITION_NUM_CHIPS": str(num_chips)}
-    subprocess.run(["bash", str(script), "--chips", str(num_chips),
-                    "--run", str(run_number)], env=env)
+    cmd = ["bash", str(script), "--chips", str(num_chips), "--run", str(run_number)]
+    if args.monitor:
+        cmd.append("--monitor")
+    subprocess.run(cmd, env=env)
 
     # ── Post-run aggregate summary ────────────────────────────────────────────
     # After tmux exits, gather per-chip CSV results and print the leaderboard.

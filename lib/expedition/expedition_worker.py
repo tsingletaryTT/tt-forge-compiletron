@@ -93,6 +93,16 @@ def _timeout_handler(signum, frame):
     raise TimeoutException("Operation timed out")
 
 
+def _set_pane_title(title: str) -> None:
+    """Push a live title into the tmux pane border via OSC 2 escape sequence.
+
+    tmux intercepts OSC 2 and stores it as pane_title, which the border
+    format #{pane_title} then displays.  Works silently in non-tmux terminals.
+    """
+    sys.stdout.write(f"\033]2;{title}\033\\")
+    sys.stdout.flush()
+
+
 def _decouple_stderr():
     """Silence fd2 for C++ noise — same technique as lib/worker.py.
 
@@ -435,6 +445,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
     queue = _load_queue(queue_path)
     hud = ChipHUD(chip_id=chip_id, total_models=len(queue))
 
+    _set_pane_title(f"C{chip_id} · {len(queue)} queued · run #{run_number:03d}")
     print(f"\n{BOLD}{CYAN}{'═'*80}{RESET}")
     print(f"{BOLD}{CYAN}  EXPEDITION CHIP {chip_id}  ·  {len(queue)} models queued  ·  run #{run_number:03d}{RESET}")
     print(f"{BOLD}{CYAN}{'═'*80}{RESET}\n")
@@ -445,10 +456,16 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
     last_artifact = ""
 
     for idx, item in enumerate(queue, 1):
-        # Update the HUD status file immediately so the status pane shows the
-        # currently-processing model even if compilation takes several minutes.
+        # Update both the HUD status file and the pane border title so progress
+        # is visible at a glance from the tmux layout without zooming in.
         hud.set_current(item.model_id, idx)
         hud.write_status()
+        s = hud.state
+        short_name = item.model_id.split("/")[-1][:24]
+        _set_pane_title(
+            f"C{chip_id} [{idx}/{s.total_models}] {short_name}"
+            f"  ✓{s.successes} ✗{s.failures}  {s.pts}pts"
+        )
 
         is_first_ever = not bestiary.is_compiled(item.model_id)
         rarity = compute_rarity(item.hf_downloads)
@@ -561,6 +578,11 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
     # ── Run complete ─────────────────────────────────────────────────────────
     hud.mark_done()
     hud.write_status()
+    s = hud.state
+    _set_pane_title(
+        f"C{chip_id} DONE  ✓{s.successes} ✗{s.failures}  {s.pts}pts"
+        f"  🔥×{s.best_streak}"
+    )
 
     # Write the per-chip CSV results file so the orchestrator can aggregate.
     Path(results_path).parent.mkdir(parents=True, exist_ok=True)
