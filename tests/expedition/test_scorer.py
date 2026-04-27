@@ -1,0 +1,86 @@
+import pytest
+from datetime import datetime, timezone, timedelta
+from lib.expedition.scorer import (
+    Rarity, Newness, ScoreResult,
+    compute_rarity, compute_newness, compute_score,
+)
+
+def _dt(days_ago: float) -> str:
+    dt = datetime.now(timezone.utc) - timedelta(days=days_ago)
+    return dt.isoformat()
+
+class TestComputeRarity:
+    def test_legendary(self):
+        assert compute_rarity(15_000_000) == Rarity.LEGENDARY
+    def test_rare(self):
+        assert compute_rarity(5_000_000) == Rarity.RARE
+    def test_uncommon(self):
+        assert compute_rarity(500_000) == Rarity.UNCOMMON
+    def test_common(self):
+        assert compute_rarity(50_000) == Rarity.COMMON
+    def test_none_is_familiar(self):
+        assert compute_rarity(None) == Rarity.FAMILIAR
+
+class TestComputeNewness:
+    def test_zero_day(self):
+        assert compute_newness(_dt(0.5), is_first_ever=True) == Newness.ZERO_DAY
+    def test_hot(self):
+        assert compute_newness(_dt(3), is_first_ever=True) == Newness.HOT
+    def test_fresh(self):
+        assert compute_newness(_dt(15), is_first_ever=True) == Newness.FRESH
+    def test_recent(self):
+        assert compute_newness(_dt(60), is_first_ever=True) == Newness.RECENT
+    def test_established(self):
+        assert compute_newness(_dt(200), is_first_ever=True) == Newness.ESTABLISHED
+    def test_not_first_ever_always_established(self):
+        assert compute_newness(_dt(0.5), is_first_ever=False) == Newness.ESTABLISHED
+    def test_none_date_is_familiar(self):
+        assert compute_newness(None, is_first_ever=True) == Newness.FAMILIAR
+
+class TestComputeScore:
+    def test_failure(self):
+        result = compute_score(success=False, is_first_ever=False,
+                               rarity=Rarity.COMMON, newness=Newness.ESTABLISHED, streak=0)
+        assert result.pts == -10
+    def test_basic_success(self):
+        result = compute_score(success=True, is_first_ever=False,
+                               rarity=Rarity.FAMILIAR, newness=Newness.ESTABLISHED, streak=0)
+        assert result.pts == 50
+    def test_first_ever_bonus(self):
+        result = compute_score(success=True, is_first_ever=True,
+                               rarity=Rarity.COMMON, newness=Newness.ESTABLISHED, streak=0)
+        assert result.pts == 150  # 50 + 100
+    def test_rarity_multiplier_legendary(self):
+        result = compute_score(success=True, is_first_ever=True,
+                               rarity=Rarity.LEGENDARY, newness=Newness.ESTABLISHED, streak=0)
+        assert result.pts == 600  # (50+100) * 4
+    def test_zero_day_multiplier(self):
+        result = compute_score(success=True, is_first_ever=True,
+                               rarity=Rarity.LEGENDARY, newness=Newness.ZERO_DAY, streak=0)
+        assert result.pts == 3000  # (50+100) * 4 * 5
+    def test_streak_multiplier(self):
+        result = compute_score(success=True, is_first_ever=False,
+                               rarity=Rarity.FAMILIAR, newness=Newness.ESTABLISHED, streak=5)
+        assert result.pts == 75  # 50 * 1.5
+    def test_streak_capped_at_2x(self):
+        result = compute_score(success=True, is_first_ever=False,
+                               rarity=Rarity.FAMILIAR, newness=Newness.ESTABLISHED, streak=100)
+        assert result.pts == 100  # 50 * 2.0 capped
+    def test_mesh_bonus_4chip(self):
+        result = compute_score(success=True, is_first_ever=False,
+                               rarity=Rarity.FAMILIAR, newness=Newness.ESTABLISHED,
+                               streak=0, mesh_chips=4)
+        assert result.pts == 100  # 50 + 50 mesh bonus
+    def test_mesh_bonus_galaxy(self):
+        result = compute_score(success=True, is_first_ever=False,
+                               rarity=Rarity.FAMILIAR, newness=Newness.ESTABLISHED,
+                               streak=0, mesh_chips=32)
+        assert result.pts == 250  # 50 + 200 galaxy bonus
+    def test_score_result_has_breakdown(self):
+        result = compute_score(success=True, is_first_ever=True,
+                               rarity=Rarity.RARE, newness=Newness.HOT, streak=3)
+        assert "base" in result.breakdown
+        assert "first_ever_bonus" in result.breakdown
+        assert "rarity_mult" in result.breakdown
+        assert "newness_mult" in result.breakdown
+        assert "streak_mult" in result.breakdown
