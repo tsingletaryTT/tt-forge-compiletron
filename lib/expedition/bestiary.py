@@ -1,8 +1,14 @@
 from __future__ import annotations
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+
+def _sanitize_model_id(model_id: str) -> str:
+    """Convert a model ID to a safe filename (slashes and spaces → underscores)."""
+    return re.sub(r"[\s/]+", "_", model_id).strip("_")
 
 
 class Bestiary:
@@ -166,6 +172,56 @@ class Bestiary:
         """
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(self._data, indent=2))
+
+    def save_artifact(
+        self,
+        model_id: str,
+        task: str,
+        compiled_at: str,
+        chip: int,
+        run: int,
+        artifact_text: str,
+        artifacts_dir: Path | str = "data/artifacts",
+    ) -> Path:
+        """Write a plain-text artifact file for a model compilation result.
+
+        First line is a metadata header; remaining lines are the artifact content.
+        Both successful compilations and failures can use this method — the caller
+        passes the inference output string or error message as artifact_text.
+        Returns the path written.
+
+        Args:
+            model_id:      HuggingFace model identifier (e.g. "openai/whisper-large-v3").
+            task:          HuggingFace pipeline task string.
+            compiled_at:   ISO-8601 timestamp of the compilation event.
+            chip:          Zero-based index of the Tenstorrent chip used.
+            run:           Sequential run number within the current expedition session.
+            artifact_text: The decoded inference output or error message to persist.
+            artifacts_dir: Directory in which to write the .txt file (created if absent).
+        """
+        artifacts_dir = Path(artifacts_dir)
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        filename = _sanitize_model_id(model_id) + ".txt"
+        path = artifacts_dir / filename
+        header = f"{model_id} · {task} · {compiled_at} · chip-{chip} · run-{run}"
+        path.write_text(f"{header}\n{artifact_text}")
+        return path
+
+    def load_artifact(
+        self,
+        model_id: str,
+        artifacts_dir: Path | str = "data/artifacts",
+    ) -> str | None:
+        """Read and return the full artifact file content, or None if not found.
+
+        Args:
+            model_id:      HuggingFace model identifier used when the artifact was saved.
+            artifacts_dir: Directory to search for the .txt file.
+        """
+        path = Path(artifacts_dir) / (_sanitize_model_id(model_id) + ".txt")
+        if not path.exists():
+            return None
+        return path.read_text()
 
     # ── private ───────────────────────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 import json
 import pytest
 from pathlib import Path
-from lib.expedition.bestiary import Bestiary
+from lib.expedition.bestiary import Bestiary, _sanitize_model_id
 
 @pytest.fixture
 def tmp_bestiary(tmp_path):
@@ -133,3 +133,65 @@ class TestBestiaryPersistence:
         assert "compiled" in data
         assert "failed" in data
         assert "chip_totals" in data
+
+
+class TestBestiaryArtifacts:
+    def test_save_artifact_creates_file(self, tmp_path, tmp_bestiary):
+        out = tmp_bestiary.save_artifact(
+            model_id="openai/whisper-large-v3",
+            task="automatic_speech_recognition",
+            compiled_at="2026-04-27T14:00:00",
+            chip=1,
+            run=3,
+            artifact_text="Mr. Gorbachev, tear down this wall.",
+            artifacts_dir=tmp_path / "artifacts",
+        )
+        assert out.exists()
+        content = out.read_text()
+        assert "openai/whisper-large-v3" in content
+        assert "chip-1" in content
+        assert "run-3" in content
+        assert "Mr. Gorbachev" in content
+
+    def test_save_artifact_header_format(self, tmp_path, tmp_bestiary):
+        out = tmp_bestiary.save_artifact(
+            model_id="myorg/mymodel",
+            task="text-generation",
+            compiled_at="2026-04-27T12:00:00",
+            chip=0,
+            run=1,
+            artifact_text="hello world",
+            artifacts_dir=tmp_path / "artifacts",
+        )
+        lines = out.read_text().splitlines()
+        assert lines[0].startswith("myorg/mymodel")
+        assert "text-generation" in lines[0]
+        assert "chip-0" in lines[0]
+        assert "run-1" in lines[0]
+        assert lines[1] == "hello world"
+
+    def test_load_artifact_returns_content(self, tmp_path, tmp_bestiary):
+        tmp_bestiary.save_artifact(
+            model_id="openai/whisper-large-v3",
+            task="asr",
+            compiled_at="now",
+            chip=0,
+            run=1,
+            artifact_text="tear down this wall",
+            artifacts_dir=tmp_path / "artifacts",
+        )
+        content = tmp_bestiary.load_artifact("openai/whisper-large-v3", artifacts_dir=tmp_path / "artifacts")
+        assert content is not None
+        assert "tear down this wall" in content
+
+    def test_load_artifact_missing_returns_none(self, tmp_path, tmp_bestiary):
+        result = tmp_bestiary.load_artifact("no/such/model", artifacts_dir=tmp_path / "artifacts")
+        assert result is None
+
+    def test_sanitize_model_id_slash(self, tmp_path, tmp_bestiary):
+        out = tmp_bestiary.save_artifact(
+            model_id="openai/whisper-large-v3",
+            task="asr", compiled_at="now", chip=0, run=1,
+            artifact_text="x", artifacts_dir=tmp_path / "artifacts",
+        )
+        assert "openai_whisper-large-v3.txt" == out.name
