@@ -21,6 +21,7 @@ import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -518,132 +519,264 @@ _IGNORE_PATTERNS = [
 ]
 
 
-def _download_one(model_id: str, item: dict, idx: int, total: int) -> bool:
-    """Download one model from HuggingFace with a live progress bar.
+def _run_parallel_downloads(
+    items_ordered: list[tuple[str, dict]],
+    max_workers: int,
+    cache_root: Path,
+    baseline_gb: float,
+    max_cache_gb: float,
+    session_download_max_gb: float,
+) -> tuple[int, int, int]:
+    """Download models in parallel with a live multi-slot progress display.
 
-    Launches a background monitor thread that polls the model's HF cache
-    subdirectory size every 0.5 s and renders a teal progress bar with
-    percentage, byte count, transfer speed, and ETA.
+    Maintains N concurrent download slots (N = min(max_workers, len(items))).
+    A single display thread redraws all slots in-place every 0.3 s using ANSI
+    cursor-up sequences.  Each worker thread owns a fixed slot for its lifetime
+    (thread-local slot assignment) so slot IDs stay stable even as the thread
+    pool cycles through the model queue.
 
-    Returns True on success, False on any exception (network error, gated
-    model without a token, disk full, etc.).
+    Disk-limit checks run after each completion via as_completed().  When a
+    limit fires, pending (not-yet-started) futures are cancelled immediately;
+    already-running downloads complete normally.
+
+    Returns (ok_count, fail_count, skipped_count).
     """
-    try:
-        from huggingface_hub import snapshot_download, HfApi
-    except ImportError:
-        return False
+    from concurrent.futures import CancelledError as _FutureCancelled
+    from huggingface_hub import snapshot_download, HfApi
 
-    # Query the HF file manifest to learn the expected total download size.
-    # We use this to drive the progress bar ratio; if the query fails we
-    # degrade gracefully to an indeterminate bar (ratio=0).
-    expected_bytes = 0
-    try:
-        info = HfApi().model_info(model_id, timeout=15)
-        for sib in (info.siblings or []):
-            sz = getattr(sib, "size", None)
-            if sz and not any(_fnmatch.fnmatch(sib.rfilename, p)
-                              for p in _IGNORE_PATTERNS):
-                expected_bytes += sz
-    except Exception:
-        pass  # size unknown — bar will show bytes-downloaded only
+    total   = len(items_ordered)
+    n_slots = min(max_workers, total)
 
-    # Locate (or anticipate) the model's subdirectory inside the HF cache.
-    # HF hub uses the naming convention "models--org--repo" under HF_CACHE_DIR.
-    cache_key = "models--" + model_id.replace("/", "--")
-    model_dir = HF_CACHE_DIR / cache_key
-    pre_bytes = _dir_bytes(model_dir)
+    # ── Shared slot state ─────────────────────────────────────────────────────
+    # Each slot is a dict or None (idle).  Workers update their slot; the
+    # display thread reads it.  slot_lock guards all access.
+    slots: dict[int, dict | None] = {i: None for i in range(n_slots)}
+    slot_lock = threading.Lock()
 
-    # Print a header line for this model so the user knows what's downloading.
-    params = item.get("hf_params_b", 0) or 0
-    task   = item.get("task", "")
-    idx_w  = len(str(total))
-    size_hint = f"  ~{params:.1f}B" if params > 0 else ""
-    exp_hint  = f"  {_fmt_bytes(expected_bytes)}" if expected_bytes > 0 else ""
-    print(f"\n  {_DIM}[{idx:{idx_w}d}/{total}]{_RST}  "
-          f"{_BOLD}{_WHT}{model_id}{_RST}"
-          f"{_DIM}{size_hint}  {task}{exp_hint}{_RST}")
+    # Thread-local slot assignment: each thread in the pool keeps the same slot
+    # ID across all the models it processes (pool threads are reused).
+    _thread_slot: dict[int, int] = {}
+    _next_slot    = [0]
+    _ts_lock      = threading.Lock()
 
-    # --- Background progress monitor ---
-    stop_evt   = threading.Event()
-    start_time = time.monotonic()
+    def _claim_slot() -> int:
+        tid = threading.current_thread().ident
+        with _ts_lock:
+            if tid not in _thread_slot:
+                _thread_slot[tid] = _next_slot[0]
+                _next_slot[0]    += 1
+        return _thread_slot[tid]
 
-    def _monitor():
-        prev_bytes, prev_t = pre_bytes, start_time
-        while not stop_evt.wait(0.5):
-            cur = _dir_bytes(model_dir)
-            now = time.monotonic()
-            dt = now - prev_t
-            incremental = cur - prev_bytes
-            # Only compute speed when the interval is long enough to be reliable.
-            speed = incremental / dt if dt > 0.2 and incremental > 0 else 0
-            prev_bytes, prev_t = cur, now
+    # ── Display helpers ───────────────────────────────────────────────────────
 
-            new_bytes = cur - pre_bytes
-            if expected_bytes > 0:
-                ratio = min(new_bytes / expected_bytes, 1.0)
-                eta = (expected_bytes - new_bytes) / speed if speed > 50_000 else -1
-                pct = f"  {ratio*100:3.0f}%"
-                sz  = f"  {_fmt_bytes(new_bytes)} / {_fmt_bytes(expected_bytes)}"
-            else:
-                ratio, eta = 0.0, -1
-                pct = ""
-                sz  = f"  {_fmt_bytes(new_bytes)}" if new_bytes > 0 else ""
+    def _fmt_slot(s: dict | None) -> str:
+        """Render one slot as a single terminal line (no trailing newline)."""
+        if s is None:
+            return f"  {_GRAY}——{_RST}"
+        mid = s.get("model_id", "?")
+        mid_short = mid if len(mid) <= 42 else mid[:39] + "…"
+        if s.get("done"):
+            if s.get("cached"):
+                return f"  {_GRN}✓{_RST}  {_DIM}{mid_short}  (cached){_RST}"
+            if s.get("ok"):
+                nb  = s.get("new_bytes", 0)
+                el  = s.get("elapsed", 0)
+                sp  = nb / el if el > 0.1 else 0
+                sp_s = f"  {_fmt_speed(sp)}" if sp > 50_000 else ""
+                return (f"  {_GRN}✓{_RST}  {mid_short}"
+                        f"  {_DIM}{_fmt_bytes(nb)}  {_fmt_eta(el)}{sp_s}{_RST}")
+            err = s.get("err", "")[:52]
+            return f"  {_RED}✗{_RST}  {_DIM}{mid_short}  {err}{_RST}"
+        # Active download — render progress bar
+        ratio = s.get("ratio", 0.0)
+        nb    = s.get("new_bytes", 0)
+        tb    = s.get("total_bytes", 0)
+        speed = s.get("speed", 0.0)
+        eta   = s.get("eta", -1.0)
+        pct   = f" {ratio * 100:3.0f}%" if tb > 0 else ""
+        sz    = (f" {_fmt_bytes(nb)}/{_fmt_bytes(tb)}" if tb > 0
+                 else (f" {_fmt_bytes(nb)}" if nb > 0 else ""))
+        sp_s  = f" {_fmt_speed(speed)}"  if speed > 50_000 else ""
+        et_s  = f" {_fmt_eta(eta)}"      if eta   > 5      else ""
+        bar   = _bar(ratio, width=20)
+        return f"  {bar}{pct}{sz}{sp_s}{et_s}  {_DIM}{mid_short}{_RST}"
 
-            spd   = f"  {_fmt_speed(speed)}" if speed > 50_000 else ""
-            eta_s = f"  {_fmt_eta(eta)}"      if eta > 5       else ""
-            line  = f"         {_bar(ratio)}{pct}{sz}{spd}{eta_s}"
-            sys.stdout.write(f"\r{line:<{_tw()}}")
+    # Reserve n_slots + 1 lines (blank separator + one per slot).
+    print()
+    for _ in range(n_slots):
+        print()
+    display_height = n_slots + 1
+
+    stop_display = threading.Event()
+
+    def _display_loop():
+        while not stop_display.is_set():
+            with slot_lock:
+                snap = {k: (dict(v) if v else None) for k, v in slots.items()}
+            buf = [f"\033[{display_height}A", "\033[2K\n"]
+            for i in range(n_slots):
+                buf.append(f"\033[2K{_fmt_slot(snap.get(i))}\n")
+            sys.stdout.write("".join(buf))
             sys.stdout.flush()
+            time.sleep(0.3)
 
-    mon = threading.Thread(target=_monitor, daemon=True)
-    mon.start()
+    disp = threading.Thread(target=_display_loop, daemon=True)
+    disp.start()
 
-    # Suppress HF's own tqdm progress bars so they don't clobber ours.
+    # ── Worker ────────────────────────────────────────────────────────────────
+
     prev_hf_bar = os.environ.get("HF_HUB_DISABLE_PROGRESS_BARS")
     os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 
-    ok, err_msg = True, ""
+    def _worker(model_id: str, item: dict) -> dict:
+        sid = _claim_slot()
+
+        # Query expected size from the HF manifest for accurate progress ratio.
+        expected_bytes = 0
+        try:
+            info = HfApi().model_info(model_id, timeout=15)
+            for sib in (info.siblings or []):
+                sz = getattr(sib, "size", None)
+                if sz and not any(_fnmatch.fnmatch(sib.rfilename, p)
+                                  for p in _IGNORE_PATTERNS):
+                    expected_bytes += sz
+        except Exception:
+            pass
+
+        cache_key = "models--" + model_id.replace("/", "--")
+        model_dir = HF_CACHE_DIR / cache_key
+        pre_bytes = _dir_bytes(model_dir)
+
+        with slot_lock:
+            slots[sid] = {"model_id": model_id, "ratio": 0.0, "new_bytes": 0,
+                          "total_bytes": expected_bytes, "speed": 0.0, "eta": -1.0,
+                          "done": False, "ok": True, "err": "", "cached": False,
+                          "elapsed": 0}
+
+        stop_mon = threading.Event()
+        t0       = time.monotonic()
+
+        def _mon():
+            prev_b, prev_t = pre_bytes, t0
+            while not stop_mon.wait(0.5):
+                cur  = _dir_bytes(model_dir)
+                now  = time.monotonic()
+                dt   = now - prev_t
+                inc  = cur - prev_b
+                spd  = inc / dt if dt > 0.2 and inc > 0 else 0
+                prev_b, prev_t = cur, now
+                nb   = cur - pre_bytes
+                rat  = min(nb / expected_bytes, 1.0) if expected_bytes > 0 else 0.0
+                eta  = ((expected_bytes - nb) / spd
+                        if spd > 50_000 and expected_bytes > 0 else -1.0)
+                with slot_lock:
+                    st = slots.get(sid)
+                    if st and not st.get("done"):
+                        st.update({"ratio": rat, "new_bytes": nb,
+                                   "speed": spd, "eta": eta})
+
+        mon = threading.Thread(target=_mon, daemon=True)
+        mon.start()
+
+        ok, err = True, ""
+        try:
+            snapshot_download(model_id, ignore_patterns=_IGNORE_PATTERNS,
+                              local_files_only=False)
+        except Exception as e:
+            ok, err = False, str(e)[:80]
+        finally:
+            stop_mon.set()
+            mon.join(timeout=1.0)
+
+        elapsed   = time.monotonic() - t0
+        new_bytes = _dir_bytes(model_dir) - pre_bytes
+        cached    = ok and elapsed < 2.0 and new_bytes < 1_000
+
+        with slot_lock:
+            prev_ratio = (slots[sid].get("ratio", 0.0)
+                          if slots.get(sid) else 0.0)
+            slots[sid] = {"model_id": model_id, "done": True, "ok": ok,
+                          "err": err, "cached": cached, "elapsed": elapsed,
+                          "new_bytes": new_bytes, "total_bytes": expected_bytes,
+                          "ratio": 1.0 if ok else prev_ratio,
+                          "speed": 0.0, "eta": -1.0}
+
+        return {"model_id": model_id, "ok": ok, "err": err,
+                "cached": cached, "elapsed": elapsed, "new_bytes": new_bytes}
+
+    # ── Execution with disk-limit checks ─────────────────────────────────────
+
+    ok_c = fail_c = skip_c = 0
+    stop_reason: str | None = None
+
     try:
-        snapshot_download(model_id, ignore_patterns=_IGNORE_PATTERNS,
-                          local_files_only=False)
-    except Exception as e:
-        ok = False
-        err_msg = str(e)[:80]
+        with ThreadPoolExecutor(max_workers=n_slots) as executor:
+            future_map = {executor.submit(_worker, mid, item): mid
+                          for mid, item in items_ordered}
+            all_futures = list(future_map)
+
+            for fut in as_completed(all_futures):
+                try:
+                    res = fut.result()
+                except _FutureCancelled:
+                    continue   # already counted in skip_c via cancel loop below
+                except Exception as e:
+                    res = {"model_id": future_map[fut], "ok": False,
+                           "err": str(e)[:80], "cached": False,
+                           "elapsed": 0, "new_bytes": 0}
+
+                if res["ok"]:
+                    ok_c += 1
+                else:
+                    fail_c += 1
+
+                if stop_reason:
+                    continue  # let running futures finish; skip checks
+
+                current_gb = _hf_cache_gb()
+                session_gb = current_gb - baseline_gb
+                free_gb    = _shutil.disk_usage(cache_root).free / 1e9
+
+                if max_cache_gb > 0 and current_gb >= max_cache_gb:
+                    stop_reason = f"cache at {current_gb:.1f}/{max_cache_gb:.0f} GB"
+                elif (session_download_max_gb > 0
+                      and session_gb >= session_download_max_gb):
+                    stop_reason = (f"session cap "
+                                   f"{session_gb:.1f}/{session_download_max_gb:.0f} GB")
+                elif free_gb < 5.0:
+                    stop_reason = f"disk critically low ({free_gb:.1f} GB free)"
+
+                if stop_reason:
+                    for f in all_futures:
+                        if not f.done() and f.cancel():
+                            skip_c += 1
     finally:
-        # Restore the original env state regardless of outcome.
         if prev_hf_bar is None:
             os.environ.pop("HF_HUB_DISABLE_PROGRESS_BARS", None)
         else:
             os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = prev_hf_bar
-        stop_evt.set()
-        mon.join(timeout=1.0)
 
-    # Erase the monitor line so the result summary prints on a clean line.
-    sys.stdout.write(f"\r{' ' * _tw()}\r")
+    # ── Final display repaint ─────────────────────────────────────────────────
+    stop_display.set()
+    disp.join(timeout=1.0)
+
+    with slot_lock:
+        snap = {k: (dict(v) if v else None) for k, v in slots.items()}
+    buf = [f"\033[{display_height}A", "\033[2K\n"]
+    for i in range(n_slots):
+        buf.append(f"\033[2K{_fmt_slot(snap.get(i))}\n")
+    sys.stdout.write("".join(buf))
     sys.stdout.flush()
 
-    elapsed    = time.monotonic() - start_time
-    post_bytes = _dir_bytes(model_dir)
-    new_bytes  = post_bytes - pre_bytes
+    if stop_reason:
+        print(f"\n  {_GOLD}Stopped: {stop_reason} — {skip_c} deferred{_RST}")
 
-    if ok:
-        if elapsed < 2.0 and new_bytes < 1_000:
-            # Nothing was fetched — model was already in the local cache.
-            result = f"{_DIM}(already cached){_RST}  {_GRN}✓{_RST}"
-        else:
-            speed   = new_bytes / elapsed if elapsed > 0.1 else 0
-            spd_str = f"  {_fmt_speed(speed)}" if speed > 0 else ""
-            result  = (f"{_GRN}✓{_RST}  {_fmt_bytes(new_bytes)}"
-                       f"  {_DIM}{_fmt_eta(elapsed)}{spd_str}{_RST}")
-        print(f"         {result}")
-    else:
-        print(f"         {_RED}✗{_RST}  {_DIM}{err_msg}{_RST}")
-
-    return ok
+    return ok_c, fail_c, skip_c
 
 
 def _predownload_queues(chip_queues: list[list[dict]], max_cache_gb: float = 0.0,
-                        session_download_max_gb: float = 0.0) -> None:
+                        session_download_max_gb: float = 0.0,
+                        parallel_downloads: int = 4) -> None:
     """Pre-fetch HuggingFace weights for all frontier models before compile starts.
 
     Collects unique frontier model IDs across all chip queues and calls
@@ -651,8 +784,9 @@ def _predownload_queues(chip_queues: list[list[dict]], max_cache_gb: float = 0.0
     all chips on equal footing at compile time — none stalls waiting for a
     download that others finished earlier.
 
-    Forge-model seed entries skip this step; their weights are pulled by the
-    loader's own from_pretrained call and are typically already cached.
+    Downloads run in parallel (up to parallel_downloads concurrent) with a
+    live multi-slot progress display.  Forge-model seed entries skip this step;
+    their weights are pulled by the loader's own from_pretrained call.
     """
     try:
         from huggingface_hub import snapshot_download  # noqa: F401 — availability check
@@ -661,8 +795,7 @@ def _predownload_queues(chip_queues: list[list[dict]], max_cache_gb: float = 0.0
         return
 
     # Collect unique frontier IDs across all chip queues.
-    # We use a dict (model_id → item) rather than a set so we retain the
-    # full item metadata for the progress display and size hints.
+    # Dict (model_id → item) so we keep metadata for size hints.
     seen: dict[str, dict] = {}
     for queue in chip_queues:
         for item in queue:
@@ -673,12 +806,10 @@ def _predownload_queues(chip_queues: list[list[dict]], max_cache_gb: float = 0.0
         print(f"  {_DIM}No frontier models to pre-download.{_RST}")
         return
 
-    # Snapshot current cache size before any downloads begin; used to compute
-    # per-session totals and to enforce the session_download_max_gb guard.
-    cache_root = HF_CACHE_DIR.parent if HF_CACHE_DIR.exists() else Path.home()
+    cache_root  = HF_CACHE_DIR.parent if HF_CACHE_DIR.exists() else Path.home()
     baseline_gb = _hf_cache_gb()
 
-    # Report active limits so the user understands what constraints apply.
+    # Report active limits before starting downloads.
     limit_parts = [f"cache {baseline_gb:.1f} GB used"]
     if max_cache_gb > 0:
         limit_parts.append(f"cap {max_cache_gb:.0f} GB")
@@ -687,38 +818,18 @@ def _predownload_queues(chip_queues: list[list[dict]], max_cache_gb: float = 0.0
             return
     if session_download_max_gb > 0:
         limit_parts.append(f"session ≤ {session_download_max_gb:.0f} GB new")
+    n_parallel = min(parallel_downloads, len(seen))
+    limit_parts.append(f"{n_parallel}× parallel")
     print(f"  {_DIM}{' · '.join(limit_parts)}{_RST}")
 
-    total = len(seen)
-    ok = fail = skipped = 0
-
-    for i, (model_id, item) in enumerate(seen.items(), 1):
-        # Guard: cache ceiling — check before each model, not just at start.
-        current_gb = _hf_cache_gb()
-        if max_cache_gb > 0 and current_gb >= max_cache_gb:
-            skipped = total - i + 1
-            print(f"\n  {_GOLD}Cache at {current_gb:.1f}/{max_cache_gb:.0f} GB — "
-                  f"{skipped} model(s) deferred{_RST}")
-            break
-        # Guard: session download cap.
-        session_gb = current_gb - baseline_gb
-        if session_download_max_gb > 0 and session_gb >= session_download_max_gb:
-            skipped = total - i + 1
-            print(f"\n  {_GOLD}Session cap reached ({session_gb:.1f}/{session_download_max_gb:.0f} GB) — "
-                  f"{skipped} model(s) deferred{_RST}")
-            break
-        # Guard: critically low free space (< 5 GB) — hard stop.
-        free_gb = _shutil.disk_usage(cache_root).free / 1e9
-        if free_gb < 5.0:
-            skipped = total - i + 1
-            print(f"\n  {_RED}Disk critically low ({free_gb:.1f} GB free) — "
-                  f"stopping ({skipped} remaining){_RST}")
-            break
-
-        if _download_one(model_id, item, i, total):
-            ok += 1
-        else:
-            fail += 1
+    ok, fail, skipped = _run_parallel_downloads(
+        items_ordered=list(seen.items()),
+        max_workers=parallel_downloads,
+        cache_root=cache_root,
+        baseline_gb=baseline_gb,
+        max_cache_gb=max_cache_gb,
+        session_download_max_gb=session_download_max_gb,
+    )
 
     # Final tally line with color-coded status pills.
     final_session_gb = _hf_cache_gb() - baseline_gb
@@ -898,6 +1009,9 @@ def main():
     run_p.add_argument("--session-download-max",  type=float, default=0.0, metavar="GB",
                        help="Stop pre-downloading after fetching GB gigabytes this session "
                             "(0=off; e.g. 60 to limit a single run to 60 GB of new downloads)")
+    run_p.add_argument("--parallel-downloads",    type=int,   default=4, metavar="N",
+                       help="Number of concurrent model downloads during pre-fetch "
+                            "(default: 4; try 2 on slower connections)")
 
     sub.add_parser("summary", help="Print bestiary summary")
 
@@ -922,6 +1036,7 @@ def main():
         args.allow_gated = False
         args.max_cache_gb = 0.0
         args.session_download_max = 0.0
+        args.parallel_downloads = 4
 
     # ── Hardware detection ────────────────────────────────────────────────────
     from lib.hardware import detect_hardware, get_hardware_summary
@@ -972,7 +1087,8 @@ def main():
         frontier_total = sum(1 for q in chip_queues for m in q if m.get("is_frontier"))
         _section(f"PRE-DOWNLOAD  ({frontier_total} frontier models)")
         _predownload_queues(chip_queues, max_cache_gb=args.max_cache_gb,
-                            session_download_max_gb=args.session_download_max)
+                            session_download_max_gb=args.session_download_max,
+                            parallel_downloads=args.parallel_downloads)
 
     # ── Write per-chip queue JSON to /tmp ─────────────────────────────────────
     # expedition_worker.py reads these files at startup.  Writing happens after
