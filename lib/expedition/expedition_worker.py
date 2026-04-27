@@ -37,7 +37,7 @@ GREEN  = "\033[92m"
 RED    = "\033[91m"
 CYAN   = "\033[96m"
 YELLOW = "\033[93m"
-PURPLE = "\033[95m"
+PURPLE = "\033[35m"
 PINK   = "\033[95m"
 BLUE   = "\033[94m"
 GOLD   = "\033[33m"
@@ -65,6 +65,12 @@ _NEWNESS_STYLE = {
     "established": ("",     "",              0.0),
     "familiar":    ("",     "",              0.0),
 }
+
+# Fixed fieldnames for the per-chip CSV results file.
+# Using a module-level constant (rather than results[0].keys()) prevents
+# ValueError when success rows and failure rows have different key sets.
+# extrasaction="ignore" in DictWriter allows both row shapes to coexist.
+_CSV_FIELDNAMES = ["model", "status", "pts", "compile_time", "artifact", "first_ever", "error"]
 
 
 class TimeoutException(Exception):
@@ -117,8 +123,6 @@ def _print_rarity_reveal(model_id: str, rarity: str, newness: str,
         source:        Data origin label.
         is_first_ever: True if this model has never compiled before.
     """
-    import pyfiglet
-
     rarity_color, rarity_label, rarity_pause = _RARITY_STYLE.get(
         rarity, (CYAN, "", 0.0))
     newness_color, newness_label, newness_pause = _NEWNESS_STYLE.get(
@@ -145,6 +149,9 @@ def _print_rarity_reveal(model_id: str, rarity: str, newness: str,
     # Switch to "small" font for very long names to avoid terminal wrapping.
     font = "small" if len(short_name) > 25 else "standard"
     try:
+        # Import inside the try so an ImportError (pyfiglet not installed) is
+        # caught by the same except and falls through to the plain fallback.
+        import pyfiglet
         banner = pyfiglet.figlet_format(short_name, font=font)
         print(f"{rarity_color or CYAN}{banner}{RESET}", end="")
     except Exception:
@@ -368,6 +375,10 @@ def _build_loader(item: QueueItem):
         return loader
     else:
         # Known models have a dedicated loader class in the tt-forge-models repo.
+        if item.loader_module is None or item.loader_class is None:
+            raise ValueError(
+                f"Non-frontier model {item.model_id!r} missing loader_module/loader_class"
+            )
         import importlib
         forge_models_path = os.path.expanduser("~/code/tt-forge-models")
         if forge_models_path not in sys.path:
@@ -377,9 +388,9 @@ def _build_loader(item: QueueItem):
         instance = cls()
         def loader():
             return instance.load_model()
-        # Propagate the default input type; tt-forge-models loaders are
-        # typically vision models (image), so default to that.
-        loader._input_type = "image"
+        # Prefer the loader instance's own _input_type if declared; fall back to
+        # "image" since most tt-forge-models loaders are vision models.
+        loader._input_type = getattr(instance, "_input_type", "image")
         return loader
 
 
@@ -401,6 +412,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
         queue_path:    Path to the queue JSON file for this chip.
         results_path:  Path to write the per-chip CSV results file.
     """
+    import datetime
     from lib.expedition.bestiary import Bestiary
     from lib.expedition.decoder import decode, FrontierModelInfo
     from lib.expedition.hud import ChipHUD
@@ -485,7 +497,6 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             _print_success(item.model_id, compile_time, elapsed, artifact,
                            score.pts, is_first_ever, hud.state.streak)
 
-            import datetime
             compiled_at = datetime.datetime.now().isoformat()
 
             # Persist the artifact text to data/artifacts/<safe_name>.txt.
@@ -545,7 +556,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
     Path(results_path).parent.mkdir(parents=True, exist_ok=True)
     with open(results_path, "w", newline="") as f:
         if results:
-            writer = csv.DictWriter(f, fieldnames=results[0].keys())
+            writer = csv.DictWriter(f, fieldnames=_CSV_FIELDNAMES, extrasaction="ignore")
             writer.writeheader()
             writer.writerows(results)
 
