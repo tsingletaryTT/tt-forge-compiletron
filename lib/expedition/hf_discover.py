@@ -58,6 +58,17 @@ _TAG_TO_AUTO = {
 # benefit from (and may require) multi-chip mesh configurations.
 _LARGE_MOE_PATTERNS = ["deepseek", "mixtral", "qwen", "kimi"]
 
+# Model ID substrings that identify formats forge cannot compile.  These are
+# binary-quantized or runtime-specific formats that transformers cannot load
+# via AutoModel.from_pretrained(), so attempting them wastes download bandwidth.
+_UNSUPPORTED_FORMAT_PATTERNS = {
+    "-gguf",       # llama.cpp GGUF
+    "-ggml",       # older llama.cpp GGML
+    "-exl2",       # ExLlamaV2
+    "-llamafile",  # Mozilla llamafile
+    "-mlx",        # Apple MLX (Silicon-specific)
+}
+
 # Parameter count threshold (in billions) above which a model is flagged for
 # multi-chip mesh placement regardless of architecture name.
 _LARGE_PARAM_THRESHOLD_B = 40
@@ -219,6 +230,11 @@ def discover_frontier(
         tag = getattr(m, "pipeline_tag", None)
         if not tag or tag not in _SUPPORTED_TAGS:
             _log.debug("skipped_unsupported_task model=%s tag=%s", m.id, tag)
+            continue
+        # Skip binary-quantized / runtime-specific formats forge can't compile.
+        model_id_lower = m.id.lower()
+        if any(pat in model_id_lower for pat in _UNSUPPORTED_FORMAT_PATTERNS):
+            _log.debug("skipped_unsupported_format model=%s", m.id)
             continue
         # Skip models we already know about or have already compiled.
         if m.id in compiled_ids or m.id in known_model_ids:

@@ -305,7 +305,8 @@ def _interleave(seed: list, frontier: list, seed_ratio: float) -> list:
 
 # ── Pre-download ─────────────────────────────────────────────────────────────
 
-def _predownload_queues(chip_queues: list[list[dict]], max_cache_gb: float = 0.0) -> None:
+def _predownload_queues(chip_queues: list[list[dict]], max_cache_gb: float = 0.0,
+                        session_download_max_gb: float = 0.0) -> None:
     """Pre-fetch HuggingFace weights for all frontier models before compile starts.
 
     Collects unique frontier model IDs across all chip queues and calls
@@ -336,28 +337,41 @@ def _predownload_queues(chip_queues: list[list[dict]], max_cache_gb: float = 0.0
     # Large binary formats we can't use — skip to save bandwidth and disk.
     ignore = ["*.msgpack", "*.h5", "flax_model*", "tf_model*", "rust_model*", "*.ot"]
 
-    # Disk guard: measure cache once up front, re-check free space per model.
+    # Disk guard: measure cache once up front, re-check per model.
     import shutil as _shutil
     cache_root = HF_CACHE_DIR.parent if HF_CACHE_DIR.exists() else Path.home()
+    baseline_gb = _hf_cache_gb()  # snapshot before this session's downloads begin
+
+    limits = []
     if max_cache_gb > 0:
-        current_gb = _hf_cache_gb()
-        print(f"  HF cache: {current_gb:.1f} GB used  (limit {max_cache_gb:.0f} GB)")
-        if current_gb >= max_cache_gb:
+        print(f"  HF cache: {baseline_gb:.1f} GB used  (limit {max_cache_gb:.0f} GB)")
+        if baseline_gb >= max_cache_gb:
             print("  Cache already at limit — skipping pre-download.")
             return
+        limits.append(f"cache≤{max_cache_gb:.0f} GB")
+    if session_download_max_gb > 0:
+        limits.append(f"session≤{session_download_max_gb:.0f} GB new")
+    if limits:
+        print(f"  Download guards: {', '.join(limits)}")
 
     total = len(seen)
     print(f"\n  Pre-downloading {total} frontier model(s) to HF cache...")
     ok = fail = skipped = 0
+    session_gb = 0.0  # cumulative new GB fetched this session
     for i, (model_id, item) in enumerate(seen.items(), 1):
-        # Per-model disk checks: cache limit and critically low free space.
-        if max_cache_gb > 0:
-            current_gb = _hf_cache_gb()
-            if current_gb >= max_cache_gb:
-                skipped = total - i + 1
-                print(f"\n  Cache at {current_gb:.1f}/{max_cache_gb:.0f} GB — "
-                      f"stopping ({skipped} will download at compile time)")
-                break
+        # Per-model disk checks before attempting the download.
+        current_gb = _hf_cache_gb()
+        if max_cache_gb > 0 and current_gb >= max_cache_gb:
+            skipped = total - i + 1
+            print(f"\n  Cache at {current_gb:.1f}/{max_cache_gb:.0f} GB — "
+                  f"stopping ({skipped} will download at compile time)")
+            break
+        session_gb = current_gb - baseline_gb
+        if session_download_max_gb > 0 and session_gb >= session_download_max_gb:
+            skipped = total - i + 1
+            print(f"\n  Session cap reached ({session_gb:.1f}/{session_download_max_gb:.0f} GB) — "
+                  f"stopping ({skipped} will download at compile time)")
+            break
         free_gb = _shutil.disk_usage(cache_root).free / 1e9
         if free_gb < 5.0:
             skipped = total - i + 1
@@ -368,8 +382,9 @@ def _predownload_queues(chip_queues: list[list[dict]], max_cache_gb: float = 0.0
         task = item.get("task", "")
         params = item.get("hf_params_b", 0) or 0
         size_hint = f" ~{params:.1f}B" if params > 0 else ""
+        session_str = f"  +{session_gb:.1f} GB this session" if session_gb > 0.1 else ""
         label = f"{model_id}{size_hint} ({task})" if task else f"{model_id}{size_hint}"
-        print(f"  [{i:>{len(str(total))}}/{total}] {label[:64]:<66}", end="", flush=True)
+        print(f"  [{i:>{len(str(total))}}/{total}] {label[:60]:<62}{session_str}", end="  ", flush=True)
         try:
             snapshot_download(model_id, ignore_patterns=ignore, local_files_only=False)
             print("✓")
@@ -378,9 +393,11 @@ def _predownload_queues(chip_queues: list[list[dict]], max_cache_gb: float = 0.0
             print(f"✗  {str(e)[:50]}")
             fail += 1
 
+    final_session_gb = _hf_cache_gb() - baseline_gb
     parts = [f"✓{ok}"]
     if fail:    parts.append(f"✗{fail}")
-    if skipped: parts.append(f"⏭{skipped} deferred (disk limit)")
+    if skipped: parts.append(f"⏭{skipped} deferred")
+    if final_session_gb > 0.1: parts.append(f"+{final_session_gb:.1f} GB fetched")
     print(f"\n  Pre-download complete — {'  '.join(parts)}\n")
 
 
@@ -547,9 +564,12 @@ def main():
                        help="Include gated HuggingFace models (requires an approved "
                             "access token — downloads will fail without it)")
     # ── Disk management ───────────────────────────────────────────────────────
-    run_p.add_argument("--max-cache-gb",     type=float, default=0.0, metavar="GB",
+    run_p.add_argument("--max-cache-gb",          type=float, default=0.0, metavar="GB",
                        help="Stop pre-downloading when HF cache exceeds GB gigabytes "
                             "(0=off; e.g. 150 to cap at 150 GB)")
+    run_p.add_argument("--session-download-max",  type=float, default=0.0, metavar="GB",
+                       help="Stop pre-downloading after fetching GB gigabytes this session "
+                            "(0=off; e.g. 60 to limit a single run to 60 GB of new downloads)")
 
     sub.add_parser("summary", help="Print bestiary summary")
 
@@ -573,6 +593,7 @@ def main():
         args.max_model_params = 0.0
         args.allow_gated = False
         args.max_cache_gb = 0.0
+        args.session_download_max = 0.0
 
     # ── Hardware detection ────────────────────────────────────────────────────
     from lib.hardware import detect_hardware, get_hardware_summary
@@ -606,7 +627,8 @@ def main():
 
     # ── Pre-download weights for fairness ────────────────────────────────────
     if not args.no_predownload:
-        _predownload_queues(chip_queues, max_cache_gb=args.max_cache_gb)
+        _predownload_queues(chip_queues, max_cache_gb=args.max_cache_gb,
+                            session_download_max_gb=args.session_download_max)
 
     # ── Write per-chip queue JSON to /tmp ─────────────────────────────────────
     # expedition_worker.py reads these files at startup.

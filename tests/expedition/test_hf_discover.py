@@ -192,6 +192,50 @@ class TestParseParamsFromName:
         assert _parse_params_from_name("google/vit-base-patch16-224") == 0.0
 
 
+class TestUnsupportedFormatFilter:
+    def test_gguf_skipped(self):
+        models = [_mock_model("org/Model-7B-Q4_K_M-GGUF", pipeline_tag="text-generation")]
+        with patch("lib.expedition.hf_discover.HfApi") as MockApi:
+            MockApi.return_value.list_models.return_value = iter(models)
+            result = discover_frontier(compiled_ids=set(), known_model_ids=set())
+        assert len(result) == 0
+
+    def test_ggml_skipped(self):
+        models = [_mock_model("org/llama-7b-GGML", pipeline_tag="text-generation")]
+        with patch("lib.expedition.hf_discover.HfApi") as MockApi:
+            MockApi.return_value.list_models.return_value = iter(models)
+            result = discover_frontier(compiled_ids=set(), known_model_ids=set())
+        assert len(result) == 0
+
+    def test_exl2_skipped(self):
+        models = [_mock_model("org/Model-EXL2", pipeline_tag="text-generation")]
+        with patch("lib.expedition.hf_discover.HfApi") as MockApi:
+            MockApi.return_value.list_models.return_value = iter(models)
+            result = discover_frontier(compiled_ids=set(), known_model_ids=set())
+        assert len(result) == 0
+
+    def test_mlx_skipped(self):
+        models = [_mock_model("org/Model-MLX", pipeline_tag="text-generation")]
+        with patch("lib.expedition.hf_discover.HfApi") as MockApi:
+            MockApi.return_value.list_models.return_value = iter(models)
+            result = discover_frontier(compiled_ids=set(), known_model_ids=set())
+        assert len(result) == 0
+
+    def test_standard_safetensors_model_passes(self):
+        models = [_mock_model("org/standard-7b-model", pipeline_tag="text-generation")]
+        with patch("lib.expedition.hf_discover.HfApi") as MockApi:
+            MockApi.return_value.list_models.return_value = iter(models)
+            result = discover_frontier(compiled_ids=set(), known_model_ids=set())
+        assert len(result) == 1
+
+    def test_case_insensitive(self):
+        models = [_mock_model("org/Model-7B-q4-gguf", pipeline_tag="text-generation")]
+        with patch("lib.expedition.hf_discover.HfApi") as MockApi:
+            MockApi.return_value.list_models.return_value = iter(models)
+            result = discover_frontier(compiled_ids=set(), known_model_ids=set())
+        assert len(result) == 0
+
+
 class TestGGUFSizeFilter:
     """GGUF models have no safetensors metadata — the name-based fallback must catch them."""
 
@@ -206,7 +250,9 @@ class TestGGUFSizeFilter:
             )
         assert len(result) == 0
 
-    def test_gguf_7b_passes_8b_limit(self):
+    def test_gguf_always_filtered_regardless_of_size(self):
+        # GGUF models are rejected by the format filter before size is checked —
+        # forge can't compile them, so size is irrelevant.
         models = [_mock_model("org/Llama-3-Groq-8B-Tool-Use-Q4_K_M-GGUF",
                               pipeline_tag="text-generation", downloads=5_000)]
         models[0].safetensors = None
@@ -215,7 +261,7 @@ class TestGGUFSizeFilter:
             result = discover_frontier(
                 compiled_ids=set(), known_model_ids=set(), max_params_b=8.0
             )
-        assert len(result) == 1
+        assert len(result) == 0
 
     def test_name_params_stored_on_frontier_model(self):
         mock = _mock_model("org/Model-13B-Instruct", "text-generation", downloads=10_000)
