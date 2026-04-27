@@ -93,3 +93,75 @@ class TestFrontierModelInfo:
         info = FrontierModelInfo(name="test", task="text-generation")
         assert info.task == "text-generation"
         assert info.source == "huggingface"
+
+
+class TestDecodeSegmentation:
+    def test_returns_string(self):
+        info = FrontierModelInfo(name="seg-model", task="semantic-segmentation")
+        output = _make_tensor((1, 10, 256, 256))
+        result = decode(output, info)
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+
+class TestDecodeASR:
+    def test_with_tokenizer(self):
+        info = FrontierModelInfo(name="whisper", task="automatic-speech-recognition")
+        output = _make_tensor((1, 80))
+        tokenizer = MagicMock()
+        tokenizer.decode.return_value = "hello world"
+        result = decode(output, info, tokenizer=tokenizer)
+        assert isinstance(result, str)
+
+    def test_without_tokenizer_falls_back(self):
+        info = FrontierModelInfo(name="whisper", task="automatic-speech-recognition")
+        output = _make_tensor((1, 80))
+        result = decode(output, info, tokenizer=None)
+        assert isinstance(result, str)
+
+
+class TestDecodeDepth:
+    def test_returns_string(self):
+        info = FrontierModelInfo(name="depth-model", task="depth-estimation")
+        output = _make_tensor((1, 1, 256, 256))
+        result = decode(output, info)
+        assert isinstance(result, str)
+
+
+class TestDecodeImageGen:
+    def test_returns_range_info(self):
+        info = FrontierModelInfo(name="stable-diffusion", task="text-to-image")
+        output = _make_tensor((1, 3, 512, 512))
+        result = decode(output, info)
+        assert isinstance(result, str)
+        # image_gen now uses _raw_fallback which includes range
+        assert "shape" in result.lower()
+
+
+class TestTaskAliases:
+    def test_fill_mask_dispatches(self):
+        info = FrontierModelInfo(name="bert", task="fill-mask")
+        output = _make_tensor((1, 10, 30000))
+        tokenizer = MagicMock()
+        tokenizer.decode.return_value = "cat"
+        tokenizer.mask_token_id = 103
+        result = decode(output, info, tokenizer=tokenizer)
+        assert isinstance(result, str)
+
+    def test_qa_dispatch(self):
+        info = FrontierModelInfo(name="bert-qa", task="question-answering")
+        # QA output: tuple of (start_logits, end_logits) each shape (1, seq_len)
+        start_logits = MagicMock()
+        start_logits.__getitem__ = lambda self, i: MagicMock(argmax=lambda: MagicMock(item=lambda: 5))
+        end_logits = MagicMock()
+        end_logits.__getitem__ = lambda self, i: MagicMock(argmax=lambda: MagicMock(item=lambda: 8))
+        result = decode((start_logits, end_logits), info)
+        assert isinstance(result, str)
+
+    def test_visual_qa_dispatches(self):
+        info = FrontierModelInfo(name="blip", task="visual-question-answering")
+        output = _make_tensor((1, 20, 30000))
+        tokenizer = MagicMock()
+        tokenizer.decode.return_value = "a cat sitting"
+        result = decode(output, info, tokenizer=tokenizer)
+        assert isinstance(result, str)

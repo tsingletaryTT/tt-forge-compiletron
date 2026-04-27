@@ -148,10 +148,30 @@ def _decode_obj_det(output: Any) -> str:
 
 
 def _decode_segmentation(output: Any) -> str:
-    """Return segmentation map shape."""
+    """Return unique class labels present in the segmentation mask.
+
+    For a (batch, classes, H, W) logit tensor we argmax over the class
+    dimension to get the predicted class per pixel, then report the sorted
+    set of unique class ids.  Falls back to shape-only info if numpy is
+    unavailable or the tensor has an unexpected layout.
+    """
     try:
         if hasattr(output, "shape"):
-            return f"segmentation map shape={tuple(output.shape)}"
+            try:
+                import numpy as np
+                arr = output.float().cpu().numpy()
+                # Argmax over class dim: (batch, classes, H, W) → (batch, H, W)
+                if arr.ndim == 4:
+                    mask = arr.argmax(axis=1)
+                elif arr.ndim == 3:
+                    # (classes, H, W) → (H, W)
+                    mask = arr.argmax(axis=0)
+                else:
+                    mask = arr
+                unique_classes = sorted(np.unique(mask).astype(int).tolist())
+                return f"classes: {unique_classes} shape={tuple(output.shape)}"
+            except Exception:
+                return f"segmentation map shape={tuple(output.shape)}"
         return _raw_fallback(output)
     except Exception:
         return _raw_fallback(output)
@@ -171,6 +191,103 @@ def _decode_depth(output: Any) -> str:
             except Exception:
                 return f"depth map shape={tuple(output.shape)}"
         return _raw_fallback(output)
+    except Exception:
+        return _raw_fallback(output)
+
+
+def _decode_masked_lm(output: Any, tokenizer: Any, inputs: Any) -> str:
+    """Decode the top predicted token at the [MASK] position.
+
+    Looks up the [MASK] token id in *inputs* so we can report the single most
+    likely replacement token rather than greedy-decoding the full sequence.
+    Falls back to full greedy decode if the mask position cannot be found, and
+    to raw tensor info if no tokenizer is supplied.
+    """
+    if tokenizer is None:
+        return _raw_fallback(output)
+    try:
+        # Expected shape: (batch, seq_len, vocab_size)
+        if hasattr(output, "shape") and len(output.shape) == 3:
+            import torch  # noqa: F401 — used implicitly via tensor ops
+
+            # Try to find the [MASK] position from the input ids.
+            mask_pos = None
+            if inputs is not None:
+                input_ids = None
+                if isinstance(inputs, dict) and "input_ids" in inputs:
+                    input_ids = inputs["input_ids"]
+                elif hasattr(inputs, "input_ids"):
+                    input_ids = inputs.input_ids
+                if input_ids is not None and hasattr(tokenizer, "mask_token_id"):
+                    mask_id = tokenizer.mask_token_id
+                    ids = (
+                        input_ids[0].tolist()
+                        if hasattr(input_ids[0], "tolist")
+                        else list(input_ids[0])
+                    )
+                    if mask_id in ids:
+                        mask_pos = ids.index(mask_id)
+
+            if mask_pos is not None:
+                # Decode only the single position that was masked.
+                logits_at_mask = output[0, mask_pos]
+                top_token_id = logits_at_mask.argmax().item()
+                token = tokenizer.decode([top_token_id], skip_special_tokens=True)
+                return f"predicted [MASK]: {token!r}"
+
+            # Mask position unknown — fall back to greedy full-sequence decode.
+            token_ids = output[0].argmax(dim=-1).tolist()
+            text = tokenizer.decode(token_ids, skip_special_tokens=True)
+            return text[:100] if text else _raw_fallback(output)
+        return _raw_fallback(output)
+    except Exception:
+        return _raw_fallback(output)
+
+
+def _decode_qa(output: Any, tokenizer: Any, inputs: Any) -> str:
+    """Extract the answer span from a QA model's start/end position logits.
+
+    QA models (e.g. BERT for QA) return two (batch, seq_len) tensors —
+    *start_logits* and *end_logits*.  We take the argmax of each to identify
+    the answer token span, then decode those tokens if input_ids are available.
+    """
+    if tokenizer is None:
+        return _raw_fallback(output)
+    try:
+        # Support both tuple/list output and attribute-based output objects.
+        if isinstance(output, (tuple, list)) and len(output) == 2:
+            start_logits, end_logits = output
+        elif hasattr(output, "start_logits") and hasattr(output, "end_logits"):
+            start_logits = output.start_logits
+            end_logits = output.end_logits
+        else:
+            # Unknown format — fall back to causal LM decode as best effort.
+            return _decode_causal_lm(output, tokenizer)
+
+        start_idx = start_logits[0].argmax().item()
+        end_idx = end_logits[0].argmax().item()
+        # Ensure valid span (end must not precede start).
+        if end_idx < start_idx:
+            end_idx = start_idx
+
+        # Decode the answer span from input_ids if available.
+        if inputs is not None:
+            input_ids = None
+            if isinstance(inputs, dict) and "input_ids" in inputs:
+                input_ids = inputs["input_ids"]
+            elif hasattr(inputs, "input_ids"):
+                input_ids = inputs.input_ids
+            if input_ids is not None:
+                ids = (
+                    input_ids[0].tolist()
+                    if hasattr(input_ids[0], "tolist")
+                    else list(input_ids[0])
+                )
+                answer_ids = ids[start_idx : end_idx + 1]
+                answer = tokenizer.decode(answer_ids, skip_special_tokens=True)
+                return f"answer: {answer!r} (tokens {start_idx}–{end_idx})"
+
+        return f"answer span: tokens {start_idx}–{end_idx}"
     except Exception:
         return _raw_fallback(output)
 
@@ -197,8 +314,8 @@ def _decode_asr(output: Any, tokenizer: Any) -> str:
 _FAMILY_DECODERS: dict = {
     "causal_lm":    lambda out, tok, _inp: _decode_causal_lm(out, tok),
     "seq2seq_lm":   lambda out, tok, _inp: _decode_causal_lm(out, tok),
-    "masked_lm":    lambda out, tok, _inp: _decode_causal_lm(out, tok),
-    "qa":           lambda out, tok, _inp: _decode_causal_lm(out, tok),
+    "masked_lm":    lambda out, tok, inp: _decode_masked_lm(out, tok, inp),
+    "qa":           lambda out, tok, inp: _decode_qa(out, tok, inp),
     "image_cls":    lambda out, _tok, _inp: _decode_image_cls(out),
     "obj_det":      lambda out, _tok, _inp: _decode_obj_det(out),
     "segmentation": lambda out, _tok, _inp: _decode_segmentation(out),
@@ -210,9 +327,8 @@ _FAMILY_DECODERS: dict = {
     "tts":          lambda out, _tok, _inp: (
         f"audio output shape={tuple(out.shape) if hasattr(out, 'shape') else '?'}"
     ),
-    "img_gen":      lambda out, _tok, _inp: (
-        f"image output shape={tuple(out.shape) if hasattr(out, 'shape') else '?'}"
-    ),
+    # img_gen uses _raw_fallback so it reports pixel value range as required.
+    "img_gen":      lambda out, _tok, _inp: _raw_fallback(out),
 }
 
 
