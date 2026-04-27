@@ -13,10 +13,14 @@ Usage:
 """
 from __future__ import annotations
 import argparse
+import fnmatch as _fnmatch
 import json
 import os
+import shutil as _shutil
 import subprocess
 import sys
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -48,6 +52,196 @@ def _hf_cache_gb() -> float:
     except Exception:
         pass
     return 0.0
+
+
+# ── ANSI color palette (Tenstorrent theme) ────────────────────────────────────
+# These constants are deliberately short so inline use stays readable.
+# All color codes use 24-bit RGB sequences for consistent rendering in modern
+# terminals; _GRAY falls back to the 256-color table (color #240, dark gray).
+
+_RST   = "\033[0m"
+_BOLD  = "\033[1m"
+_DIM   = "\033[2m"
+_TEAL  = "\033[38;2;79;209;197m"    # #4FD1C5 — primary accent
+_LTEAL = "\033[38;2;129;230;217m"   # #81E6D9 — hover / secondary
+_PINK  = "\033[38;2;236;150;184m"   # #EC96B8 — epic rarity
+_GOLD  = "\033[38;2;244;196;113m"   # #F4C471 — legendary / warnings
+_GRN   = "\033[38;2;39;174;96m"     # #27AE60 — success
+_RED   = "\033[38;2;255;107;107m"   # #FF6B6B — failure
+_GRAY  = "\033[38;5;240m"           # dark gray (256-color table)
+_WHT   = "\033[38;2;232;240;242m"   # #E8F0F2 — main text
+
+
+# ── UI helper functions ───────────────────────────────────────────────────────
+
+def _tw() -> int:
+    """Return current terminal width, clamped to [60, 120]."""
+    return max(60, min(120, _shutil.get_terminal_size((100, 24)).columns))
+
+
+def _bar(ratio: float, width: int = 28) -> str:
+    """Render a teal/dim progress bar of the given character width.
+
+    ratio is clamped to [0, 1].  Filled cells use a solid block (█) in the
+    primary teal accent color; empty cells use a dim light shade (░) so the
+    bar width is always visually consistent even at 0 %.
+    """
+    filled = round(min(ratio, 1.0) * width)
+    return _TEAL + "█" * filled + _DIM + "░" * (width - filled) + _RST
+
+
+def _fmt_num(n) -> str:
+    """Format a raw integer count as a compact human-readable string (e.g. 1.2M, 42k)."""
+    if n is None:
+        return "?"
+    if n >= 1_000_000:
+        return f"{n/1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n/1_000:.0f}k"
+    return str(n)
+
+
+def _fmt_bytes(b: int) -> str:
+    """Format a byte count as a compact human-readable string (GB/MB/KB/B)."""
+    if b >= 1e9:
+        return f"{b/1e9:.2f} GB"
+    if b >= 1e6:
+        return f"{b/1e6:.0f} MB"
+    if b >= 1e3:
+        return f"{b/1e3:.0f} KB"
+    return f"{b} B"
+
+
+def _fmt_speed(bps: float) -> str:
+    """Format a bytes-per-second throughput as a compact human-readable string."""
+    if bps >= 1e9:
+        return f"{bps/1e9:.1f} GB/s"
+    if bps >= 1e6:
+        return f"{bps/1e6:.0f} MB/s"
+    return f"{bps/1e3:.0f} KB/s"
+
+
+def _fmt_eta(seconds: float) -> str:
+    """Format an ETA in seconds as H:MM:SS or M:SS.  Returns '' when unknown or > 1 day."""
+    if seconds <= 0 or seconds > 86400:
+        return ""
+    m, s = divmod(int(seconds), 60)
+    h, m = divmod(m, 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
+
+
+def _section(title: str) -> None:
+    """Print a teal section header with a dim rule extending to the terminal edge."""
+    w = _tw()
+    bar = "─" * max(2, w - len(title) - 6)
+    print(f"\n  {_TEAL}{_BOLD}{title}{_RST}  {_DIM}{bar}{_RST}")
+
+
+def _banner(run_number: int, num_chips: int, hw_summary: str) -> None:
+    """Print the expedition launch banner with run number and hardware summary."""
+    w = min(_tw(), 64)
+    inner = w - 4
+    sub = f"Run #{run_number:03d}  ·  {num_chips}× {hw_summary}"
+    print()
+    print(f"  {_TEAL}╔{'═' * inner}╗{_RST}")
+    print(f"  {_TEAL}║{_RST}  {_BOLD}{_WHT}{'⚡  EXPEDITION MODE':<{inner-2}}{_RST}{_TEAL}║{_RST}")
+    print(f"  {_TEAL}║{_RST}  {_DIM}{'tt-forge-compiletron':<{inner-2}}{_RST}{_TEAL}║{_RST}")
+    print(f"  {_TEAL}║{_RST}{'':>{inner}}{_TEAL}║{_RST}")
+    print(f"  {_TEAL}║{_RST}  {_TEAL}{sub:<{inner-2}}{_RST}{_TEAL}║{_RST}")
+    print(f"  {_TEAL}╚{'═' * inner}╝{_RST}")
+
+
+# Rarity display: maps rarity string → (ANSI prefix, fixed-width glyph+label).
+# "familiar" is the seed-model rarity — visually quieter than even "common".
+_RARITY_FMT = {
+    "legendary": (_GOLD + _BOLD, "★ LEGENDARY"),
+    "epic":      (_PINK,         "◆ EPIC     "),
+    "rare":      (_TEAL,         "◆ RARE     "),
+    "uncommon":  (_LTEAL,        "▸ UNCOMMON "),
+    "common":    (_GRAY,         "· COMMON   "),
+    "familiar":  (_DIM,          "· seed     "),
+}
+
+
+def _model_row(item: dict) -> None:
+    """Print one model line with rarity glyph, model ID, task label, and stat pills."""
+    rarity = (item.get("rarity") or "common").lower()
+    color, glyph = _RARITY_FMT.get(rarity, (_GRAY, "· "))
+    mid = item.get("model_id", "?")
+    task = item.get("task") or item.get("source") or ""
+    dl = item.get("hf_downloads")
+    likes = item.get("hf_likes")
+    params = item.get("hf_params_b", 0) or 0
+    chips = item.get("mesh_chips", 1)
+
+    # Assemble right-hand stat pills: download count, likes, param count, multi-chip flag.
+    stats = []
+    if dl is not None:    stats.append(f"↓{_fmt_num(dl)}")
+    if likes is not None: stats.append(f"♥{_fmt_num(likes)}")
+    if params > 0:        stats.append(f"{params:.1f}B")
+    if chips > 1:         stats.append(f"{chips}×chip")
+    stats_str = "  " + "  ".join(stats) if stats else ""
+
+    mid_col = 48
+    task_col = 28
+    line = (f"  {color}{glyph}{_RST}  "
+            f"{_WHT}{mid:<{mid_col}}{_RST}"
+            f"  {_DIM}{task:<{task_col}}{_RST}"
+            f"{_DIM}{stats_str}{_RST}")
+    print(line)
+
+
+def _dir_bytes(path: Path) -> int:
+    """Return the on-disk byte size of a directory via `du -sb` (fast, OS-level).
+
+    Returns 0 if the path does not exist or `du` fails.  This is intentionally
+    a lighter-weight call than _hf_cache_gb() — it targets a single model's
+    cache subdirectory rather than the entire HF hub root.
+    """
+    if not path.exists():
+        return 0
+    try:
+        r = subprocess.run(["du", "-sb", str(path)],
+                           capture_output=True, text=True, timeout=5)
+        if r.returncode == 0:
+            return int(r.stdout.split()[0])
+    except Exception:
+        pass
+    return 0
+
+
+def _with_spinner(msg: str, fn, *args, **kwargs):
+    """Run *fn* in the foreground while displaying a braille spinner in the terminal.
+
+    The spinner runs in a daemon thread so the user sees animated feedback even
+    though the main thread is blocked in *fn*.  The progress line is fully
+    erased before returning so subsequent output starts on a clean line.
+
+    Returns *fn*'s return value unchanged.
+    """
+    frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    stop = threading.Event()
+    state = [0]
+
+    def _spin():
+        while not stop.wait(0.1):
+            f = frames[state[0] % len(frames)]
+            sys.stdout.write(f"\r  {_TEAL}{f}{_RST}  {_DIM}{msg}{_RST}")
+            sys.stdout.flush()
+            state[0] += 1
+
+    t = threading.Thread(target=_spin, daemon=True)
+    t.start()
+    try:
+        result = fn(*args, **kwargs)
+    finally:
+        stop.set()
+        t.join()
+        sys.stdout.write(f"\r{' ' * _tw()}\r")
+        sys.stdout.flush()
+    return result
 
 
 # ── Queue building ────────────────────────────────────────────────────────────
@@ -230,22 +424,29 @@ def build_queues(
     frontier_items: list[dict] = []
 
     if not frontier_only:
-        print("  Scanning tt-forge-models library...")
-        seed_items = _scan_forge_models(compiled_ids)
-        print(f"  {len(seed_items)} seed models queued (not yet compiled)")
+        # Use _with_spinner so the terminal shows activity during the forge-models
+        # scan (which involves importlib reflection and can take a few seconds).
+        seed_items = _with_spinner("scanning tt-forge-models library…",
+                                   _scan_forge_models, compiled_ids)
+        _section(f"FORGE MODELS  ({len(seed_items)} seed)")
+        for item in seed_items:
+            _model_row(item)
 
     forge_ids = {item["model_id"] for item in seed_items}
 
     if not seed_only:
-        print("  Querying HuggingFace frontier...")
-        frontier_items = _scan_frontier(
-            compiled_ids, forge_ids,
-            min_downloads=min_downloads,
-            min_likes=min_likes,
-            max_params_b=max_params_b,
-            skip_gated=skip_gated,
-        )
-        print(f"  {len(frontier_items)} frontier models discovered")
+        # HF frontier discovery involves network calls — spinner keeps the user
+        # informed while we wait for the HuggingFace API to respond.
+        frontier_items = _with_spinner("querying HuggingFace frontier…",
+                                       _scan_frontier,
+                                       compiled_ids, forge_ids,
+                                       min_downloads=min_downloads,
+                                       min_likes=min_likes,
+                                       max_params_b=max_params_b,
+                                       skip_gated=skip_gated)
+        _section(f"HF FRONTIER  ({len(frontier_items)} discovered)")
+        for item in frontier_items:
+            _model_row(item)
 
     # Interleave seed (60 %) and frontier (40 %) for a balanced run.
     all_items = _interleave(seed_items, frontier_items, seed_ratio=0.6)
@@ -260,11 +461,9 @@ def build_queues(
         if mid not in seen:
             seen.add(mid)
             deduped.append(item)
-    if len(deduped) < len(all_items):
-        print(f"  Deduplicated {len(all_items) - len(deduped)} duplicate model(s)")
     all_items = deduped
-
-    print(f"  Total queue: {len(all_items)} models across {num_chips} chip(s)")
+    # Note: Deduplicate count and total queue size are surfaced in the QUEUE
+    # ASSIGNMENT section printed by main() — no low-signal print here.
 
     # Round-robin distribution across chips.
     chip_queues: list[list[dict]] = [[] for _ in range(num_chips)]
@@ -305,6 +504,144 @@ def _interleave(seed: list, frontier: list, seed_ratio: float) -> list:
 
 # ── Pre-download ─────────────────────────────────────────────────────────────
 
+# File patterns to skip when mirroring a model from HuggingFace.
+# These are large binary formats specific to Flax/TF/Rust/OpenNMT that
+# tt-forge never consumes; excluding them saves significant download time
+# and disk space for multi-billion-parameter models.
+_IGNORE_PATTERNS = [
+    "*.msgpack",   # Flax/JAX checkpoints
+    "*.h5",        # Keras/TF HDF5 weights
+    "flax_model*", # Flax model shards
+    "tf_model*",   # TensorFlow SavedModel
+    "rust_model*", # Rust/candle weights
+    "*.ot",        # OpenNMT tokenizer files
+]
+
+
+def _download_one(model_id: str, item: dict, idx: int, total: int) -> bool:
+    """Download one model from HuggingFace with a live progress bar.
+
+    Launches a background monitor thread that polls the model's HF cache
+    subdirectory size every 0.5 s and renders a teal progress bar with
+    percentage, byte count, transfer speed, and ETA.
+
+    Returns True on success, False on any exception (network error, gated
+    model without a token, disk full, etc.).
+    """
+    try:
+        from huggingface_hub import snapshot_download, HfApi
+    except ImportError:
+        return False
+
+    # Query the HF file manifest to learn the expected total download size.
+    # We use this to drive the progress bar ratio; if the query fails we
+    # degrade gracefully to an indeterminate bar (ratio=0).
+    expected_bytes = 0
+    try:
+        info = HfApi().model_info(model_id, timeout=15)
+        for sib in (info.siblings or []):
+            sz = getattr(sib, "size", None)
+            if sz and not any(_fnmatch.fnmatch(sib.rfilename, p)
+                              for p in _IGNORE_PATTERNS):
+                expected_bytes += sz
+    except Exception:
+        pass  # size unknown — bar will show bytes-downloaded only
+
+    # Locate (or anticipate) the model's subdirectory inside the HF cache.
+    # HF hub uses the naming convention "models--org--repo" under HF_CACHE_DIR.
+    cache_key = "models--" + model_id.replace("/", "--")
+    model_dir = HF_CACHE_DIR / cache_key
+    pre_bytes = _dir_bytes(model_dir)
+
+    # Print a header line for this model so the user knows what's downloading.
+    params = item.get("hf_params_b", 0) or 0
+    task   = item.get("task", "")
+    idx_w  = len(str(total))
+    size_hint = f"  ~{params:.1f}B" if params > 0 else ""
+    exp_hint  = f"  {_fmt_bytes(expected_bytes)}" if expected_bytes > 0 else ""
+    print(f"\n  {_DIM}[{idx:{idx_w}d}/{total}]{_RST}  "
+          f"{_BOLD}{_WHT}{model_id}{_RST}"
+          f"{_DIM}{size_hint}  {task}{exp_hint}{_RST}")
+
+    # --- Background progress monitor ---
+    stop_evt   = threading.Event()
+    start_time = time.monotonic()
+
+    def _monitor():
+        prev_bytes, prev_t = pre_bytes, start_time
+        while not stop_evt.wait(0.5):
+            cur = _dir_bytes(model_dir)
+            now = time.monotonic()
+            dt = now - prev_t
+            incremental = cur - prev_bytes
+            # Only compute speed when the interval is long enough to be reliable.
+            speed = incremental / dt if dt > 0.2 and incremental > 0 else 0
+            prev_bytes, prev_t = cur, now
+
+            new_bytes = cur - pre_bytes
+            if expected_bytes > 0:
+                ratio = min(new_bytes / expected_bytes, 1.0)
+                eta = (expected_bytes - new_bytes) / speed if speed > 50_000 else -1
+                pct = f"  {ratio*100:3.0f}%"
+                sz  = f"  {_fmt_bytes(new_bytes)} / {_fmt_bytes(expected_bytes)}"
+            else:
+                ratio, eta = 0.0, -1
+                pct = ""
+                sz  = f"  {_fmt_bytes(new_bytes)}" if new_bytes > 0 else ""
+
+            spd   = f"  {_fmt_speed(speed)}" if speed > 50_000 else ""
+            eta_s = f"  {_fmt_eta(eta)}"      if eta > 5       else ""
+            line  = f"         {_bar(ratio)}{pct}{sz}{spd}{eta_s}"
+            sys.stdout.write(f"\r{line:<{_tw()}}")
+            sys.stdout.flush()
+
+    mon = threading.Thread(target=_monitor, daemon=True)
+    mon.start()
+
+    # Suppress HF's own tqdm progress bars so they don't clobber ours.
+    prev_hf_bar = os.environ.get("HF_HUB_DISABLE_PROGRESS_BARS")
+    os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+
+    ok, err_msg = True, ""
+    try:
+        snapshot_download(model_id, ignore_patterns=_IGNORE_PATTERNS,
+                          local_files_only=False)
+    except Exception as e:
+        ok = False
+        err_msg = str(e)[:80]
+    finally:
+        # Restore the original env state regardless of outcome.
+        if prev_hf_bar is None:
+            os.environ.pop("HF_HUB_DISABLE_PROGRESS_BARS", None)
+        else:
+            os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = prev_hf_bar
+        stop_evt.set()
+        mon.join(timeout=1.0)
+
+    # Erase the monitor line so the result summary prints on a clean line.
+    sys.stdout.write(f"\r{' ' * _tw()}\r")
+    sys.stdout.flush()
+
+    elapsed    = time.monotonic() - start_time
+    post_bytes = _dir_bytes(model_dir)
+    new_bytes  = post_bytes - pre_bytes
+
+    if ok:
+        if elapsed < 2.0 and new_bytes < 1_000:
+            # Nothing was fetched — model was already in the local cache.
+            result = f"{_DIM}(already cached){_RST}  {_GRN}✓{_RST}"
+        else:
+            speed   = new_bytes / elapsed if elapsed > 0.1 else 0
+            spd_str = f"  {_fmt_speed(speed)}" if speed > 0 else ""
+            result  = (f"{_GRN}✓{_RST}  {_fmt_bytes(new_bytes)}"
+                       f"  {_DIM}{_fmt_eta(elapsed)}{spd_str}{_RST}")
+        print(f"         {result}")
+    else:
+        print(f"         {_RED}✗{_RST}  {_DIM}{err_msg}{_RST}")
+
+    return ok
+
+
 def _predownload_queues(chip_queues: list[list[dict]], max_cache_gb: float = 0.0,
                         session_download_max_gb: float = 0.0) -> None:
     """Pre-fetch HuggingFace weights for all frontier models before compile starts.
@@ -318,12 +655,14 @@ def _predownload_queues(chip_queues: list[list[dict]], max_cache_gb: float = 0.0
     loader's own from_pretrained call and are typically already cached.
     """
     try:
-        from huggingface_hub import snapshot_download
+        from huggingface_hub import snapshot_download  # noqa: F401 — availability check
     except ImportError:
-        print("  huggingface_hub not available — skipping pre-download")
+        print(f"  {_RED}huggingface_hub not available — skipping pre-download{_RST}")
         return
 
-    # Collect unique frontier model IDs (de-duplicate across chips).
+    # Collect unique frontier IDs across all chip queues.
+    # We use a dict (model_id → item) rather than a set so we retain the
+    # full item metadata for the progress display and size hints.
     seen: dict[str, dict] = {}
     for queue in chip_queues:
         for item in queue:
@@ -331,74 +670,63 @@ def _predownload_queues(chip_queues: list[list[dict]], max_cache_gb: float = 0.0
                 seen[item["model_id"]] = item
 
     if not seen:
-        print("  No frontier models to pre-download.")
+        print(f"  {_DIM}No frontier models to pre-download.{_RST}")
         return
 
-    # Large binary formats we can't use — skip to save bandwidth and disk.
-    ignore = ["*.msgpack", "*.h5", "flax_model*", "tf_model*", "rust_model*", "*.ot"]
-
-    # Disk guard: measure cache once up front, re-check per model.
-    import shutil as _shutil
+    # Snapshot current cache size before any downloads begin; used to compute
+    # per-session totals and to enforce the session_download_max_gb guard.
     cache_root = HF_CACHE_DIR.parent if HF_CACHE_DIR.exists() else Path.home()
-    baseline_gb = _hf_cache_gb()  # snapshot before this session's downloads begin
+    baseline_gb = _hf_cache_gb()
 
-    limits = []
+    # Report active limits so the user understands what constraints apply.
+    limit_parts = [f"cache {baseline_gb:.1f} GB used"]
     if max_cache_gb > 0:
-        print(f"  HF cache: {baseline_gb:.1f} GB used  (limit {max_cache_gb:.0f} GB)")
+        limit_parts.append(f"cap {max_cache_gb:.0f} GB")
         if baseline_gb >= max_cache_gb:
-            print("  Cache already at limit — skipping pre-download.")
+            print(f"  {_GOLD}Cache already at limit — skipping pre-download.{_RST}")
             return
-        limits.append(f"cache≤{max_cache_gb:.0f} GB")
     if session_download_max_gb > 0:
-        limits.append(f"session≤{session_download_max_gb:.0f} GB new")
-    if limits:
-        print(f"  Download guards: {', '.join(limits)}")
+        limit_parts.append(f"session ≤ {session_download_max_gb:.0f} GB new")
+    print(f"  {_DIM}{' · '.join(limit_parts)}{_RST}")
 
     total = len(seen)
-    print(f"\n  Pre-downloading {total} frontier model(s) to HF cache...")
     ok = fail = skipped = 0
-    session_gb = 0.0  # cumulative new GB fetched this session
+
     for i, (model_id, item) in enumerate(seen.items(), 1):
-        # Per-model disk checks before attempting the download.
+        # Guard: cache ceiling — check before each model, not just at start.
         current_gb = _hf_cache_gb()
         if max_cache_gb > 0 and current_gb >= max_cache_gb:
             skipped = total - i + 1
-            print(f"\n  Cache at {current_gb:.1f}/{max_cache_gb:.0f} GB — "
-                  f"stopping ({skipped} will download at compile time)")
+            print(f"\n  {_GOLD}Cache at {current_gb:.1f}/{max_cache_gb:.0f} GB — "
+                  f"{skipped} model(s) deferred{_RST}")
             break
+        # Guard: session download cap.
         session_gb = current_gb - baseline_gb
         if session_download_max_gb > 0 and session_gb >= session_download_max_gb:
             skipped = total - i + 1
-            print(f"\n  Session cap reached ({session_gb:.1f}/{session_download_max_gb:.0f} GB) — "
-                  f"stopping ({skipped} will download at compile time)")
+            print(f"\n  {_GOLD}Session cap reached ({session_gb:.1f}/{session_download_max_gb:.0f} GB) — "
+                  f"{skipped} model(s) deferred{_RST}")
             break
+        # Guard: critically low free space (< 5 GB) — hard stop.
         free_gb = _shutil.disk_usage(cache_root).free / 1e9
         if free_gb < 5.0:
             skipped = total - i + 1
-            print(f"\n  ⚠ Disk critically low ({free_gb:.1f} GB free) — "
-                  f"stopping pre-download ({skipped} remaining)")
+            print(f"\n  {_RED}Disk critically low ({free_gb:.1f} GB free) — "
+                  f"stopping ({skipped} remaining){_RST}")
             break
 
-        task = item.get("task", "")
-        params = item.get("hf_params_b", 0) or 0
-        size_hint = f" ~{params:.1f}B" if params > 0 else ""
-        session_str = f"  +{session_gb:.1f} GB this session" if session_gb > 0.1 else ""
-        label = f"{model_id}{size_hint} ({task})" if task else f"{model_id}{size_hint}"
-        print(f"  [{i:>{len(str(total))}}/{total}] {label[:60]:<62}{session_str}", end="  ", flush=True)
-        try:
-            snapshot_download(model_id, ignore_patterns=ignore, local_files_only=False)
-            print("✓")
+        if _download_one(model_id, item, i, total):
             ok += 1
-        except Exception as e:
-            print(f"✗  {str(e)[:50]}")
+        else:
             fail += 1
 
+    # Final tally line with color-coded status pills.
     final_session_gb = _hf_cache_gb() - baseline_gb
-    parts = [f"✓{ok}"]
-    if fail:    parts.append(f"✗{fail}")
-    if skipped: parts.append(f"⏭{skipped} deferred")
-    if final_session_gb > 0.1: parts.append(f"+{final_session_gb:.1f} GB fetched")
-    print(f"\n  Pre-download complete — {'  '.join(parts)}\n")
+    parts = [f"{_GRN}✓ {ok} downloaded{_RST}"]
+    if fail:    parts.append(f"{_RED}✗ {fail} failed{_RST}")
+    if skipped: parts.append(f"{_GOLD}⏭ {skipped} deferred{_RST}")
+    if final_session_gb > 0.1: parts.append(f"{_DIM}+{final_session_gb:.1f} GB fetched{_RST}")
+    print(f"\n  {'  '.join(parts)}")
 
 
 # ── Run summary ──────────────────────────────────────────────────────────────
@@ -602,16 +930,17 @@ def main():
     if num_chips == 0:
         print("No chips detected. Check tt-smi.")
         sys.exit(1)
-    print(f"\n  Hardware: {get_hardware_summary(hw)}")
-    print(f"  Chips for this run: {num_chips}")
 
     # ── Run numbering ─────────────────────────────────────────────────────────
     # Derive next run number from the count of existing run JSON files.
     # We do NOT call any Bestiary.next_run_number() — that method does not exist.
+    # run_number is computed BEFORE the banner so _banner can display it.
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
     run_number = len(list(RUNS_DIR.glob("run_*.json"))) + 1
-    print(f"  Run #{run_number:03d}")
+
+    # Banner goes here — after we know run_number and num_chips.
+    _banner(run_number, num_chips, get_hardware_summary(hw))
 
     # ── Queue building ────────────────────────────────────────────────────────
     chip_queues = build_queues(
@@ -625,20 +954,41 @@ def main():
         skip_gated=not args.allow_gated,
     )
 
+    # ── Queue assignment summary ──────────────────────────────────────────────
+    # Print a compact per-chip breakdown so the user can verify distribution
+    # before committing ~minutes of download time.
+    _section("QUEUE ASSIGNMENT")
+    for chip_id, queue in enumerate(chip_queues):
+        seeds    = sum(1 for m in queue if not m.get("is_frontier"))
+        frontier = sum(1 for m in queue if m.get("is_frontier"))
+        chips_4  = sum(1 for m in queue if m.get("mesh_chips", 1) > 1)
+        detail   = f"seed ×{seeds}  frontier ×{frontier}"
+        if chips_4:
+            detail += f"  mesh4 ×{chips_4}"
+        print(f"  {_TEAL}C{chip_id}{_RST}  {_BOLD}{len(queue):>3} models{_RST}  {_DIM}{detail}{_RST}")
+
     # ── Pre-download weights for fairness ────────────────────────────────────
     if not args.no_predownload:
+        frontier_total = sum(1 for q in chip_queues for m in q if m.get("is_frontier"))
+        _section(f"PRE-DOWNLOAD  ({frontier_total} frontier models)")
         _predownload_queues(chip_queues, max_cache_gb=args.max_cache_gb,
                             session_download_max_gb=args.session_download_max)
 
     # ── Write per-chip queue JSON to /tmp ─────────────────────────────────────
-    # expedition_worker.py reads these files at startup.
+    # expedition_worker.py reads these files at startup.  Writing happens after
+    # pre-download so workers always start with warm weights available.
     for chip_id, queue in enumerate(chip_queues):
         queue_path = f"/tmp/expedition_queue_chip{chip_id}.json"
         with open(queue_path, "w") as f:
             json.dump(queue, f, indent=2)
-        print(f"  Chip {chip_id}: {len(queue)} models → {queue_path}")
 
     # ── Launch tmux runner ────────────────────────────────────────────────────
+    # Print a quick reattach hint before handing off to tmux.
+    _section("LAUNCHING")
+    print(f"  {_DIM}tmux session:{_RST} {_TEAL}expedition{_RST}  "
+          f"{_DIM}· reattach:{_RST}  {_TEAL}tmux attach -t expedition{_RST}")
+    print()
+
     # Blocks until the user detaches from the session or the session ends.
     script = PROJECT_DIR / "scripts" / "run_expedition.sh"
     env = {**os.environ, "EXPEDITION_RUN": str(run_number),
