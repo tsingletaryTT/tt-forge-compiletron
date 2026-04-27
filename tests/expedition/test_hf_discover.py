@@ -10,11 +10,14 @@ from lib.expedition.scorer import Rarity, Newness
 
 
 def _mock_model(model_id="org/model", pipeline_tag="text-generation",
-                downloads=500_000, days_ago=60):
+                downloads=500_000, days_ago=60, likes=100):
     m = MagicMock()
     m.id = model_id
     m.pipeline_tag = pipeline_tag
     m.downloads = downloads
+    m.likes = likes
+    m.gated = None
+    m.disabled = None
     created = datetime.now(timezone.utc) - timedelta(days=days_ago)
     m.created_at = created
     return m
@@ -87,6 +90,8 @@ class TestBuildDynamicLoader:
             model_id="gpt2",
             pipeline_tag="text-generation",
             downloads=1_000_000,
+            likes=500,
+            params_b=0.1,
             created_at=None,
             rarity=Rarity.RARE,
             newness=Newness.ESTABLISHED,
@@ -100,6 +105,8 @@ class TestBuildDynamicLoader:
             model_id="org/rl",
             pipeline_tag="reinforcement-learning",
             downloads=100,
+            likes=0,
+            params_b=0.0,
             created_at=None,
             rarity=Rarity.COMMON,
             newness=Newness.ESTABLISHED,
@@ -112,6 +119,8 @@ class TestBuildDynamicLoader:
             model_id="openai/whisper-large-v3",
             pipeline_tag="automatic-speech-recognition",
             downloads=10_000_000,
+            likes=5634,
+            params_b=1.54,
             created_at=None,
             rarity=Rarity.LEGENDARY,
             newness=Newness.ESTABLISHED,

@@ -76,6 +76,9 @@ class FrontierModel:
     model_id:     HuggingFace repo ID (e.g. "mistralai/Mistral-7B-v0.1").
     pipeline_tag: Task tag from the HF model card (e.g. "text-generation").
     downloads:    Total all-time download count on HuggingFace.
+    likes:        HuggingFace ♥ count — proxy for community reputation.
+    params_b:     Approximate parameter count in billions from safetensors
+                  metadata; 0.0 when the metadata is absent.
     created_at:   UTC datetime when the repo was first created (may be None).
     rarity:       Rarity tier derived from download count.
     newness:      How recently the model was published.
@@ -85,6 +88,8 @@ class FrontierModel:
     model_id: str
     pipeline_tag: str
     downloads: int
+    likes: int
+    params_b: float
     created_at: Optional[datetime]
     rarity: Rarity
     newness: Newness
@@ -106,30 +111,33 @@ def _model_to_frontier(hf_model) -> FrontierModel:
     # Convert datetime → ISO string for compute_newness which expects a string.
     created_str = created_at.isoformat() if created_at else None
     downloads = getattr(hf_model, "downloads", 0) or 0
+    likes = getattr(hf_model, "likes", 0) or 0
     rarity = compute_rarity(downloads)
     # Always treat frontier discoveries as first-ever compiles — callers have
     # already excluded anything in compiled_ids.
     newness = compute_newness(created_str, is_first_ever=True)
 
     # Multi-chip detection: name-based MoE heuristic OR parameter count >40B.
+    # Also extract params_b for caller-side size filtering.
     model_id_lower = hf_model.id.lower()
     moe_name_match = any(p in model_id_lower for p in _LARGE_MOE_PATTERNS)
-    # safetensors metadata carries total parameter count when available.
-    large_param = False
+    params_b = 0.0
     try:
         safetensors = getattr(hf_model, "safetensors", None)
         if safetensors is not None:
             total = getattr(safetensors, "total", None)
             if isinstance(total, (int, float)) and total > 0:
-                large_param = total / 1e9 > _LARGE_PARAM_THRESHOLD_B
+                params_b = total / 1e9
     except Exception:
         pass
-    mesh_chips = 4 if (moe_name_match or large_param) else 1
+    mesh_chips = 4 if (moe_name_match or params_b > _LARGE_PARAM_THRESHOLD_B) else 1
 
     return FrontierModel(
         model_id=hf_model.id,
         pipeline_tag=hf_model.pipeline_tag or "",
         downloads=downloads,
+        likes=likes,
+        params_b=params_b,
         created_at=created_at,
         rarity=rarity,
         newness=newness,
@@ -141,29 +149,38 @@ def discover_frontier(
     compiled_ids: set[str],
     known_model_ids: set[str],
     limit: int = 500,
+    min_downloads: int = 0,
+    min_likes: int = 0,
+    max_params_b: float = 0.0,
+    skip_gated: bool = True,
 ) -> list[FrontierModel]:
     """Query HuggingFace for the newest pytorch models and return uncharted ones.
 
     Sorts by creation date descending ("newest first") to maximise zero-day
-    finds.  Three filter passes are applied in order:
+    finds.  Filter passes applied in order:
 
-    1. ``pipeline_tag`` must be in ``_SUPPORTED_TAGS`` — we need an AutoModel
-       class for the tag or compilation can't even begin.
-    2. Model ID must not be in ``compiled_ids`` — already run, skip.
-    3. Model ID must not be in ``known_model_ids`` — part of the canonical
-       forge-models library, handled by the standard pipeline, not expedition.
+    1. ``pipeline_tag`` must be in ``_SUPPORTED_TAGS``.
+    2. Model ID not in ``compiled_ids`` or ``known_model_ids``.
+    3. Not a duplicate ID (HF API can return the same repo twice).
+    4. Quality bar: ``downloads >= min_downloads``, ``likes >= min_likes``.
+    5. Gated models skipped when ``skip_gated=True`` (can't be downloaded
+       without explicit HuggingFace approval).
+    6. Size cap: when ``max_params_b > 0``, models whose safetensors metadata
+       reports more than that many billion parameters are skipped.  Models
+       with no safetensors metadata are passed through (size unknown).
 
     Parameters
     ----------
-    compiled_ids:    Set of model IDs that have already been compiled in this
-                     (or any previous) expedition session.
-    known_model_ids: Set of model IDs from the forge-models bestiary / known
-                     library — these are "tamed" and excluded from frontier.
-    limit:           Maximum number of HF results to fetch (API page size).
+    compiled_ids:    Already-compiled model IDs — skip these.
+    known_model_ids: Forge-models library IDs — handled elsewhere, skip.
+    limit:           Maximum number of HF API results to fetch.
+    min_downloads:   Quality floor — models below this are experiments/noise.
+    min_likes:       Community-reputation floor.
+    max_params_b:    Size ceiling in billions of parameters (0 = no limit).
+    skip_gated:      Skip gated repos that require HF access approval.
 
     Returns an empty list if ``huggingface_hub`` is unavailable or the API
-    call fails — callers should treat that as "no new discoveries this tick"
-    rather than a hard error.
+    call fails — callers should treat that as "no new discoveries this tick".
     """
     if HfApi is None:
         return []
@@ -191,10 +208,39 @@ def discover_frontier(
         # Skip models we already know about or have already compiled.
         if m.id in compiled_ids or m.id in known_model_ids:
             continue
-        # The HF API can return the same repo twice (multiple tags, pagination
-        # artifacts) — deduplicate so no model reaches two chip queues.
+        # Deduplicate — HF API can return the same repo twice.
         if m.id in seen_ids:
             continue
+        # Quality / reputation bar.
+        dl = getattr(m, "downloads", 0) or 0
+        lk = getattr(m, "likes", 0) or 0
+        if dl < min_downloads:
+            _log.debug("skipped_low_downloads model=%s downloads=%d", m.id, dl)
+            continue
+        if lk < min_likes:
+            _log.debug("skipped_low_likes model=%s likes=%d", m.id, lk)
+            continue
+        # Gated models require an explicit HF access grant — skip by default.
+        if skip_gated and getattr(m, "gated", None):
+            _log.debug("skipped_gated model=%s", m.id)
+            continue
+        # Skip disabled repos (archived / deleted but still indexed).
+        if getattr(m, "disabled", None):
+            continue
+        # Size cap — only applies when safetensors metadata is present;
+        # models with no metadata are passed through (size unknown).
+        if max_params_b > 0:
+            try:
+                st = getattr(m, "safetensors", None)
+                if st is not None:
+                    total_params = getattr(st, "total", None)
+                    if isinstance(total_params, (int, float)) and total_params > 0:
+                        if total_params / 1e9 > max_params_b:
+                            _log.debug("skipped_too_large model=%s params_b=%.1f",
+                                       m.id, total_params / 1e9)
+                            continue
+            except Exception:
+                pass
         seen_ids.add(m.id)
         results.append(_model_to_frontier(m))
 

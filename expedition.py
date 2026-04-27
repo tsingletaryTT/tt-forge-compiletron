@@ -26,6 +26,29 @@ BESTIARY_PATH = DATA_DIR / "bestiary.json"
 RUNS_DIR = DATA_DIR / "runs"
 ARTIFACTS_DIR = DATA_DIR / "artifacts"
 
+# HuggingFace model cache — respects env override used by huggingface_hub.
+HF_CACHE_DIR = Path(
+    os.environ.get("HUGGINGFACE_HUB_CACHE",
+    os.environ.get("HF_HOME",
+    str(Path.home() / ".cache" / "huggingface" / "hub")))
+)
+
+
+def _hf_cache_gb() -> float:
+    """Return current HF cache size in GB using `du -sb` (fast, OS-level)."""
+    if not HF_CACHE_DIR.exists():
+        return 0.0
+    try:
+        r = subprocess.run(
+            ["du", "-sb", str(HF_CACHE_DIR)],
+            capture_output=True, text=True, timeout=60,
+        )
+        if r.returncode == 0:
+            return int(r.stdout.split()[0]) / 1e9
+    except Exception:
+        pass
+    return 0.0
+
 
 # ── Queue building ────────────────────────────────────────────────────────────
 
@@ -124,7 +147,14 @@ def _scan_forge_models(bestiary_compiled_ids: set[str]) -> list[dict]:
     return items
 
 
-def _scan_frontier(bestiary_compiled_ids: set[str], forge_model_ids: set[str]) -> list[dict]:
+def _scan_frontier(
+    bestiary_compiled_ids: set[str],
+    forge_model_ids: set[str],
+    min_downloads: int = 0,
+    min_likes: int = 0,
+    max_params_b: float = 0.0,
+    skip_gated: bool = True,
+) -> list[dict]:
     """
     Query the HuggingFace frontier for models not yet in the bestiary and not
     already covered by the forge-models library.
@@ -138,17 +168,21 @@ def _scan_frontier(bestiary_compiled_ids: set[str], forge_model_ids: set[str]) -
     models = discover_frontier(
         compiled_ids=bestiary_compiled_ids,
         known_model_ids=forge_model_ids,
+        min_downloads=min_downloads,
+        min_likes=min_likes,
+        max_params_b=max_params_b,
+        skip_gated=skip_gated,
     )
     return [
         {
             "model_id": m.model_id,
-            # For HF models use the repo name (after the slash) as the display name.
             "display_name": m.model_id.split("/")[-1],
             "task": m.pipeline_tag,
             "source": "huggingface",
             "rarity": m.rarity.value,
             "hf_downloads": m.downloads,
-            # Serialize the datetime to an ISO string for JSON compatibility.
+            "hf_likes": m.likes,
+            "hf_params_b": m.params_b,
             "hf_created_at": m.created_at.isoformat() if m.created_at else None,
             "mesh_chips": m.mesh_chips,
             "loader_module": None,
@@ -164,6 +198,10 @@ def build_queues(
     seed_only: bool = False,
     frontier_only: bool = False,
     limit_per_chip: int = 0,
+    min_downloads: int = 0,
+    min_likes: int = 0,
+    max_params_b: float = 0.0,
+    skip_gated: bool = True,
 ) -> list[list[dict]]:
     """
     Build per-chip model queues by merging forge-models seed items with HF
@@ -200,7 +238,13 @@ def build_queues(
 
     if not seed_only:
         print("  Querying HuggingFace frontier...")
-        frontier_items = _scan_frontier(compiled_ids, forge_ids)
+        frontier_items = _scan_frontier(
+            compiled_ids, forge_ids,
+            min_downloads=min_downloads,
+            min_likes=min_likes,
+            max_params_b=max_params_b,
+            skip_gated=skip_gated,
+        )
         print(f"  {len(frontier_items)} frontier models discovered")
 
     # Interleave seed (60 %) and frontier (40 %) for a balanced run.
@@ -261,7 +305,7 @@ def _interleave(seed: list, frontier: list, seed_ratio: float) -> list:
 
 # ── Pre-download ─────────────────────────────────────────────────────────────
 
-def _predownload_queues(chip_queues: list[list[dict]]) -> None:
+def _predownload_queues(chip_queues: list[list[dict]], max_cache_gb: float = 0.0) -> None:
     """Pre-fetch HuggingFace weights for all frontier models before compile starts.
 
     Collects unique frontier model IDs across all chip queues and calls
@@ -292,13 +336,40 @@ def _predownload_queues(chip_queues: list[list[dict]]) -> None:
     # Large binary formats we can't use — skip to save bandwidth and disk.
     ignore = ["*.msgpack", "*.h5", "flax_model*", "tf_model*", "rust_model*", "*.ot"]
 
+    # Disk guard: measure cache once up front, re-check free space per model.
+    import shutil as _shutil
+    cache_root = HF_CACHE_DIR.parent if HF_CACHE_DIR.exists() else Path.home()
+    if max_cache_gb > 0:
+        current_gb = _hf_cache_gb()
+        print(f"  HF cache: {current_gb:.1f} GB used  (limit {max_cache_gb:.0f} GB)")
+        if current_gb >= max_cache_gb:
+            print("  Cache already at limit — skipping pre-download.")
+            return
+
     total = len(seen)
     print(f"\n  Pre-downloading {total} frontier model(s) to HF cache...")
-    ok = fail = 0
+    ok = fail = skipped = 0
     for i, (model_id, item) in enumerate(seen.items(), 1):
+        # Per-model disk checks: cache limit and critically low free space.
+        if max_cache_gb > 0:
+            current_gb = _hf_cache_gb()
+            if current_gb >= max_cache_gb:
+                skipped = total - i + 1
+                print(f"\n  Cache at {current_gb:.1f}/{max_cache_gb:.0f} GB — "
+                      f"stopping ({skipped} will download at compile time)")
+                break
+        free_gb = _shutil.disk_usage(cache_root).free / 1e9
+        if free_gb < 5.0:
+            skipped = total - i + 1
+            print(f"\n  ⚠ Disk critically low ({free_gb:.1f} GB free) — "
+                  f"stopping pre-download ({skipped} remaining)")
+            break
+
         task = item.get("task", "")
-        label = f"{model_id} ({task})" if task else model_id
-        print(f"  [{i:>{len(str(total))}}/{total}] {label[:60]:<62}", end="", flush=True)
+        params = item.get("hf_params_b", 0) or 0
+        size_hint = f" ~{params:.1f}B" if params > 0 else ""
+        label = f"{model_id}{size_hint} ({task})" if task else f"{model_id}{size_hint}"
+        print(f"  [{i:>{len(str(total))}}/{total}] {label[:64]:<66}", end="", flush=True)
         try:
             snapshot_download(model_id, ignore_patterns=ignore, local_files_only=False)
             print("✓")
@@ -307,10 +378,10 @@ def _predownload_queues(chip_queues: list[list[dict]]) -> None:
             print(f"✗  {str(e)[:50]}")
             fail += 1
 
-    status = f"✓{ok}"
-    if fail:
-        status += f"  ✗{fail} (will download at compile time)"
-    print(f"\n  Pre-download complete — {status}\n")
+    parts = [f"✓{ok}"]
+    if fail:    parts.append(f"✗{fail}")
+    if skipped: parts.append(f"⏭{skipped} deferred (disk limit)")
+    print(f"\n  Pre-download complete — {'  '.join(parts)}\n")
 
 
 # ── Run summary ──────────────────────────────────────────────────────────────
@@ -462,6 +533,23 @@ def main():
                        help="Skip pre-downloading HF weights (faster start, unequal footing)")
     run_p.add_argument("--monitor",          action="store_true",
                        help="Add a tt-smi hardware monitor pane in the center column")
+    # ── Quality / reputation bar ──────────────────────────────────────────────
+    run_p.add_argument("--min-downloads",    type=int,   default=0, metavar="N",
+                       help="Skip frontier models with fewer than N total downloads "
+                            "(0=off; try 1000 for proven models, 10000 for popular ones)")
+    run_p.add_argument("--min-likes",        type=int,   default=0, metavar="N",
+                       help="Skip frontier models with fewer than N HuggingFace likes "
+                            "(0=off; try 5 to filter pure experiment dumps)")
+    run_p.add_argument("--max-model-params", type=float, default=0.0, metavar="B",
+                       help="Skip frontier models larger than B billion parameters "
+                            "(0=off; try 7 for single-chip sweet-spot, 13 for upper limit)")
+    run_p.add_argument("--allow-gated",      action="store_true",
+                       help="Include gated HuggingFace models (requires an approved "
+                            "access token — downloads will fail without it)")
+    # ── Disk management ───────────────────────────────────────────────────────
+    run_p.add_argument("--max-cache-gb",     type=float, default=0.0, metavar="GB",
+                       help="Stop pre-downloading when HF cache exceeds GB gigabytes "
+                            "(0=off; e.g. 150 to cap at 150 GB)")
 
     sub.add_parser("summary", help="Print bestiary summary")
 
@@ -480,6 +568,11 @@ def main():
         args.frontier_only = False
         args.no_predownload = False
         args.monitor = False
+        args.min_downloads = 0
+        args.min_likes = 0
+        args.max_model_params = 0.0
+        args.allow_gated = False
+        args.max_cache_gb = 0.0
 
     # ── Hardware detection ────────────────────────────────────────────────────
     from lib.hardware import detect_hardware, get_hardware_summary
@@ -505,11 +598,15 @@ def main():
         seed_only=args.seed_only,
         frontier_only=args.frontier_only,
         limit_per_chip=args.limit,
+        min_downloads=args.min_downloads,
+        min_likes=args.min_likes,
+        max_params_b=args.max_model_params,
+        skip_gated=not args.allow_gated,
     )
 
     # ── Pre-download weights for fairness ────────────────────────────────────
     if not args.no_predownload:
-        _predownload_queues(chip_queues)
+        _predownload_queues(chip_queues, max_cache_gb=args.max_cache_gb)
 
     # ── Write per-chip queue JSON to /tmp ─────────────────────────────────────
     # expedition_worker.py reads these files at startup.
