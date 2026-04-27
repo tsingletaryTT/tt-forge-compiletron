@@ -37,6 +37,15 @@ class TestComputeNewness:
     def test_none_date_is_familiar(self):
         assert compute_newness(None, is_first_ever=True) == Newness.FAMILIAR
 
+    def test_malformed_date_returns_established(self):
+        # Exercises the except (ValueError, TypeError) branch at scorer.py:100
+        assert compute_newness("not-a-date", is_first_ever=True) == Newness.ESTABLISHED
+
+    def test_naive_datetime_string_works(self):
+        # ISO string without timezone info — exercises the tzinfo=None branch at scorer.py:97
+        naive_dt = (datetime.now() - timedelta(days=3)).isoformat()  # no +00:00
+        assert compute_newness(naive_dt, is_first_ever=True) == Newness.HOT
+
 class TestComputeScore:
     def test_failure(self):
         result = compute_score(success=False, is_first_ever=False,
