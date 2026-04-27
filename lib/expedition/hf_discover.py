@@ -7,6 +7,7 @@ to surface zero-day compilation targets for Expedition Mode.
 """
 from __future__ import annotations
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional, Callable
@@ -62,6 +63,16 @@ _LARGE_MOE_PATTERNS = ["deepseek", "mixtral", "qwen", "kimi"]
 _LARGE_PARAM_THRESHOLD_B = 40
 
 _log = logging.getLogger(__name__)
+
+# Matches size tokens like "7B", "1.3B", "0.6b", "70b" in a model ID.
+# Used as a fallback when safetensors metadata is absent (e.g. GGUF models).
+_PARAM_RE = re.compile(r"(?<![.\d])(\d+(?:\.\d+)?)[Bb](?!\w)")
+
+
+def _parse_params_from_name(model_id: str) -> float:
+    """Extract the largest N from any 'NB' token in the model ID, or 0.0."""
+    hits = [float(m.group(1)) for m in _PARAM_RE.finditer(model_id)]
+    return max(hits) if hits else 0.0
 
 
 @dataclass
@@ -130,6 +141,10 @@ def _model_to_frontier(hf_model) -> FrontierModel:
                 params_b = total / 1e9
     except Exception:
         pass
+    # Fall back to name-based parsing for GGUF and other non-safetensors models
+    # that embed their size in the model ID (e.g. "64B", "1.3B").
+    if params_b == 0.0:
+        params_b = _parse_params_from_name(hf_model.id)
     mesh_chips = 4 if (moe_name_match or params_b > _LARGE_PARAM_THRESHOLD_B) else 1
 
     return FrontierModel(
@@ -227,20 +242,24 @@ def discover_frontier(
         # Skip disabled repos (archived / deleted but still indexed).
         if getattr(m, "disabled", None):
             continue
-        # Size cap — only applies when safetensors metadata is present;
-        # models with no metadata are passed through (size unknown).
+        # Size cap: prefer safetensors metadata; fall back to name-based parsing
+        # so GGUF and other non-safetensors models don't bypass the filter.
         if max_params_b > 0:
+            inferred_params_b = 0.0
             try:
                 st = getattr(m, "safetensors", None)
                 if st is not None:
                     total_params = getattr(st, "total", None)
                     if isinstance(total_params, (int, float)) and total_params > 0:
-                        if total_params / 1e9 > max_params_b:
-                            _log.debug("skipped_too_large model=%s params_b=%.1f",
-                                       m.id, total_params / 1e9)
-                            continue
+                        inferred_params_b = total_params / 1e9
             except Exception:
                 pass
+            if inferred_params_b == 0.0:
+                inferred_params_b = _parse_params_from_name(m.id)
+            if inferred_params_b > max_params_b:
+                _log.debug("skipped_too_large model=%s params_b=%.1f",
+                           m.id, inferred_params_b)
+                continue
         seen_ids.add(m.id)
         results.append(_model_to_frontier(m))
 

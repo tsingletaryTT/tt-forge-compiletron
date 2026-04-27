@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock, patch
 from lib.expedition.hf_discover import (
     discover_frontier, build_dynamic_loader, FrontierModel,
-    _model_to_frontier,
+    _model_to_frontier, _parse_params_from_name,
 )
 from lib.expedition.scorer import Rarity, Newness
 
@@ -168,3 +168,57 @@ class TestMeshChipsDetection:
         mock.safetensors.total = int(45e9)
         result = _model_to_frontier(mock)
         assert result.mesh_chips == 4
+
+
+class TestParseParamsFromName:
+    def test_simple_integer(self):
+        assert _parse_params_from_name("org/Model-7B") == 7.0
+
+    def test_decimal(self):
+        assert _parse_params_from_name("org/Model-1.3B") == 1.3
+
+    def test_largest_wins(self):
+        # "64B" is the actual model size; "12B" is the active-param count
+        assert _parse_params_from_name("Nemotron-3-Super-64B-A12B-Math-REAP-GGUF") == 64.0
+
+    def test_lowercase_b(self):
+        assert _parse_params_from_name("org/tiny-0.5b-model") == 0.5
+
+    def test_no_match_returns_zero(self):
+        assert _parse_params_from_name("org/bert-base-uncased") == 0.0
+
+    def test_does_not_match_standalone_number(self):
+        # "patch16" should not parse as 16B
+        assert _parse_params_from_name("google/vit-base-patch16-224") == 0.0
+
+
+class TestGGUFSizeFilter:
+    """GGUF models have no safetensors metadata — the name-based fallback must catch them."""
+
+    def test_gguf_64b_filtered_at_8b_limit(self):
+        models = [_mock_model("org/Nemotron-3-Super-64B-A12B-Math-REAP-GGUF",
+                              pipeline_tag="text-generation", downloads=5_000)]
+        models[0].safetensors = None
+        with patch("lib.expedition.hf_discover.HfApi") as MockApi:
+            MockApi.return_value.list_models.return_value = iter(models)
+            result = discover_frontier(
+                compiled_ids=set(), known_model_ids=set(), max_params_b=8.0
+            )
+        assert len(result) == 0
+
+    def test_gguf_7b_passes_8b_limit(self):
+        models = [_mock_model("org/Llama-3-Groq-8B-Tool-Use-Q4_K_M-GGUF",
+                              pipeline_tag="text-generation", downloads=5_000)]
+        models[0].safetensors = None
+        with patch("lib.expedition.hf_discover.HfApi") as MockApi:
+            MockApi.return_value.list_models.return_value = iter(models)
+            result = discover_frontier(
+                compiled_ids=set(), known_model_ids=set(), max_params_b=8.0
+            )
+        assert len(result) == 1
+
+    def test_name_params_stored_on_frontier_model(self):
+        mock = _mock_model("org/Model-13B-Instruct", "text-generation", downloads=10_000)
+        mock.safetensors = None
+        result = _model_to_frontier(mock)
+        assert result.params_b == 13.0
