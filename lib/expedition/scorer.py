@@ -35,7 +35,6 @@ _RARITY_THRESHOLDS = [
     (10_000_000, Rarity.LEGENDARY),
     (1_000_000,  Rarity.RARE),
     (100_000,    Rarity.UNCOMMON),
-    (0,          Rarity.COMMON),
 ]
 
 _NEWNESS_THRESHOLDS_DAYS = [
@@ -130,7 +129,7 @@ def compute_score(
     """
     if not success:
         return ScoreResult(
-            pts=-10, is_first_ever=False, rarity=rarity, newness=newness,
+            pts=-10, is_first_ever=is_first_ever, rarity=rarity, newness=newness,
             streak_at_score=streak, breakdown={"failure": -10},
         )
 

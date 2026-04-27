@@ -12,12 +12,20 @@ def _dt(days_ago: float) -> str:
 class TestComputeRarity:
     def test_legendary(self):
         assert compute_rarity(15_000_000) == Rarity.LEGENDARY
+    def test_legendary_boundary(self):
+        assert compute_rarity(10_000_000) == Rarity.LEGENDARY
     def test_rare(self):
         assert compute_rarity(5_000_000) == Rarity.RARE
+    def test_rare_boundary(self):
+        assert compute_rarity(1_000_000) == Rarity.RARE
     def test_uncommon(self):
         assert compute_rarity(500_000) == Rarity.UNCOMMON
+    def test_uncommon_boundary(self):
+        assert compute_rarity(100_000) == Rarity.UNCOMMON
     def test_common(self):
         assert compute_rarity(50_000) == Rarity.COMMON
+    def test_common_zero(self):
+        assert compute_rarity(0) == Rarity.COMMON
     def test_none_is_familiar(self):
         assert compute_rarity(None) == Rarity.FAMILIAR
 
@@ -93,3 +101,4 @@ class TestComputeScore:
         assert "rarity_mult" in result.breakdown
         assert "newness_mult" in result.breakdown
         assert "streak_mult" in result.breakdown
+        assert "mesh_bonus" in result.breakdown
