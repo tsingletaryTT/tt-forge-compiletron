@@ -186,12 +186,15 @@ def discover_frontier(
     finds.  Filter passes applied in order:
 
     1. ``pipeline_tag`` must be in ``_SUPPORTED_TAGS``.
-    2. Model ID not in ``compiled_ids`` or ``known_model_ids``.
-    3. Not a duplicate ID (HF API can return the same repo twice).
-    4. Quality bar: ``downloads >= min_downloads``, ``likes >= min_likes``.
-    5. Gated models skipped when ``skip_gated=True`` (can't be downloaded
+    2. Model ID not a known-unsupported binary format (GGUF, GGML, etc.).
+    3. ``config.model_type`` must be present when config data is returned —
+       models without ``model_type`` reliably fail with "Unrecognized model".
+    4. Model ID not in ``compiled_ids`` or ``known_model_ids``.
+    5. Not a duplicate ID (HF API can return the same repo twice).
+    6. Quality bar: ``downloads >= min_downloads``, ``likes >= min_likes``.
+    7. Gated models skipped when ``skip_gated=True`` (can't be downloaded
        without explicit HuggingFace approval).
-    6. Size cap: when ``max_params_b > 0``, models whose safetensors metadata
+    8. Size cap: when ``max_params_b > 0``, models whose safetensors metadata
        reports more than that many billion parameters are skipped.  Models
        with no safetensors metadata are passed through (size unknown).
 
@@ -218,6 +221,7 @@ def discover_frontier(
             sort="createdAt",
             direction=-1,   # descending → newest first
             limit=limit,
+            expand=["config"],  # include config.json data inline for model_type filter
         )
     except Exception:
         # Network errors, auth errors, rate-limits — degrade gracefully.
@@ -235,6 +239,14 @@ def discover_frontier(
         model_id_lower = m.id.lower()
         if any(pat in model_id_lower for pat in _UNSUPPORTED_FORMAT_PATTERNS):
             _log.debug("skipped_unsupported_format model=%s", m.id)
+            continue
+        # Skip models whose config.json has no model_type — these produce
+        # "Unrecognized model" errors and account for ~70 % of run failures.
+        # We only filter when config was returned (not None) to avoid rejecting
+        # models where the expand call simply didn't include config data.
+        config = getattr(m, "config", None)
+        if isinstance(config, dict) and not config.get("model_type"):
+            _log.debug("skipped_no_model_type model=%s", m.id)
             continue
         # Skip models we already know about or have already compiled.
         if m.id in compiled_ids or m.id in known_model_ids:

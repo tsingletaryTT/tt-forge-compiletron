@@ -12,6 +12,8 @@ Usage:
   python3 expedition.py summary                # print bestiary summary
 """
 from __future__ import annotations
+import warnings as _warnings
+_warnings.filterwarnings("ignore")   # silence deprecation/import noise before TUI starts
 import argparse
 import fnmatch as _fnmatch
 import json
@@ -272,6 +274,15 @@ def _scan_forge_models(bestiary_compiled_ids: set[str]) -> list[dict]:
     sys.path.insert(0, str(forge_models_root))
     items = []
 
+    # Suppress C-level fd-2 noise (XLA/CUDA factory warnings, protobuf
+    # MessageFactory errors) that forge/TTNN modules emit during import.
+    # Python's warnings.filterwarnings() doesn't reach these — only a raw
+    # fd-2 redirect works.
+    _saved_fd2 = os.dup(2)
+    _null_fd = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(_null_fd, 2)
+    os.close(_null_fd)
+
     try:
         for loader_py in sorted(forge_models_root.rglob("loader.py")):
             # Skip hidden directories and private packages (leading _ or .).
@@ -335,6 +346,9 @@ def _scan_forge_models(bestiary_compiled_ids: set[str]) -> list[dict]:
                 "is_frontier": False,
             })
     finally:
+        # Restore fd 2 before doing anything else so subsequent prints are visible.
+        os.dup2(_saved_fd2, 2)
+        os.close(_saved_fd2)
         # Always restore sys.path even if an unexpected exception occurs mid-scan.
         try:
             sys.path.remove(str(forge_models_root))
@@ -1007,10 +1021,23 @@ def _print_run_summary(num_chips: int, run_number: int) -> None:
 
     all_failures = [r for c in chip_results for r in c["failures"]]
     if all_failures:
-        print(f"\n{'─'*W}")
-        print("  FAILED:")
+        from lib.expedition.bestiary import _classify_error
+        from collections import Counter
+        cat_counts: Counter = Counter()
+        cat_labels: dict[str, str] = {}
+        cat_hints:  dict[str, str] = {}
         for r in all_failures:
-            print(f"  ✗ {r['model']:40s}  {(r.get('error') or '')[:40]}")
+            key, label, hint = _classify_error(r.get("error") or "")
+            cat_counts[key] += 1
+            cat_labels[key] = label
+            cat_hints[key]  = hint
+        print(f"\n{'─'*W}")
+        print("  FAILED THIS RUN:")
+        for r in all_failures:
+            print(f"  ✗ {r['model']:40s}  {(r.get('error') or '')[:35]}")
+        print(f"\n  Failure reasons:")
+        for key, cnt in cat_counts.most_common():
+            print(f"    {cnt:>3}  {cat_labels[key]:<28}  {cat_hints[key]}")
 
     # Final bestiary headcount — Bestiary only takes path, no runs_dir.
     b = Bestiary(path=str(BESTIARY_PATH))
@@ -1039,22 +1066,50 @@ def _print_run_summary(num_chips: int, run_number: int) -> None:
 
 # ── Summary command ───────────────────────────────────────────────────────────
 
+def _print_failure_reasons(stats: list[dict], *, W: int = 72, header: str = "FAILURE REASONS") -> None:
+    """Print a ranked failure-reason table from Bestiary.failure_stats() output."""
+    if not stats:
+        return
+    total = sum(s["count"] for s in stats)
+    print(f"\n{'─'*W}")
+    print(f"  {header}  ({total} total failures, {sum(1 for _ in stats)} categories)")
+    print(f"  {'#':>4}  {'category':<24}  {'label':<28}  hint")
+    print(f"  {'─'*4}  {'─'*24}  {'─'*28}  {'─'*18}")
+    for s in stats:
+        # Truncate label/hint so they don't wrap on narrow terminals.
+        label = s["label"][:27]
+        hint  = s["hint"][:40]
+        print(f"  {s['count']:>4}  {s['key']:<24}  {label:<28}  {hint}")
+
+    # Top-offender authors: which HF accounts contribute the most failures?
+    from collections import Counter
+    author_counts: Counter = Counter()
+    for s in stats:
+        for mid in s["models"]:
+            author = mid.split("/")[0] if "/" in mid else mid
+            author_counts[author] += 1
+    top = author_counts.most_common(5)
+    if top and top[0][1] > 1:
+        print(f"\n  Top authors by failure count:")
+        for author, cnt in top:
+            print(f"    {cnt:>4}  {author}")
+
+
 def cmd_summary():
     """
     Print a human-readable snapshot of the expedition bestiary: total
-    compiled, total failed, and a per-chip hall-of-fame table.
+    compiled, total failed, chip hall-of-fame, and the failure-reason leaderboard.
     """
     from lib.expedition.bestiary import Bestiary
-    # Bestiary only accepts path — no runs_dir parameter.
     b = Bestiary(path=str(BESTIARY_PATH))
-    # Use the public dict properties; do NOT access _data directly.
     compiled = b.compiled
-    failed = b.failed
-    totals = b.chip_totals
+    failed   = b.failed
+    totals   = b.chip_totals
 
-    print(f"\n{'═'*60}")
+    W = 72
+    print(f"\n{'═'*W}")
     print(f"  EXPEDITION BESTIARY")
-    print(f"{'═'*60}")
+    print(f"{'═'*W}")
     print(f"  Compiled:  {len(compiled)} models")
     print(f"  Failed:    {len(failed)} models")
     if totals:
@@ -1063,7 +1118,9 @@ def cmd_summary():
             print(f"    Chip {chip_id}: {data['pts']:,} pts  "
                   f"★{data['first_evers']} first-evers  "
                   f"best streak ×{data['best_streak']}")
-    print()
+
+    _print_failure_reasons(b.failure_stats(), W=W)
+    print(f"\n{'═'*W}\n")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -1106,6 +1163,9 @@ def main():
     run_p.add_argument("--parallel-downloads",    type=int,   default=4, metavar="N",
                        help="Number of concurrent model downloads during pre-fetch "
                             "(default: 4; try 2 on slower connections)")
+    run_p.add_argument("--tui",                  action="store_true",
+                       help="Use the Textual TUI instead of the tmux session "
+                            "(equal-sized chip panels, live combat log, roguelike scoring)")
 
     sub.add_parser("summary", help="Print bestiary summary")
 
@@ -1124,6 +1184,7 @@ def main():
         args.frontier_only = False
         args.no_predownload = False
         args.monitor = False
+        args.tui = False
         args.min_downloads = 0
         args.min_likes = 0
         args.max_model_params = 0.0
@@ -1192,21 +1253,33 @@ def main():
         with open(queue_path, "w") as f:
             json.dump(queue, f, indent=2)
 
-    # ── Launch tmux runner ────────────────────────────────────────────────────
-    # Print a quick reattach hint before handing off to tmux.
+    # ── Launch UI ─────────────────────────────────────────────────────────────
     _section("LAUNCHING")
-    print(f"  {_DIM}tmux session:{_RST} {_TEAL}expedition{_RST}  "
-          f"{_DIM}· reattach:{_RST}  {_TEAL}tmux attach -t expedition{_RST}")
-    print()
 
-    # Blocks until the user detaches from the session or the session ends.
-    script = PROJECT_DIR / "scripts" / "run_expedition.sh"
-    env = {**os.environ, "EXPEDITION_RUN": str(run_number),
-           "EXPEDITION_NUM_CHIPS": str(num_chips)}
-    cmd = ["bash", str(script), "--chips", str(num_chips), "--run", str(run_number)]
-    if args.monitor:
-        cmd.append("--monitor")
-    subprocess.run(cmd, env=env)
+    if getattr(args, "tui", False):
+        # Textual TUI path: single Python process, equal chip panels,
+        # live combat log and score strip.  Blocks until the user quits (q).
+        from expedition_tui import ExpeditionTUI
+        app = ExpeditionTUI(
+            num_chips=num_chips,
+            run_number=run_number,
+            arch=hw.get("arch", "blackhole"),
+            project_dir=PROJECT_DIR,
+        )
+        app.run()
+    else:
+        # tmux path: the original run_expedition.sh layout.
+        print(f"  {_DIM}tmux session:{_RST} {_TEAL}expedition{_RST}  "
+              f"{_DIM}· reattach:{_RST}  {_TEAL}tmux attach -t expedition{_RST}")
+        print()
+        script = PROJECT_DIR / "scripts" / "run_expedition.sh"
+        env = {**os.environ, "EXPEDITION_RUN": str(run_number),
+               "EXPEDITION_NUM_CHIPS": str(num_chips)}
+        cmd = ["bash", str(script), "--chips", str(num_chips),
+               "--run", str(run_number)]
+        if args.monitor:
+            cmd.append("--monitor")
+        subprocess.run(cmd, env=env)
 
     # ── Post-run aggregate summary ────────────────────────────────────────────
     # After tmux exits, gather per-chip CSV results and print the leaderboard.
