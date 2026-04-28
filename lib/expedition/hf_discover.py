@@ -63,11 +63,62 @@ _LARGE_MOE_PATTERNS = ["deepseek", "mixtral", "qwen", "kimi"]
 # via AutoModel.from_pretrained(), so attempting them wastes download bandwidth.
 _UNSUPPORTED_FORMAT_PATTERNS = {
     "-gguf",       # llama.cpp GGUF
+    ".gguf",       # llama.cpp GGUF (dot variant)
+    "_gguf",       # llama.cpp GGUF (underscore variant)
     "-ggml",       # older llama.cpp GGML
     "-exl2",       # ExLlamaV2
     "-llamafile",  # Mozilla llamafile
     "-mlx",        # Apple MLX (Silicon-specific)
+    "_mlx",        # Apple MLX (underscore variant)
 }
+
+# config.model_type values that cannot be compiled by forge without special
+# dependencies (mamba-ssm, custom CUDA kernels) or that transformers does not
+# recognise at all.  Checking this at discovery time saves the full download +
+# load cycle for models that would always fail in the worker.
+#
+# Grouped by root cause to make future maintenance easier.
+_UNSUPPORTED_MODEL_TYPES: frozenset[str] = frozenset({
+    # ── Requires mamba-ssm + causal-conv1d ─────────────────────────────────
+    # These models call selective_scan / causal_conv1d ops from the mamba-ssm
+    # package, which is not installed in the Tenstorrent forge environment.
+    "mamba",            # original Mamba SSM (Gu & Dao 2023)
+    "mamba2",           # Mamba-2 (improved SSM)
+    "falcon_mamba",     # TII Falcon Mamba variant
+    "jamba",            # AI21 hybrid Attention+Mamba
+    "zamba",            # Zamba hybrid
+    "zamba2",           # Zamba-2
+    "bamba",            # IBM Bamba hybrid
+    "samba",            # Samba SSM variant
+    "ssm_nemotron",     # NVIDIA Nemotron SSM (e.g. Nemotron-3-Nano)
+
+    # ── Pure RNN / linear-recurrent ─────────────────────────────────────────
+    # No self-attention at all; require custom recurrent kernels that
+    # TorchScript / forge cannot trace.
+    "rwkv",             # RWKV v4 (pure RNN)
+    "rwkv6",            # RWKV v6 / RWKV-6
+    "rwkv6_attn",       # RWKV-6 hybrid attention variant
+    "hgrn",             # Hierarchical Gated Recurrent Network
+    "hgrn2",            # HGRNv2
+    "retnet",           # RetNet (Microsoft)
+    "xlstm",            # xLSTM (extended LSTM)
+    "hawk",             # DeepMind Hawk
+    "griffin",          # DeepMind Griffin
+    "recurrent_gemma",  # Google recurrent Gemma
+    "mega",             # MEGA moving-average gated attention (custom scan)
+
+    # ── Requires custom CUDA kernels not available in forge ──────────────────
+    "megalodon",        # Meta Megalodon (chunked CEMA kernel)
+
+    # ── Not in the current transformers model registry ───────────────────────
+    # These produce ValueError: "Unrecognized model in config: model_type=…".
+    # Listed explicitly so discovery skips the download entirely.
+    # Add new entries here whenever a worker failure surfaces a new custom type.
+    "qwen3_attnres",    # custom Qwen3 attention-residual experiment
+    "dwa",              # Dynamic Weight Adjustment (unknown custom code)
+    "bitnet",           # BitNet 1.58-bit (requires custom int1 kernels)
+    "bitnet_b158",      # BitNet variant
+})
 
 # Parameter count threshold (in billions) above which a model is flagged for
 # multi-chip mesh placement regardless of architecture name.
@@ -189,12 +240,15 @@ def discover_frontier(
     2. Model ID not a known-unsupported binary format (GGUF, GGML, etc.).
     3. ``config.model_type`` must be present when config data is returned —
        models without ``model_type`` reliably fail with "Unrecognized model".
-    4. Model ID not in ``compiled_ids`` or ``known_model_ids``.
-    5. Not a duplicate ID (HF API can return the same repo twice).
-    6. Quality bar: ``downloads >= min_downloads``, ``likes >= min_likes``.
-    7. Gated models skipped when ``skip_gated=True`` (can't be downloaded
+    4. ``config.model_type`` not in ``_UNSUPPORTED_MODEL_TYPES`` — saves the
+       full download + load cycle for architectures that always fail in the
+       worker (mamba-ssm dependent, linear-recurrent, unknown custom types).
+    5. Model ID not in ``compiled_ids`` or ``known_model_ids``.
+    6. Not a duplicate ID (HF API can return the same repo twice).
+    7. Quality bar: ``downloads >= min_downloads``, ``likes >= min_likes``.
+    8. Gated models skipped when ``skip_gated=True`` (can't be downloaded
        without explicit HuggingFace approval).
-    8. Size cap: when ``max_params_b > 0``, models whose safetensors metadata
+    9. Size cap: when ``max_params_b > 0``, models whose safetensors metadata
        reports more than that many billion parameters are skipped.  Models
        with no safetensors metadata are passed through (size unknown).
 
@@ -256,9 +310,18 @@ def discover_frontier(
         # We only filter when config was returned (not None) to avoid rejecting
         # models where the expand call simply didn't include config data.
         config = getattr(m, "config", None)
-        if isinstance(config, dict) and not config.get("model_type"):
-            _log.debug("skipped_no_model_type model=%s", m.id)
-            continue
+        if isinstance(config, dict):
+            model_type = config.get("model_type") or ""
+            if not model_type:
+                _log.debug("skipped_no_model_type model=%s", m.id)
+                continue
+            # Skip architectures whose model_type is in our blocklist — these
+            # require special packages (mamba-ssm, custom CUDA kernels) or are
+            # not in the transformers registry and would always fail in the worker.
+            if model_type.lower() in _UNSUPPORTED_MODEL_TYPES:
+                _log.debug("skipped_unsupported_model_type model=%s type=%s",
+                           m.id, model_type)
+                continue
         # Skip models we already know about or have already compiled.
         if m.id in compiled_ids or m.id in known_model_ids:
             continue
