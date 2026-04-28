@@ -365,7 +365,8 @@ class SetupScreen(Screen):
         self._max_cache_gb = 0.0
         self._session_download_max = 0.0
         self._parallel_downloads   = 4
-        self._running      = False  # True once Enter pressed
+        self._running      = False  # True while discovery is in progress
+        self._setup_done   = False  # True once queues are built (no re-run)
 
     def on_mount(self) -> None:
         app = self.app
@@ -480,7 +481,7 @@ class SetupScreen(Screen):
     def action_sources_frontier(self)-> None: self._seed_only = False; self._frontier_only = True
 
     def action_start(self) -> None:
-        if self._running:
+        if self._running or self._setup_done:
             return
         self._running = True
         self._refresh_config()
@@ -560,11 +561,10 @@ class SetupScreen(Screen):
         self.post_message(_SetupDone(chip_queues))
 
     def on__setup_done(self, event: _SetupDone) -> None:
-        self._running = False
-        self._refresh_config()
-
-    def on_setup_screen__setup_done(self, event: _SetupDone) -> None:
-        # Textual routes messages to the screen; push RunScreen when ready.
+        # _SetupDone is a module-level class, so this is the handler that fires.
+        # Push RunScreen immediately — no second Enter press needed.
+        self._running    = False
+        self._setup_done = True
         self.app.push_screen(
             RunScreen(
                 chip_queues  = event.chip_queues,
