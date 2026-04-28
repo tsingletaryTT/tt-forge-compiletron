@@ -959,10 +959,16 @@ def _print_run_summary(num_chips: int, run_number: int) -> None:
 
     Reads per-chip CSV result files written by expedition_worker.py from /tmp,
     ranks chips by total points, lists new bestiary entries (first-evers), and
-    prints a failure table.  Writes a compact run JSON to data/runs/.
+    prints a failure table with full (untruncated) error text via rich.
+    Writes a compact run JSON to data/runs/.
     """
     import csv
+    from rich.console import Console
+    from rich.rule import Rule
+    from rich.text import Text
     from lib.expedition.bestiary import Bestiary
+
+    con = Console(highlight=False)
 
     chip_results: list[dict] = []
     for chip_id in range(num_chips):
@@ -988,39 +994,37 @@ def _print_run_summary(num_chips: int, run_number: int) -> None:
     # Rank chips by descending points for the leaderboard.
     chip_results.sort(key=lambda x: -x["pts"])
 
-    W = 72
-
-    # Guard: if no CSV files were found (all workers failed to write), print a
-    # clear diagnostic message and return early rather than showing a misleading
-    # "EXPEDITION COMPLETE" banner with no rows.
+    # Guard: no CSV files found — workers may not have completed.
     if not chip_results:
-        print(f"\n{'═'*W}")
-        print(f"  EXPEDITION #{run_number:03d} — NO RESULTS")
-        print(f"  No per-chip CSV files found in /tmp.")
-        print(f"  Workers may not have completed. Check /tmp/expedition_results_chip*.csv")
-        print(f"{'═'*W}\n")
+        con.print()
+        con.rule(f"[bold red]EXPEDITION #{run_number:03d} — NO RESULTS[/]", style="red")
+        con.print("  [dim]No per-chip CSV files found in /tmp.[/]")
+        con.print("  [dim]Workers may not have completed. Check /tmp/expedition_results_chip*.csv[/]")
         return
 
     medals = ["🥇", "🥈", "🥉", "  "]
-    print(f"\n{'═'*W}")
-    print(f"  EXPEDITION #{run_number:03d} COMPLETE")
-    print(f"{'═'*W}")
+    con.print()
+    con.rule(f"[bold cyan]⚡ EXPEDITION #{run_number:03d} COMPLETE[/]", style="cyan")
     for i, c in enumerate(chip_results):
         medal = medals[min(i, 3)]
         fe = len(c["first_evers"])
-        print(f"  {medal} CHIP {c['chip_id']}   {c['pts']:,} pts   "
-              f"✓{len(c['successes'])} ✗{len(c['failures'])}   ★{fe} first-evers")
+        fe_str = f"  [gold1]★{fe} first-evers[/]" if fe else ""
+        con.print(
+            f"  {medal} CHIP {c['chip_id']}  "
+            f"[gold1]{c['pts']:,} pts[/]  "
+            f"[green]✓{len(c['successes'])}[/] [red]✗{len(c['failures'])}[/]"
+            f"{fe_str}"
+        )
 
-    all_first_evers = [
-        r for c in chip_results for r in c["first_evers"]
-    ]
+    all_first_evers = [r for c in chip_results for r in c["first_evers"]]
     if all_first_evers:
-        print(f"\n{'─'*W}")
-        print("  NEW TO BESTIARY:")
+        con.print()
+        con.rule("[bold gold1]NEW TO BESTIARY[/]", style="gold1")
         for r in all_first_evers:
-            artifact = (r.get("artifact") or "")[:80]
-            rune = "★"
-            print(f"  {rune} {r['model']:40s}  {artifact}")
+            artifact = r.get("artifact") or ""
+            con.print(f"  [gold1]★[/] [bold]{r['model']}[/]")
+            if artifact:
+                con.print(f"    [dim]{artifact}[/]")
 
     all_failures = [r for c in chip_results for r in c["failures"]]
     if all_failures:
@@ -1034,21 +1038,27 @@ def _print_run_summary(num_chips: int, run_number: int) -> None:
             cat_counts[key] += 1
             cat_labels[key] = label
             cat_hints[key]  = hint
-        print(f"\n{'─'*W}")
-        print("  FAILED THIS RUN:")
+        con.print()
+        con.rule("[bold red]FAILED THIS RUN[/]", style="red")
         for r in all_failures:
-            print(f"  ✗ {r['model']:40s}  {(r.get('error') or '')[:35]}")
-        print(f"\n  Failure reasons:")
+            err = r.get("error") or ""
+            key, label, _hint = _classify_error(err)
+            con.print(f"  [red]✗[/] [bold]{r['model']}[/]  [dim italic]{label}[/]")
+            # Print full error text, each line indented, no truncation.
+            for eline in err.splitlines():
+                con.print(f"    [dim]{eline}[/]")
+        con.print()
+        con.print("  [bold]Failure reasons:[/]")
         for key, cnt in cat_counts.most_common():
-            print(f"    {cnt:>3}  {cat_labels[key]:<28}  {cat_hints[key]}")
+            con.print(f"    [bold]{cnt:>3}[/]  [cyan]{cat_labels[key]:<28}[/]  [dim]{cat_hints[key]}[/]")
 
     # Final bestiary headcount — Bestiary only takes path, no runs_dir.
     b = Bestiary(path=str(BESTIARY_PATH))
-    # compiled is a public dict property; len() gives the total count.
     compiled_count = len(b.compiled)
-    print(f"\n{'─'*W}")
-    print(f"  BESTIARY: {compiled_count} total compiled")
-    print(f"{'═'*W}\n")
+    con.print()
+    con.rule(style="cyan")
+    con.print(f"  [cyan]BESTIARY:[/] {compiled_count} total compiled")
+    con.print()
 
     # Persist a compact run record for historical lookup.
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
@@ -1212,6 +1222,31 @@ def main():
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
     run_number = len(list(RUNS_DIR.glob("run_*.json"))) + 1
 
+    # ── TUI path: hand off all params and let the TUI manage setup ───────────
+    # SetupScreen handles discovery, queue building, and pre-download;
+    # RunScreen handles chip workers; SummaryScreen replaces _print_run_summary.
+    if getattr(args, "tui", False):
+        from expedition_tui import ExpeditionTUI
+        app = ExpeditionTUI(
+            num_chips=num_chips,
+            run_number=run_number,
+            arch=hw.get("arch", "blackhole"),
+            project_dir=PROJECT_DIR,
+            limit=args.limit,
+            seed_only=args.seed_only,
+            frontier_only=args.frontier_only,
+            no_predownload=args.no_predownload,
+            min_downloads=args.min_downloads,
+            min_likes=args.min_likes,
+            max_params_b=args.max_model_params,
+            allow_gated=args.allow_gated,
+            max_cache_gb=args.max_cache_gb,
+            session_download_max=args.session_download_max,
+            parallel_downloads=args.parallel_downloads,
+        )
+        app.run()
+        return   # everything handled inside TUI screens
+
     # Banner goes here — after we know run_number and num_chips.
     _banner(run_number, num_chips, get_hardware_summary(hw))
 
@@ -1257,32 +1292,19 @@ def main():
             json.dump(queue, f, indent=2)
 
     # ── Launch UI ─────────────────────────────────────────────────────────────
+    # TUI path returns early above; only the tmux path reaches here.
     _section("LAUNCHING")
-
-    if getattr(args, "tui", False):
-        # Textual TUI path: single Python process, equal chip panels,
-        # live combat log and score strip.  Blocks until the user quits (q).
-        from expedition_tui import ExpeditionTUI
-        app = ExpeditionTUI(
-            num_chips=num_chips,
-            run_number=run_number,
-            arch=hw.get("arch", "blackhole"),
-            project_dir=PROJECT_DIR,
-        )
-        app.run()
-    else:
-        # tmux path: the original run_expedition.sh layout.
-        print(f"  {_DIM}tmux session:{_RST} {_TEAL}expedition{_RST}  "
-              f"{_DIM}· reattach:{_RST}  {_TEAL}tmux attach -t expedition{_RST}")
-        print()
-        script = PROJECT_DIR / "scripts" / "run_expedition.sh"
-        env = {**os.environ, "EXPEDITION_RUN": str(run_number),
-               "EXPEDITION_NUM_CHIPS": str(num_chips)}
-        cmd = ["bash", str(script), "--chips", str(num_chips),
-               "--run", str(run_number)]
-        if args.monitor:
-            cmd.append("--monitor")
-        subprocess.run(cmd, env=env)
+    print(f"  {_DIM}tmux session:{_RST} {_TEAL}expedition{_RST}  "
+          f"{_DIM}· reattach:{_RST}  {_TEAL}tmux attach -t expedition{_RST}")
+    print()
+    script = PROJECT_DIR / "scripts" / "run_expedition.sh"
+    env = {**os.environ, "EXPEDITION_RUN": str(run_number),
+           "EXPEDITION_NUM_CHIPS": str(num_chips)}
+    cmd = ["bash", str(script), "--chips", str(num_chips),
+           "--run", str(run_number)]
+    if args.monitor:
+        cmd.append("--monitor")
+    subprocess.run(cmd, env=env)
 
     # ── Post-run aggregate summary ────────────────────────────────────────────
     # After tmux exits, gather per-chip CSV results and print the leaderboard.

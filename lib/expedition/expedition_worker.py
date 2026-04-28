@@ -306,7 +306,7 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
         return False, None, 0.0, "TIMEOUT"
     except Exception as e:
         signal.alarm(0)
-        return False, None, 0.0, f"{type(e).__name__}: {str(e)[:80]}"
+        return False, None, 0.0, f"{type(e).__name__}: {str(e)[:300]}"
 
 
 @dataclass
@@ -607,7 +607,10 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
     print(f"{BOLD}{GREEN}{'═'*80}{RESET}")
     # Keep the tmux pane open so the user can read the summary before the
     # window closes. The orchestrator's `wait` call will hold until Enter.
-    input("Press Enter to close...")
+    try:
+        input("Press Enter to close...")
+    except EOFError:
+        pass
 
 
 if __name__ == "__main__":

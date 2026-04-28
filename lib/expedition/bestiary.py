@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import re
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,106 @@ from typing import Any
 def _sanitize_model_id(model_id: str) -> str:
     """Convert a model ID to a safe filename (slashes and spaces → underscores)."""
     return re.sub(r"[\s/]+", "_", model_id).strip("_")
+
+
+# ── Error classification ───────────────────────────────────────────────────────
+# Ordered rules: first match wins.  Each entry is
+#   (substring_to_find, category_key, display_label, action_hint)
+# Substrings are matched case-insensitively against the full error string.
+# The ordering matters: put more specific / less ambiguous patterns first.
+
+_ERROR_RULES: list[tuple[str, str, str, str]] = [
+    # Forge tracing limitation — the most common fixable failure
+    ("Tracer cannot infer type",
+     "tracer_output_type",
+     "Tracer output type",
+     "fix: set return_dict=False on the model before tracing"),
+    # Models requiring trust_remote_code — "code" may be cut off in older stored errors
+    ("contains custom",
+     "custom_code",
+     "Custom model code",
+     "fix: add trust_remote_code=True to AutoModel.from_pretrained()"),
+    ("trust_remote_code",
+     "custom_code",
+     "Custom model code",
+     "fix: add trust_remote_code=True to AutoModel.from_pretrained()"),
+    # Unsupported architecture in the installed transformers version
+    # "but Transfo" matches even if "rmers" was cut by the old 80-char truncation
+    ("but Transfo",
+     "unsupported_arch",
+     "Unsupported architecture",
+     "need: upgrade transformers or add forge ops for this arch"),
+    # model_type absent from config.json — most common catch-all
+    ("Unrecognized model",
+     "unknown_arch",
+     "Unknown architecture",
+     "filter: check for model_type in config before queuing"),
+    ("model_type",
+     "unknown_arch",
+     "Unknown architecture",
+     "filter: check for model_type in config before queuing"),
+    # Quantised weights in formats we can't compile
+    ("quantization",
+     "quantized_format",
+     "Quantized model format",
+     "filter: extend format blocklist in hf_discover.py"),
+    ("torchao",
+     "quantized_format",
+     "Quantized model format",
+     "filter: extend format blocklist in hf_discover.py"),
+    ("bitsandbytes",
+     "quantized_format",
+     "Quantized model format",
+     "filter: extend format blocklist in hf_discover.py"),
+    # Our loader builder couldn't find a path for this pipeline tag
+    ("Cannot build dynamic loader",
+     "loader_missing",
+     "No loader available",
+     "fix: extend build_dynamic_loader() in hf_discover.py"),
+    # Forge internal errors — file upstream bugs
+    ("Internal Writer Error",
+     "forge_internal",
+     "Forge internal error",
+     "bug: report to Tenstorrent with the model ID"),
+    ("reconstruction error",
+     "forge_internal",
+     "Forge internal error",
+     "bug: report to Tenstorrent with the model ID"),
+    # Model gone, private, or inaccessible on HuggingFace
+    ("Can't load the model",
+     "model_access",
+     "Model access error",
+     "filter: model private or deleted — add freshness check to discovery"),
+    ("Repository Not Found",
+     "model_access",
+     "Model access error",
+     "filter: model private or deleted — add freshness check to discovery"),
+    # Worker-level timeouts from SIGALRM
+    ("TIMEOUT",
+     "timeout",
+     "Timeout",
+     "config: raise --timeout-s or lower --max-model-params"),
+    # Out-of-memory
+    ("out of memory",
+     "oom",
+     "Out of memory",
+     "config: lower --max-model-params or add chip memory guard"),
+]
+
+_CATEGORY_OTHER = ("other", "Other", "investigate manually")
+
+
+def _classify_error(error: str) -> tuple[str, str, str]:
+    """Map a raw error string to (category_key, display_label, action_hint).
+
+    Applies ``_ERROR_RULES`` in order, returning the first match.
+    Falls back to ``("other", "Other", "investigate manually")`` if nothing matches.
+    """
+    lower = error.lower()
+    for substring, key, label, hint in _ERROR_RULES:
+        if substring.lower() in lower:
+            return key, label, hint
+    return _CATEGORY_OTHER
 
 
 class Bestiary:
@@ -128,10 +229,59 @@ class Bestiary:
                 "run_first_failed": run,
                 "attempts": 0,
                 "last_error": "",
+                "error_category": "",
             }
         entry = self._data["failed"][model_id]
         entry["attempts"] += 1
         entry["last_error"] = error
+        # Always recompute so the category stays in sync if the error changes.
+        entry["error_category"] = _classify_error(error)[0]
+
+    def failure_stats(self) -> list[dict]:
+        """Aggregate all-time failures by error category, sorted by count desc.
+
+        Handles entries that predate the error_category field by classifying
+        them on the fly from their stored last_error string.
+
+        Returns a list of dicts, each with:
+          key:    category key (e.g. "tracer_output_type")
+          label:  human-readable name (e.g. "Tracer output type")
+          hint:   short action suggestion
+          count:  number of distinct models in this category
+          models: list of model_ids, sorted by attempt count desc
+        """
+        # Build a map from category_key → list of (model_id, attempts) pairs.
+        buckets: dict[str, list[tuple[str, int]]] = {}
+        for model_id, entry in self._data["failed"].items():
+            # Prefer the stored category; classify retroactively if missing.
+            cat = entry.get("error_category") or ""
+            if not cat:
+                cat = _classify_error(entry.get("last_error", ""))[0]
+            buckets.setdefault(cat, []).append(
+                (model_id, entry.get("attempts", 1))
+            )
+
+        # Build label/hint lookup from _ERROR_RULES + the "other" fallback.
+        _meta: dict[str, tuple[str, str]] = {
+            key: (label, hint) for _, key, label, hint in _ERROR_RULES
+        }
+        _meta["other"] = (_CATEGORY_OTHER[1], _CATEGORY_OTHER[2])
+
+        result: list[dict] = []
+        for key, pairs in buckets.items():
+            label, hint = _meta.get(key, (key, "investigate manually"))
+            # Sort models within category by attempt count (most attempts first).
+            pairs.sort(key=lambda x: -x[1])
+            result.append({
+                "key":    key,
+                "label":  label,
+                "hint":   hint,
+                "count":  len(pairs),
+                "models": [m for m, _ in pairs],
+            })
+        # Sort categories by model count descending.
+        result.sort(key=lambda x: -x["count"])
+        return result
 
     def add_chip_points(
         self, chip: int, pts: int, first_ever: bool, streak: int
