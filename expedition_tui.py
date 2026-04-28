@@ -218,11 +218,13 @@ class HardwareWidget(Static):
             devices = data.get("device_info", [])
             lines: list[str] = []
             for dev in devices[:4]:
-                dev_id = dev.get("board_id",   "?")
-                btype  = dev.get("board_type", "?")[:10]
+                # tt-smi -s nests board fields under "board_info" and clock/temp under "telemetry"
+                binfo  = dev.get("board_info", {})
+                dev_id = binfo.get("board_id",   "?")
+                btype  = binfo.get("board_type", "?")[:10]
                 telem  = dev.get("telemetry", {})
                 temp   = telem.get("asic_temperature", "?")
-                aiclk  = telem.get("ai_clk",           "?")
+                aiclk  = telem.get("aiclk",            "?")   # field is "aiclk", not "ai_clk"
                 lines.append(
                     f"[bold cyan]Chip {dev_id}[/] {btype}"
                     f"  [yellow]{aiclk}MHz[/]  [red]{temp}°C[/]"
@@ -760,6 +762,23 @@ class RunScreen(Screen):
         yield Footer()
 
     def on_mount(self) -> None:
+        # Write a placeholder run JSON immediately so the next run's counter
+        # increments correctly.  expedition.py computes run_number as
+        # len(glob("run_*.json")) + 1, so without this file the TUI number
+        # never advances past the last non-TUI run.
+        try:
+            runs_dir = self._project_dir / "data" / "runs"
+            runs_dir.mkdir(parents=True, exist_ok=True)
+            run_file = runs_dir / f"run_{self.run_number:03d}.json"
+            if not run_file.exists():
+                run_file.write_text(json.dumps({
+                    "run":       self.run_number,
+                    "timestamp": __import__("datetime").datetime.now().isoformat(),
+                    "chips":     self.num_chips,
+                    "tui":       True,
+                }, indent=2))
+        except Exception:
+            pass
         for chip_id in range(self.num_chips):
             self._launch_chip(chip_id)
 
