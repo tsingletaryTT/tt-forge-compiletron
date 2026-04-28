@@ -493,71 +493,147 @@ class SetupScreen(Screen):
 
     @work(thread=True)
     def _do_setup(self) -> None:
-        """Run build_queues + _predownload_queues in a thread, stream output to log."""
+        """Build chip queues in a thread and stream progress to the setup log.
 
-        log     = self.query_one("#setup-log", RichLog)
-        app     = self.app
-        # buf accumulates partial writes; \r resets the current line (spinner).
-        buf     = [""]
+        Calls the lower-level _scan_forge_models / _scan_frontier / _predownload
+        functions directly rather than going through build_queues.  This avoids
+        two problems with calling build_queues from a TUI context:
 
-        class _TuiWriter(io.TextIOBase):
-            def write(self_, text: str) -> int:
-                buf[0] += text
-                # \r resets to start of line — keep only the last segment.
-                if "\r" in buf[0]:
-                    buf[0] = buf[0].split("\r")[-1]
-                # Flush complete lines.
-                lines = buf[0].split("\n")
-                buf[0] = lines.pop()
-                for line in lines:
-                    stripped = _RE_ANSI.sub("", line).strip()
-                    if stripped:
-                        try:
-                            entry = Text.from_ansi(line)
-                        except Exception:
-                            entry = Text(stripped)
-                        app.call_from_thread(log.write, entry)
-                return len(text)
-            def flush(self_) -> None: pass
+        1. build_queues calls _with_spinner which starts a daemon thread that
+           writes \r-spinner frames directly to sys.stdout.  In TUI mode that
+           writes into the Textual terminal driver, corrupting the display.
 
-        writer = _TuiWriter()
+        2. contextlib.redirect_stdout is process-global (not thread-local) so
+           redirecting it in the worker thread intercepts Textual's own output.
+        """
+        log = self.query_one("#setup-log", RichLog)
+        app = self.app
 
-        # Import build_queues lazily (avoids circular import at module load).
-        from expedition import build_queues, _predownload_queues
+        def _log(markup: str) -> None:
+            app.call_from_thread(log.write, Text.from_markup(markup))
 
-        with contextlib.redirect_stdout(writer):
-            chip_queues = build_queues(
-                num_chips         = self._chips,
-                limit             = self._limit,
-                seed_only         = self._seed_only,
-                frontier_only     = self._frontier_only,
-                min_downloads     = self._min_downloads,
-                min_likes         = self._min_likes,
-                max_params_b      = self._max_params_b,
-                skip_gated        = not self._allow_gated,
+        # Lazily import lower-level helpers from expedition (avoids circular
+        # import at module load time since expedition imports expedition_tui).
+        from expedition import (
+            _scan_forge_models,
+            _scan_frontier,
+            _dedup_by_author_family,
+            _interleave,
+            _predownload_queues,
+            BESTIARY_PATH,
+        )
+        from lib.expedition.bestiary import Bestiary
+
+        bestiary     = Bestiary(path=str(BESTIARY_PATH))
+        compiled_ids = set(bestiary.compiled.keys())
+
+        seed_items:     list[dict] = []
+        frontier_items: list[dict] = []
+
+        # ── Seed scan (forge-models library) ─────────────────────────────────
+        if not self._frontier_only:
+            _log("[cyan]⚙ Scanning tt-forge-models library...[/]")
+            seed_items = _scan_forge_models(compiled_ids)
+            _log(f"[green]✓ {len(seed_items)} seed model(s) found[/]")
+            for item in seed_items:
+                mid  = item.get("model_id", "?")
+                task = item.get("task") or item.get("source") or ""
+                _log(f"  [dim]· {mid}  {task}[/]")
+
+        forge_ids = {item["model_id"] for item in seed_items}
+
+        # ── HF frontier discovery (slow — network) ────────────────────────────
+        if not self._seed_only:
+            _log("[cyan]⚙ Querying HuggingFace frontier (may take 30-60s)...[/]")
+            frontier_items = _scan_frontier(
+                compiled_ids,
+                forge_ids,
+                min_downloads = self._min_downloads,
+                min_likes     = self._min_likes,
+                max_params_b  = self._max_params_b,
+                skip_gated    = not self._allow_gated,
             )
-            if not self._no_predownload:
-                with contextlib.redirect_stdout(writer):
+            _log(f"[green]✓ {len(frontier_items)} frontier model(s) discovered[/]")
+            for item in frontier_items:
+                mid  = item.get("model_id", "?")
+                task = item.get("task") or ""
+                _log(f"  [cyan]+ {mid}  [dim]{task}[/][/]")
+
+        # ── Dedup + interleave ────────────────────────────────────────────────
+        if frontier_items and (self._limit == 0 or self._limit < 100):
+            frontier_items, n_dropped = _dedup_by_author_family(
+                frontier_items, target_params_b=self._max_params_b
+            )
+            if n_dropped:
+                _log(f"[dim]{n_dropped} family duplicate(s) dropped[/]")
+
+        all_items = _interleave(seed_items, frontier_items, seed_ratio=0.6)
+
+        # Deduplicate (belt-and-suspenders against duplicate model IDs).
+        seen: set[str] = set()
+        deduped: list[dict] = []
+        for item in all_items:
+            mid = item["model_id"]
+            if mid not in seen:
+                seen.add(mid)
+                deduped.append(item)
+        all_items = deduped
+
+        if self._limit > 0:
+            all_items = all_items[: self._limit]
+
+        chip_queues: list[list[dict]] = [[] for _ in range(self._chips)]
+        for i, item in enumerate(all_items):
+            chip_queues[i % self._chips].append(item)
+
+        total = sum(len(q) for q in chip_queues)
+        per   = total // max(self._chips, 1)
+        _log(f"[bold green]✓ {total} model(s) → {self._chips} chip(s)  (~{per} each)[/]")
+
+        # ── Pre-download frontier weights ─────────────────────────────────────
+        if not self._no_predownload:
+            frontier_total = sum(
+                1 for q in chip_queues for m in q if m.get("is_frontier")
+            )
+            if frontier_total > 0:
+                _log(f"[cyan]⚙ Pre-downloading {frontier_total} frontier model(s)...[/]")
+                # Capture predownload stdout (progress bars etc.) with a writer
+                # that handles \r overwrite lines and forwards non-empty content.
+                buf = [""]
+                class _DLWriter(io.TextIOBase):
+                    def write(self_, text: str) -> int:
+                        buf[0] += text
+                        if "\r" in buf[0]:
+                            buf[0] = buf[0].split("\r")[-1]
+                        lines = buf[0].split("\n")
+                        buf[0] = lines.pop()
+                        for line in lines:
+                            stripped = _RE_ANSI.sub("", line).strip()
+                            if stripped:
+                                try:
+                                    entry = Text.from_ansi(line)
+                                except Exception:
+                                    entry = Text(stripped)
+                                app.call_from_thread(log.write, entry)
+                        return len(text)
+                    def flush(self_) -> None: pass
+
+                with contextlib.redirect_stdout(_DLWriter()):
                     _predownload_queues(
                         chip_queues,
-                        max_cache_gb           = self._max_cache_gb,
-                        session_download_max_gb= self._session_download_max,
-                        parallel_downloads     = self._parallel_downloads,
+                        max_cache_gb            = self._max_cache_gb,
+                        session_download_max_gb = self._session_download_max,
+                        parallel_downloads      = self._parallel_downloads,
                     )
+                _log("[green]✓ Pre-download complete[/]")
 
-        # Write queue files for expedition_worker.py to read.
+        # ── Write queue files ─────────────────────────────────────────────────
         for chip_id, queue in enumerate(chip_queues):
             Path(f"/tmp/expedition_queue_chip{chip_id}.json").write_text(
                 json.dumps(queue, indent=2)
             )
 
-        total = sum(len(q) for q in chip_queues)
-        app.call_from_thread(
-            log.write,
-            Text.from_markup(
-                f"\n[bold green]✓ {total} model(s) queued — press ENTER to launch[/]"
-            )
-        )
+        _log(f"\n[bold green]✓ Ready — launching {self._chips} chip(s)...[/]")
         self.post_message(_SetupDone(chip_queues))
 
     def on__setup_done(self, event: _SetupDone) -> None:
