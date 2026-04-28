@@ -10,7 +10,7 @@ Three screens:
                  to start HF discovery and pre-download, then auto-advances.
 
   RunScreen    — equal-sized chip panels with streaming worker output,
-                 roguelike combat log, hardware sidebar, score strip.
+                 expedition log, hardware sidebar, score strip.
 
   SummaryScreen — colorful end-of-run results with full error text
                   (no truncation), medals, points, bestiary count.
@@ -34,6 +34,8 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
@@ -84,6 +86,9 @@ _RE_RARITY  = re.compile(
     r"(LEGENDARY|RARE FIND|UNCOMMON|common|familiar)", re.IGNORECASE)
 _RE_OSC     = re.compile(r"\x1b\][^\x1b\x07]*(?:\x1b\\|\x07)")
 _RE_ANSI    = re.compile(r"\x1b\[[^m]*m")
+# TT Metal C++ loguru writes "Always |" dispatch/init noise to fd1 (stdout),
+# bypassing FilteredStderr.  Suppress it here so it never reaches the panel log.
+_RE_TT_NOISE = re.compile(r"Always \s*\|")
 
 
 def _strip_osc(line: str) -> str:
@@ -121,7 +126,10 @@ def _render_score_row(chip_id: int) -> Text:
     model     = s.get("model", "")[:22]
     done      = s.get("done", "0") == "1"
 
-    ratio  = min(current / total, 1.0)
+    # Use completed (successes + failures) as numerator so the bar doesn't jump
+    # to 100% when the last model starts loading — only when it finishes.
+    completed = successes + failures
+    ratio  = min(completed / total, 1.0)
     pct    = int(ratio * 100)
     filled = round(ratio * 24)
     bar    = "█" * filled + "░" * (24 - filled)
@@ -169,6 +177,8 @@ class ChipPanel(Widget):
     def write_line(self, raw: str) -> None:
         line = _strip_osc(raw).rstrip("\n")
         if not line:
+            return
+        if _RE_TT_NOISE.search(line):
             return
         log = self.query_one(RichLog)
         try:
@@ -226,9 +236,9 @@ class HardwareWidget(Static):
             self.update(Text.from_markup(f"[dim]tt-smi: {str(exc)[:40]}[/]"))
 
 
-class CombatLog(RichLog):
+class EventLog(RichLog):
     DEFAULT_CSS = """
-    CombatLog {
+    EventLog {
         height: 1fr;
         border: solid $secondary;
     }
@@ -236,7 +246,7 @@ class CombatLog(RichLog):
 
     def __init__(self, **kwargs) -> None:
         super().__init__(markup=True, highlight=False, auto_scroll=True, **kwargs)
-        self.border_title = "  COMBAT LOG  "
+        self.border_title = "  EXPEDITION LOG  "
 
     def log_success(self, chip_id: int, model: str, rarity: str,
                     pts: int, first_ever: bool, streak: int) -> None:
@@ -339,6 +349,7 @@ class SetupScreen(Screen):
         Binding("1",          "sources_all",     "Sources: all",  show=False),
         Binding("2",          "sources_seed",    "Sources: seed", show=False),
         Binding("3",          "sources_frontier","Sources: HF",   show=False),
+        Binding("4",          "toggle_staples",  "Staples",       show=False),
         Binding("q",          "quit",            "Quit",          show=True),
     ]
 
@@ -357,6 +368,7 @@ class SetupScreen(Screen):
         self._max_cache_gb = 0.0
         self._session_download_max = 0.0
         self._parallel_downloads   = 4
+        self._staples      = False  # True → include already-compiled seed models
         self._discovering  = False  # True while HF discovery / queue-build is running
         self._setup_done   = False  # True once queues are built (no re-run)
 
@@ -374,6 +386,7 @@ class SetupScreen(Screen):
         self._max_cache_gb  = app.max_cache_gb
         self._session_download_max = app.session_download_max
         self._parallel_downloads   = app.parallel_downloads
+        self._staples              = app.staples
         self._refresh_config()
 
     def compose(self) -> ComposeResult:
@@ -406,6 +419,8 @@ class SetupScreen(Screen):
         else:
             src_str = "ALL"
 
+        staples_str = "[bold yellow]ON[/]" if self._staples else "off"
+
         status = (
             "[bold yellow]● Ready — press ENTER[/]"
             if not self._discovering else
@@ -424,6 +439,7 @@ class SetupScreen(Screen):
             f"  Min Likes    [bold]{lk_str}[/]  [dim], / .[/]",
             f"  Max Params   [bold]{pb_str}[/]  [dim]m / n[/]",
             f"  Sources      [bold]{src_str}[/]  [dim]1/2/3[/]",
+            f"  Staples      {staples_str}  [dim]4[/]",
             "",
             "─" * 34,
             status,
@@ -471,6 +487,8 @@ class SetupScreen(Screen):
     def action_sources_seed(self)    -> None: self._seed_only = True;  self._frontier_only = False
     @_guarded
     def action_sources_frontier(self)-> None: self._seed_only = False; self._frontier_only = True
+    @_guarded
+    def action_toggle_staples(self)  -> None: self._staples = not self._staples
 
     def action_start(self) -> None:
         if self._discovering or self._setup_done:
@@ -538,8 +556,10 @@ class SetupScreen(Screen):
 
         # ── Seed scan (forge-models library) ─────────────────────────────────
         if not self._frontier_only:
-            _log("[cyan]⚙ Scanning tt-forge-models library...[/]")
-            seed_items = _scan_forge_models(compiled_ids)
+            label = "⚙ Scanning tt-forge-models library (staples — all included)..." if self._staples \
+                else "⚙ Scanning tt-forge-models library..."
+            _log(f"[cyan]{label}[/]")
+            seed_items = _scan_forge_models(compiled_ids, include_all=self._staples)
             _log(f"[green]✓ {len(seed_items)} seed model(s) found[/]")
             for item in seed_items:
                 mid  = item.get("model_id", "?")
@@ -734,7 +754,7 @@ class RunScreen(Screen):
                             yield ChipPanel(3, f"⚔ CHIP 3  {_ADVENTURER_TITLES[3]}", id="chip-3")
             with Vertical(id="sidebar"):
                 yield HardwareWidget(id="hw")
-                yield CombatLog(id="combat-log")
+                yield EventLog(id="event-log")
 
         yield ScoreStrip(self.num_chips, id="score-strip")
         yield Footer()
@@ -785,14 +805,23 @@ class RunScreen(Screen):
         status = _read_status(chip_id)
         pts    = int(status.get("pts", 0))
         try:
-            combat = self.query_one("#combat-log", CombatLog)
+            combat = self.query_one("#event-log", EventLog)
             combat.log_chip_done(chip_id, pts, self._chip_best[chip_id])
         except Exception:
             pass
 
         self._done_count += 1
         if self._done_count >= self.num_chips:
-            await asyncio.sleep(1.5)   # brief pause so user sees final state
+            try:
+                el = self.query_one("#event-log", EventLog)
+                el.write(f"\n[bold green]{'═'*34}[/]")
+                el.write("[bold green]  ⚡ ALL CHIPS COMPLETE[/]")
+                for n in (3, 2, 1):
+                    el.write(f"[dim]  → Results in {n}...[/]")
+                    await asyncio.sleep(0.8)
+                el.write(f"[bold green]{'═'*34}[/]")
+            except Exception:
+                await asyncio.sleep(2.4)
             self.app.push_screen(SummaryScreen(self.num_chips, self.run_number))
 
     def _parse_for_events(self, chip_id: int, line: str) -> None:
@@ -809,7 +838,7 @@ class RunScreen(Screen):
                 self._chip_rarity[chip_id] = "common"
 
         try:
-            combat = self.query_one("#combat-log", CombatLog)
+            combat = self.query_one("#event-log", EventLog)
         except Exception:
             return
 
@@ -835,7 +864,7 @@ class RunScreen(Screen):
     def action_show_toplike(self) -> None:
         if not shutil.which("tt-toplike"):
             try:
-                combat = self.query_one("#combat-log", CombatLog)
+                combat = self.query_one("#event-log", EventLog)
                 combat.write("[red]tt-toplike not found — install tenstorrent-software-utils[/]")
             except Exception:
                 pass
@@ -854,7 +883,7 @@ class RunScreen(Screen):
             output = f"Error running summary: {exc}"
 
         try:
-            combat = self.query_one("#combat-log", CombatLog)
+            combat = self.query_one("#event-log", EventLog)
             combat.write(f"\n[bold cyan]{'═' * 34}[/]")
             combat.write("[bold cyan]  ★ EXPEDITION BESTIARY[/]")
             combat.write(f"[bold cyan]{'═' * 34}[/]")
@@ -884,12 +913,13 @@ class SummaryScreen(Screen):
     """
 
     BINDINGS = [
-        Binding("q",     "quit",           "Quit",    show=True),
-        Binding("b",     "show_bestiary",   "Bestiary",show=True),
-        Binding("up",    "scroll_up",       "",        show=False),
-        Binding("down",  "scroll_down",     "",        show=False),
-        Binding("pageup","scroll_page_up",  "",        show=False),
-        Binding("pagedown","scroll_page_down","",      show=False),
+        Binding("r,enter", "rerun",           "Run Again", show=True),
+        Binding("q",       "quit",            "Quit",      show=True),
+        Binding("b",       "show_bestiary",   "Bestiary",  show=True),
+        Binding("up",      "scroll_up",       "",          show=False),
+        Binding("down",    "scroll_down",     "",          show=False),
+        Binding("pageup",  "scroll_page_up",  "",          show=False),
+        Binding("pagedown","scroll_page_down","",          show=False),
     ]
 
     def __init__(self, num_chips: int, run_number: int, **kwargs) -> None:
@@ -899,13 +929,16 @@ class SummaryScreen(Screen):
 
     def compose(self) -> ComposeResult:
         self.app.title     = f"EXPEDITION #{self.run_number:03d}  COMPLETE"
-        self.app.sub_title = "q to quit"
+        self.app.sub_title = "r=Run Again  q=Quit"
         yield Header(show_clock=False)
         yield RichLog(markup=True, highlight=False, auto_scroll=False, id="summary-log")
         yield Footer()
 
     def on_mount(self) -> None:
         self._populate()
+
+    def action_rerun(self) -> None:
+        self.app.switch_screen(SetupScreen())
 
     def action_scroll_up(self)       -> None: self.query_one("#summary-log").scroll_up()
     def action_scroll_down(self)     -> None: self.query_one("#summary-log").scroll_down()
@@ -916,7 +949,7 @@ class SummaryScreen(Screen):
         log = self.query_one("#summary-log", RichLog)
         rn  = self.run_number
 
-        # ── Load results ──────────────────────────────────────────────────────
+        # ── Load results from per-chip CSV files ─────────────────────────────
         chip_results: list[dict] = []
         for chip_id in range(self.num_chips):
             path = Path(f"/tmp/expedition_results_chip{chip_id}.csv")
@@ -930,12 +963,16 @@ class SummaryScreen(Screen):
             failures    = [r for r in rows if r.get("status") == "failed"]
             total_pts   = sum(int(r.get("pts") or 0) for r in rows)
             first_evers = [r for r in successes if r.get("first_ever") == "True"]
+            first_voice = [r for r in successes if r.get("first_voice") == "True"]
+            times = [float(r["compile_time"]) for r in successes if r.get("compile_time")]
             chip_results.append({
                 "chip_id":    chip_id,
                 "pts":        total_pts,
                 "successes":  successes,
                 "failures":   failures,
                 "first_evers":first_evers,
+                "first_voice":first_voice,
+                "times":      times,
             })
 
         chip_results.sort(key=lambda x: -x["pts"])
@@ -947,51 +984,127 @@ class SummaryScreen(Screen):
             )
             return
 
-        # ── Header ────────────────────────────────────────────────────────────
-        log.write(f"[bold cyan]{'═' * 60}[/]")
-        log.write(f"[bold cyan]  ⚡ EXPEDITION #{rn:03d} COMPLETE[/]")
-        log.write(f"[bold cyan]{'═' * 60}[/]\n")
+        # ── Derived totals ────────────────────────────────────────────────────
+        all_successes  = [r for c in chip_results for r in c["successes"]]
+        all_failures   = [r for c in chip_results for r in c["failures"]]
+        all_first      = [r for c in chip_results for r in c["first_evers"]]
+        all_fv         = [r for c in chip_results for r in c["first_voice"]]
+        all_times      = [t for c in chip_results for t in c["times"]]
+        total_ns       = len(all_successes)
+        total_nf       = len(all_failures)
+        total_attempted= total_ns + total_nf
+        total_pts      = sum(c["pts"] for c in chip_results)
+        rate           = total_ns / max(total_attempted, 1)
 
-        # ── Chip leaderboard ──────────────────────────────────────────────────
-        medals = ["[bold yellow]🥇[/]", "[bold white]🥈[/]",
-                  "[bold orange3]🥉[/]", "  "]
+        import datetime
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M")
+
+        # ── Header ────────────────────────────────────────────────────────────
+        log.write(f"[bold cyan]╔{'═' * 58}[/]")
+        log.write(f"[bold cyan]║  ⚡ EXPEDITION #{rn:03d} COMPLETE   {now_str}[/]")
+        log.write(f"[bold cyan]╚{'═' * 58}[/]\n")
+
+        # ── THIS RUN summary panel ────────────────────────────────────────────
+        pts_col   = "gold1" if total_pts > 0 else ("red" if total_pts < 0 else "dim")
+        rate_w    = round(rate * 40)
+        rate_bar  = f"[green]{'█' * rate_w}[/][dim]{'░' * (40 - rate_w)}[/]"
+        fe_note   = f"  [bold gold1]★ {len(all_first)} new[/]" if all_first else ""
+        fv_note   = f"  [bold magenta]🗣 {len(all_fv)} voiced[/]" if all_fv else ""
+        summary_panel = Panel(
+            Text.from_markup(
+                f"[bold]{total_attempted}[/] attempted   "
+                f"[green]{total_ns}[/] compiled   "
+                f"[red]{total_nf}[/] failed   "
+                f"[cyan]{rate:.0%}[/] rate   "
+                f"[{pts_col}]{total_pts:+,}[/] pts"
+                f"{fe_note}{fv_note}\n"
+                f"{rate_bar}  [bold]{rate:.0%}[/]"
+            ),
+            title="[bold cyan]THIS RUN[/]",
+            border_style="cyan",
+        )
+        log.write(summary_panel)
+        log.write("")
+
+        # ── Chip leaderboard (Rich Table) ─────────────────────────────────────
+        log.write("[bold cyan]  CHIP LEADERBOARD[/]")
+        medals   = ["🥇", "🥈", "🥉", "  "]
+        lb_table = Table(show_header=False, box=None, padding=(0, 1))
+        lb_table.add_column("Medal", no_wrap=True)
+        lb_table.add_column("Bar",   no_wrap=True)
+        lb_table.add_column("Pts",   justify="right", no_wrap=True)
+        lb_table.add_column("W/L",   no_wrap=True)
+        lb_table.add_column("Extra", no_wrap=True)
         for i, c in enumerate(chip_results):
-            medal    = medals[min(i, 3)]
-            ns       = len(c["successes"])
-            nf       = len(c["failures"])
-            fe       = len(c["first_evers"])
-            pts      = c["pts"]
-            pts_col  = "gold1" if pts > 0 else ("red" if pts < 0 else "dim")
-            ratio    = ns / max(ns + nf, 1)
-            filled   = round(ratio * 16)
-            bar      = "█" * filled + "░" * (16 - filled)
-            bar_col  = "green" if ratio > 0.6 else ("yellow" if ratio > 0.3 else "red")
-            fe_str   = f"  [bold gold1]★{fe} first-ever(s)[/]" if fe else ""
-            log.write(
-                f"{medal} [yellow]CHIP {c['chip_id']}[/]"
-                f"  [{bar_col}]{bar}[/]"
-                f"  [green]✓{ns}[/]/[red]✗{nf}[/]"
-                f"  [{pts_col}]{pts:>+,}pts[/]{fe_str}"
+            medal  = medals[min(i, 3)]
+            ns     = len(c["successes"])
+            nf     = len(c["failures"])
+            fe     = len(c["first_evers"])
+            pts    = c["pts"]
+            times  = c["times"]
+            ratio  = ns / max(ns + nf, 1)
+            filled = round(ratio * 24)
+            bar    = "█" * filled + "░" * (24 - filled)
+            bc     = "green" if ratio > 0.6 else ("yellow" if ratio > 0.3 else "red")
+            pc     = "gold1" if pts > 0 else ("red" if pts < 0 else "dim")
+            avg_t  = f"{sum(times)/len(times):.0f}s avg" if times else "—"
+            fe_s   = f"[bold gold1]★{fe}[/]" if fe else ""
+            lb_table.add_row(
+                f"{medal} [yellow]C{c['chip_id']}[/]",
+                f"[{bc}]{bar}[/]",
+                f"[{pc}]{pts:>+,}[/]",
+                f"[green]✓{ns}[/] [red]✗{nf}[/] {fe_s}",
+                f"[dim]{avg_t}[/]",
             )
+        log.write(lb_table)
+        log.write("")
+
+        # ── Compile-time histogram + success rate ─────────────────────────────
+        if all_times:
+            buckets = [
+                (" < 5s",  [t for t in all_times if t <  5]),
+                (" 5-15s", [t for t in all_times if  5 <= t < 15]),
+                ("15-30s", [t for t in all_times if 15 <= t < 30]),
+                (" > 30s", [t for t in all_times if t >= 30]),
+            ]
+            max_b = max(len(b[1]) for b in buckets) or 1
+            log.write("[bold cyan]  COMPILE TIMES[/]")
+            for label, ts in buckets:
+                w   = round(len(ts) / max_b * 20)
+                bar = "█" * w + "░" * (20 - w)
+                cnt = str(len(ts)) if ts else "0"
+                col = "cyan" if ts else "dim"
+                log.write(f"  [dim]{label}[/]  [{col}]{bar}[/]  {cnt}")
+            log.write("")
 
         # ── New bestiary entries ──────────────────────────────────────────────
-        all_first = [r for c in chip_results for r in c["first_evers"]]
         if all_first:
-            log.write(f"\n[bold cyan]{'─' * 60}[/]")
-            log.write(f"[bold cyan]  ★ NEW TO BESTIARY ({len(all_first)})[/]")
+            log.write(f"[bold cyan]{'─' * 60}[/]")
+            log.write(f"[bold gold1]  ★ NEW TO BESTIARY ({len(all_first)})[/]")
             log.write(f"[bold cyan]{'─' * 60}[/]")
             for r in all_first:
                 artifact = (r.get("artifact") or "").strip()
-                log.write(
-                    f"[bold gold1]★[/] [cyan]{r['model']}[/]"
-                    + (f"\n    [dim]{artifact}[/]" if artifact else "")
-                )
+                log.write(f"[bold gold1]★[/] [cyan]{r['model']}[/]")
+                if artifact:
+                    log.write(f"    [dim italic]{artifact[:120]}[/]")
+            log.write("")
 
-        # ── Failures ──────────────────────────────────────────────────────────
-        all_failures = [r for c in chip_results for r in c["failures"]]
+        # ── First Voice entries ───────────────────────────────────────────────
+        if all_fv:
+            log.write(f"[bold magenta]{'─' * 60}[/]")
+            log.write(f"[bold magenta]  🗣 FIRST VOICE ({len(all_fv)})[/]")
+            log.write(f"[bold magenta]{'─' * 60}[/]")
+            for r in all_fv:
+                artifact = (r.get("artifact") or "").strip()
+                log.write(f"[bold magenta]🗣[/] [cyan]{r['model']}[/]")
+                if artifact:
+                    log.write(f"    [italic]{artifact[:120]}[/]")
+            log.write("")
+
+        # ── Failures ─────────────────────────────────────────────────────────
         if all_failures:
             from lib.expedition.bestiary import _classify_error
-            log.write(f"\n[bold red]{'─' * 60}[/]")
+            log.write(f"[bold red]{'─' * 60}[/]")
             log.write(f"[bold red]  ✗ FAILED THIS RUN ({len(all_failures)})[/]")
             log.write(f"[bold red]{'─' * 60}[/]")
             for r in all_failures:
@@ -1002,43 +1115,21 @@ class SummaryScreen(Screen):
                     f"  [dim]\\[{label}][/]"
                 )
                 if err:
-                    # Show full error, indented, wrapped naturally by RichLog.
                     for eline in err.splitlines():
                         log.write(f"    [dim]{eline}[/]")
                 log.write(f"  [dim italic]{hint}[/]\n")
-
-        # ── First Voice entries from this run ─────────────────────────────────
-        all_first_voice = [
-            r for c in chip_results
-            for r in c["successes"]
-            if r.get("first_voice") == "True"
-        ]
-        if all_first_voice:
-            log.write(f"\n[bold magenta]{'─' * 60}[/]")
-            log.write(f"[bold magenta]  🗣 FIRST VOICE ({len(all_first_voice)})[/]")
-            log.write(f"[bold magenta]{'─' * 60}[/]")
-            for r in all_first_voice:
-                artifact = (r.get("artifact") or "").strip()
-                log.write(
-                    f"[bold magenta]🗣[/] [cyan]{r['model']}[/]"
-                    + (f"\n    [italic dim]{artifact}[/]" if artifact else "")
-                )
 
         # ── Field journal snippet ─────────────────────────────────────────────
         try:
             from lib.expedition.notes import read_journal
             journal_text = read_journal(rn, project_dir=PROJECT_DIR)
             if journal_text:
-                log.write(f"\n[bold cyan]{'─' * 60}[/]")
-                log.write(f"[bold cyan]  📓 EXPEDITION FIELD JOURNAL[/]")
                 log.write(f"[bold cyan]{'─' * 60}[/]")
-                # Show first 30 lines of the journal as a preview.
+                log.write("[bold cyan]  📓 EXPEDITION FIELD JOURNAL[/]")
+                log.write(f"[bold cyan]{'─' * 60}[/]")
                 for line in journal_text.splitlines()[:30]:
-                    # Convert markdown headers and bold to rich markup.
                     if line.startswith("## "):
                         log.write(f"[bold yellow]{line[3:]}[/]")
-                    elif line.startswith("**") and line.endswith("**"):
-                        log.write(f"[bold]{line[2:-2]}[/]")
                     elif line.startswith("> "):
                         log.write(f"[italic]{line[2:]}[/]")
                     elif line.startswith("─"):
@@ -1047,19 +1138,41 @@ class SummaryScreen(Screen):
                         log.write(line or " ")
                 journal_path = PROJECT_DIR / "data" / "expeditions" / f"expedition_{rn:04d}.md"
                 log.write(f"\n[dim]Full journal: {journal_path}[/]")
+                log.write("")
         except Exception:
             pass
 
-        # ── Bestiary total ────────────────────────────────────────────────────
+        # ── All-time bestiary stats ───────────────────────────────────────────
         try:
             from lib.expedition.bestiary import Bestiary
-            b = Bestiary(path=str(PROJECT_DIR / "data" / "bestiary.json"))
-            total = len(b.compiled)
+            b      = Bestiary(path=str(PROJECT_DIR / "data" / "bestiary.json"))
+            total  = len(b.compiled)
+            totals = getattr(b, "chip_totals", {})
+            # Find the chip with the most all-time points.
+            best_chip    = max(totals, key=lambda k: totals[k].get("pts", 0), default=None)
+            best_chip_pt = totals[best_chip].get("pts", 0) if best_chip else 0
+            best_streak  = max((v.get("best_streak", 0) for v in totals.values()), default=0)
+            streak_note  = f"  best streak 🔥×{best_streak}" if best_streak >= 2 else ""
+            chip_note    = f"  C{best_chip} leads {best_chip_pt:,}pts" if best_chip else ""
             log.write(f"[bold cyan]{'─' * 60}[/]")
-            log.write(f"[bold cyan]  BESTIARY: {total} total compiled[/]")
+            log.write(
+                f"[bold cyan]  ALL-TIME  {total} compiled"
+                f"{streak_note}{chip_note}[/]"
+            )
             log.write(f"[bold cyan]{'═' * 60}[/]")
         except Exception:
             pass
+
+        # ── Footer prompt ─────────────────────────────────────────────────────
+        log.write("")
+        log.write(
+            "[bold green]  ══[/]"
+            " [bold]\\[R][/] Run Again"
+            "  [bold]\\[Q][/] Quit"
+            "  [bold]\\[B][/] Bestiary"
+            "  [dim]↑/↓ scroll[/]"
+            "  [bold green]══[/]"
+        )
 
     def action_show_bestiary(self) -> None:
         try:
@@ -1109,6 +1222,7 @@ class ExpeditionTUI(App[None]):
         max_cache_gb:           float = 0.0,
         session_download_max:   float = 0.0,
         parallel_downloads:     int   = 4,
+        staples:                bool  = False,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -1128,6 +1242,7 @@ class ExpeditionTUI(App[None]):
         self.max_cache_gb         = max_cache_gb
         self.session_download_max = session_download_max
         self.parallel_downloads   = parallel_downloads
+        self.staples              = staples
 
     def on_mount(self) -> None:
         rn = f"Run #{self.run_number:03d}"

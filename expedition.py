@@ -251,18 +251,21 @@ def _with_spinner(msg: str, fn, *args, **kwargs):
 
 # ── Queue building ────────────────────────────────────────────────────────────
 
-def _scan_forge_models(bestiary_compiled_ids: set[str]) -> list[dict]:
+def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = False) -> list[dict]:
     """
-    Walk ~/code/tt-forge-models and return QueueItem dicts for loaders
-    not yet in the bestiary.
+    Walk ~/code/tt-forge-models and return QueueItem dicts for loaders.
 
     Each loader.py under the forge-models tree is expected to define a
     ForgeModel subclass.  We reflect into each module to extract the class
     name and the model's task/source metadata, then build a minimal queue
     item dict that expedition_worker.py can consume.
 
-    Models already in compiled_ids are skipped — they have been tamed and
-    no longer count as expedition targets.
+    Args:
+        bestiary_compiled_ids: Set of model IDs already in the bestiary.
+            Models in this set are normally skipped.
+        include_all: If True, include ALL seed models regardless of bestiary
+            status — useful for regression testing after a forge update
+            (--staples mode).
     """
     forge_models_root = Path.home() / "code" / "tt-forge-models"
     if not forge_models_root.exists():
@@ -297,7 +300,7 @@ def _scan_forge_models(bestiary_compiled_ids: set[str]) -> list[dict]:
             # trailing "loader.py" segment — e.g. "facebook/bart-large-cnn".
             model_id = "/".join(rel.parts[:-1])
 
-            if model_id in bestiary_compiled_ids:
+            if not include_all and model_id in bestiary_compiled_ids:
                 continue
 
             # Convert path to dotted module path for importlib.
@@ -413,6 +416,7 @@ def build_queues(
     min_likes: int = 0,
     max_params_b: float = 0.0,
     skip_gated: bool = True,
+    staples: bool = False,
 ) -> list[list[dict]]:
     """
     Build per-chip model queues by merging forge-models seed items with HF
@@ -428,6 +432,8 @@ def build_queues(
         seed_only:  If True, skip HuggingFace frontier discovery.
         frontier_only: If True, skip forge-models seed scan.
         limit:      If > 0, cap total unique models across all chips combined.
+        staples:    If True, include tt-forge-models seed models even if they
+                    have already been compiled (bypass bestiary filter).
 
     Returns:
         A list of num_chips lists, each containing queue item dicts.
@@ -445,7 +451,7 @@ def build_queues(
         # Use _with_spinner so the terminal shows activity during the forge-models
         # scan (which involves importlib reflection and can take a few seconds).
         seed_items = _with_spinner("scanning tt-forge-models library…",
-                                   _scan_forge_models, compiled_ids)
+                                   _scan_forge_models, compiled_ids, staples)
         _section(f"FORGE MODELS  ({len(seed_items)} seed)")
         for item in seed_items:
             _model_row(item)
@@ -508,20 +514,37 @@ def build_queues(
     return chip_queues
 
 
-# Matches one trailing version/variant token: -0.5, -v1, -v0.2, -2.1, -0
-# Used to collapse model variants (e.g. sparsity-0.5 / sparsity-0.9) into a
-# single family so we only attempt one compile per author/family per run.
-_FAMILY_SUFFIX_RE = re.compile(r'[-_]v?\d+(?:[._]\d+)*$', re.IGNORECASE)
+# Matches one trailing qualifier token: numeric versions (-7B, -v0.1, -2.1),
+# size labels (-base, -large, -medium, -xl), or variant labels (-instruct, -chat).
+# Applied iteratively to collapse model families across naming conventions,
+# e.g. gpt2 / gpt2-medium / gpt2-large → "gpt2";
+#      Mistral-7B-Instruct-v0.2 → "mistral".
+_FAMILY_SUFFIX_RE = re.compile(
+    r'[-_](?:v?\d+(?:[._]\d+)*'
+    r'|base|small|tiny|mini|nano|micro|medium|large|xl|xxl|huge|big'
+    r'|lite|light|instruct|chat|hf|uncased|cased|multilingual)$',
+    re.IGNORECASE,
+)
 
 
 def _family_key(repo_name: str) -> str:
-    """Strip one trailing numeric/version token from a repo name (lowercase).
+    """Strip trailing qualifier tokens from a repo name (lowercase).
 
+    Applies the regex up to 3 times to handle compound suffixes such as
+    "-7B-Instruct-v0.2" → (strip -v0.2) → (strip -Instruct) → (strip -7B).
+
+    "gpt2-medium"             → "gpt2"
+    "Mistral-7B-Instruct-v0.2"→ "mistral"
+    "bert-base-uncased"       → "bert"
     "icl-pruning-wanda-sparsity-0.5" → "icl-pruning-wanda-sparsity"
-    "Mistral-7B-v0.1"                → "mistral-7b"
-    "bert-base-uncased"              → "bert-base-uncased"  (no numeric suffix)
     """
-    return _FAMILY_SUFFIX_RE.sub('', repo_name.lower()) or repo_name.lower()
+    name = repo_name.lower()
+    for _ in range(3):
+        stripped = _FAMILY_SUFFIX_RE.sub('', name)
+        if stripped == name:
+            break
+        name = stripped
+    return name or repo_name.lower()
 
 
 def _dedup_by_author_family(
@@ -1149,6 +1172,8 @@ def main():
                        help="Total unique models across all chips (0=unlimited)")
     run_p.add_argument("--seed-only",        action="store_true")
     run_p.add_argument("--frontier-only",    action="store_true")
+    run_p.add_argument("--staples",          action="store_true",
+                       help="Include tt-forge-models seed models even if already compiled (regression test mode)")
     run_p.add_argument("--no-predownload",   action="store_true",
                        help="Skip pre-downloading HF weights (faster start, unequal footing)")
     run_p.add_argument("--monitor",          action="store_true",
@@ -1195,6 +1220,7 @@ def main():
         args.limit = 0
         args.seed_only = False
         args.frontier_only = False
+        args.staples = False
         args.no_predownload = False
         args.monitor = False
         args.tui = False
@@ -1235,6 +1261,7 @@ def main():
             limit=args.limit,
             seed_only=args.seed_only,
             frontier_only=args.frontier_only,
+            staples=args.staples,
             # TUI workers download models on-demand; pre-downloading 40+ models
             # during setup would silently block for 30+ minutes with no progress
             # visible to the user.  Pass-through only if explicitly requested.
@@ -1263,6 +1290,7 @@ def main():
         min_likes=args.min_likes,
         max_params_b=args.max_model_params,
         skip_gated=not args.allow_gated,
+        staples=args.staples,
     )
 
     # ── Queue assignment summary ──────────────────────────────────────────────

@@ -130,26 +130,26 @@ def get_sample(task: str) -> dict | None:
     return None
 
 
-def make_tensor_input(sample: dict, seq_len: int = 32):
+def make_tensor_input(sample: dict, seq_len: int = 32, tokenizer=None):
     """Convert a sample dict into a torch tensor for forge inference.
 
-    For text samples: tokenizes the prompt text, pads/truncates to seq_len.
+    For text samples: tokenizes with the provided tokenizer, pads/truncates to
+    seq_len.  ``tokenizer`` must be the model's own tokenizer — using a
+    mismatched tokenizer produces input IDs in the wrong vocabulary, which the
+    compiled model decodes as gibberish.  If no tokenizer is provided and the
+    input_type is "text", returns (None, "no tokenizer") so the caller can skip
+    First Voice rather than produce garbage output.
+
     For image samples: opens the image with PIL and applies standard ImageNet
                        normalisation (224×224, RGB).
-    For audio samples: loads the audio with soundfile/torchaudio, resamples to
-                       16 kHz mono, returns a (1, num_frames) float tensor.
-
-    The tokenizer parameter is used for text tasks.  Pass None to fall back to
-    a random integer tensor (same as the compile-time dummy input), which still
-    exercises the compiled graph but produces meaningless decoded output.
+    For audio samples: loads the audio with torchaudio, resamples to 16 kHz mono.
 
     Returns (tensor, description_suffix) where description_suffix is a short
     string explaining what was done — useful for journal entries.
+    Returns (None, reason) when the conversion cannot proceed.
     """
-    import torch
-
     if sample["input_type"] == "text":
-        return _text_tensor(sample["data"], seq_len)
+        return _text_tensor(sample["data"], seq_len, tokenizer)
     if sample["input_type"] == "image":
         return _image_tensor(sample["data"])
     if sample["input_type"] == "audio":
@@ -157,29 +157,27 @@ def make_tensor_input(sample: dict, seq_len: int = 32):
     return None, "unknown input type"
 
 
-def _text_tensor(data, seq_len: int):
+def _text_tensor(data, seq_len: int, tokenizer):
     """Tokenize text data into a fixed-length integer tensor.
 
-    Handles both plain string prompts and question-answering dicts.
-    Falls back to a random tensor if tokenisation fails.
+    Requires the model's own tokenizer — the calling code in
+    _attempt_first_voice loads it by model_id before calling here.
+    Returns (None, reason) rather than falling back to a wrong-vocab tokenizer,
+    because mismatched input IDs produce meaningless decoded output.
     """
-    import torch
+    if tokenizer is None:
+        return None, "no tokenizer — skipping text First Voice"
     try:
-        from transformers import AutoTokenizer
         if isinstance(data, dict):
             # question-answering: encode context + question together
             text = data.get("context", "") + " " + data.get("question", "")
         else:
             text = str(data)
-        # We don't know the model_id here, so we use a generic tokenizer.
-        # This produces plausible token IDs even if the vocab differs slightly.
-        tok = AutoTokenizer.from_pretrained("bert-base-uncased")
-        enc = tok(text, return_tensors="pt", max_length=seq_len,
-                  padding="max_length", truncation=True)
+        enc = tokenizer(text, return_tensors="pt", max_length=seq_len,
+                        padding="max_length", truncation=True)
         return enc["input_ids"], f"tokenized ({seq_len} tokens)"
-    except Exception:
-        import torch
-        return torch.randint(0, 1000, (1, seq_len)), "random fallback"
+    except Exception as e:
+        return None, f"tokenizer error: {e}"
 
 
 def _image_tensor(path: str):

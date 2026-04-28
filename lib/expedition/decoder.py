@@ -94,16 +94,29 @@ def _decode_causal_lm(output: Any, tokenizer: Any) -> str:
 
     Requires a tokenizer.  Without one we fall back to raw tensor info because
     token-id sequences are not human-readable on their own.
+
+    Uses last-position logits to show the model's top-3 predicted next tokens
+    (with probabilities) given the prompt.  Full-sequence argmax produces
+    garbled "autoregressive echo" output because each position independently
+    predicts the next token from its own prefix — the predictions are not chained.
     """
     if tokenizer is None:
         return _raw_fallback(output)
     try:
+        import torch
         # Expected shape: (batch, seq_len, vocab_size)
         if hasattr(output, "shape") and len(output.shape) == 3:
-            # Greedy decode: pick argmax at each position for the first batch item.
-            token_ids = output[0].argmax(dim=-1).tolist()
-            text = tokenizer.decode(token_ids, skip_special_tokens=True)
-            return text[:100] if text else _raw_fallback(output)
+            # Last-position logits: what the model predicts comes after the full prompt.
+            last_logits = output[0, -1, :]
+            topk = torch.topk(last_logits, k=min(5, last_logits.shape[-1]))
+            probs = torch.softmax(last_logits, dim=-1)[topk.indices]
+            words = []
+            for t, p in zip(topk.indices.tolist(), probs.tolist()):
+                w = tokenizer.decode([t], skip_special_tokens=True).strip()
+                if w:
+                    words.append(f"{w} ({p:.0%})")
+            if words:
+                return "→ " + " | ".join(words[:3])
         return _raw_fallback(output)
     except Exception:
         return _raw_fallback(output)

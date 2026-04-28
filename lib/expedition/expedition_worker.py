@@ -343,7 +343,20 @@ def _attempt_first_voice(
         if sample is None:
             return "", None
 
-        tensor_input, suffix = make_tensor_input(sample, seq_len=32)
+        # Load the model's own tokenizer BEFORE make_tensor_input so text inputs
+        # are encoded into the correct vocabulary.  Without this, make_tensor_input
+        # returns (None, "no tokenizer") and the First Voice pass is skipped entirely.
+        tokenizer = None
+        if sample["input_type"] == "text":
+            try:
+                from transformers import AutoTokenizer
+                tokenizer = AutoTokenizer.from_pretrained(
+                    model_id, trust_remote_code=True
+                )
+            except Exception:
+                pass
+
+        tensor_input, suffix = make_tensor_input(sample, seq_len=32, tokenizer=tokenizer)
         if tensor_input is None:
             return "", None
 
@@ -360,17 +373,6 @@ def _attempt_first_voice(
             output = output[0] if output else None
         if output is None:
             return "", None
-
-        # Attempt tokenizer-assisted decode for text models.
-        tokenizer = None
-        if sample["input_type"] == "text":
-            try:
-                from transformers import AutoTokenizer
-                tokenizer = AutoTokenizer.from_pretrained(
-                    model_id, trust_remote_code=True
-                )
-            except Exception:
-                pass
 
         model_info = FrontierModelInfo(name=model_id, task=task, source="huggingface")
         text = decode(output, model_info, tokenizer=tokenizer)
@@ -522,6 +524,9 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
     bestiary = Bestiary(path=bestiary_path)
     queue = _load_queue(queue_path)
     hud = ChipHUD(chip_id=chip_id, total_models=len(queue))
+    # Write a zeroed status file immediately so the ScoreStrip doesn't read a
+    # stale file from the previous run while this worker is still initializing.
+    hud.write_status()
 
     _set_pane_title(f"C{chip_id} · {len(queue)} queued · run #{run_number:03d}")
     print(f"\n{BOLD}{CYAN}{'═'*80}{RESET}")
