@@ -8,7 +8,7 @@ Usage:
   python3 expedition.py --chips 2              # limit to 2 chips
   python3 expedition.py --seed-only            # skip HF discovery
   python3 expedition.py --frontier-only        # skip forge-models seed
-  python3 expedition.py --limit 20             # cap models per chip
+  python3 expedition.py --limit 20             # cap total unique models across all chips
   python3 expedition.py summary                # print bestiary summary
 """
 from __future__ import annotations
@@ -408,7 +408,7 @@ def build_queues(
     num_chips: int,
     seed_only: bool = False,
     frontier_only: bool = False,
-    limit_per_chip: int = 0,
+    limit: int = 0,
     min_downloads: int = 0,
     min_likes: int = 0,
     max_params_b: float = 0.0,
@@ -420,13 +420,14 @@ def build_queues(
 
     The final list is interleaved so each chip gets a mix of familiar seed
     models (60 %) and fresh frontier targets (40 %).  Items are then
-    distributed round-robin across chips.
+    distributed round-robin across chips.  Every model_id appears on at most
+    one chip — the limit applies to the total unique model count, not per chip.
 
     Args:
-        num_chips:      Number of Tenstorrent chips to distribute work across.
-        seed_only:      If True, skip HuggingFace frontier discovery.
-        frontier_only:  If True, skip forge-models seed scan.
-        limit_per_chip: If > 0, truncate each chip's queue to this length.
+        num_chips:  Number of Tenstorrent chips to distribute work across.
+        seed_only:  If True, skip HuggingFace frontier discovery.
+        frontier_only: If True, skip forge-models seed scan.
+        limit:      If > 0, cap total unique models across all chips combined.
 
     Returns:
         A list of num_chips lists, each containing queue item dicts.
@@ -466,7 +467,7 @@ def build_queues(
         # Keeps the most recent or best-sized variant; skips the rest.
         # Bypassed for large runs (100+ per chip) where diversity is expected.
         family_note = ""
-        if limit_per_chip == 0 or limit_per_chip < 100:
+        if limit == 0 or limit < 100:
             frontier_items, n_dropped = _dedup_by_author_family(
                 frontier_items, target_params_b=max_params_b
             )
@@ -494,13 +495,15 @@ def build_queues(
     # Note: Deduplicate count and total queue size are surfaced in the QUEUE
     # ASSIGNMENT section printed by main() — no low-signal print here.
 
+    # Apply total model cap before distribution so --limit N always means
+    # exactly N unique models across the whole run, regardless of chip count.
+    if limit > 0:
+        all_items = all_items[:limit]
+
     # Round-robin distribution across chips.
     chip_queues: list[list[dict]] = [[] for _ in range(num_chips)]
     for i, item in enumerate(all_items):
         chip_queues[i % num_chips].append(item)
-
-    if limit_per_chip > 0:
-        chip_queues = [q[:limit_per_chip] for q in chip_queues]
 
     return chip_queues
 
@@ -1133,7 +1136,7 @@ def main():
     run_p.add_argument("--chips",          type=int, default=0,
                        help="Number of chips (0=auto-detect)")
     run_p.add_argument("--limit",          type=int, default=0,
-                       help="Max models per chip (0=unlimited)")
+                       help="Total unique models across all chips (0=unlimited)")
     run_p.add_argument("--seed-only",        action="store_true")
     run_p.add_argument("--frontier-only",    action="store_true")
     run_p.add_argument("--no-predownload",   action="store_true",
@@ -1217,7 +1220,7 @@ def main():
         num_chips=num_chips,
         seed_only=args.seed_only,
         frontier_only=args.frontier_only,
-        limit_per_chip=args.limit,
+        limit=args.limit,
         min_downloads=args.min_downloads,
         min_likes=args.min_likes,
         max_params_b=args.max_model_params,

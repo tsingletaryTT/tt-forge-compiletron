@@ -335,7 +335,13 @@ def build_dynamic_loader(model: FrontierModel) -> Optional[Callable]:
                 f"transformers.{auto_class_name} not found — "
                 f"upgrade transformers to support pipeline tag '{tag}'"
             )
-        return AutoClass.from_pretrained(model_id)
+        # trust_remote_code: safe no-op for standard models; required for repos
+        # that ship custom modeling code (detected by `auto_map` in config.json).
+        model = AutoClass.from_pretrained(model_id, trust_remote_code=True)
+        # return_dict=False makes every transformer return a plain tuple instead
+        # of a ModelOutput dataclass — required for TorchScript tracing in forge.
+        model.config.return_dict = False
+        return model
 
     # Annotate the closure so the harness can introspect without calling it.
     loader.__name__ = f"load_{model_id.replace('/', '_')}"
