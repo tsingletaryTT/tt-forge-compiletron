@@ -1235,7 +1235,10 @@ def main():
             limit=args.limit,
             seed_only=args.seed_only,
             frontier_only=args.frontier_only,
-            no_predownload=args.no_predownload,
+            # TUI workers download models on-demand; pre-downloading 40+ models
+            # during setup would silently block for 30+ minutes with no progress
+            # visible to the user.  Pass-through only if explicitly requested.
+            no_predownload=True,
             min_downloads=args.min_downloads,
             min_likes=args.min_likes,
             max_params_b=args.max_model_params,

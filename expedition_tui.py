@@ -512,6 +512,20 @@ class SetupScreen(Screen):
         def _log(markup: str) -> None:
             app.call_from_thread(log.write, Text.from_markup(markup))
 
+        try:
+            self._do_setup_body(log, app, _log)
+        except Exception as exc:
+            import traceback
+            tb = traceback.format_exc()
+            _log(f"[bold red]✗ Setup failed:[/]\n[dim]{tb}[/]")
+            # Also write to a file so it's readable after force-quit.
+            try:
+                Path("/tmp/expedition_tui_error.txt").write_text(tb)
+            except Exception:
+                pass
+
+    def _do_setup_body(self, log, app, _log) -> None:
+        """Inner body of _do_setup — separated so the outer method can catch all exceptions."""
         # Lazily import lower-level helpers from expedition (avoids circular
         # import at module load time since expedition imports expedition_tui).
         from expedition import (
