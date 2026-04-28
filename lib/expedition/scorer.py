@@ -110,20 +110,26 @@ def compute_score(
     newness: Newness,
     streak: int,
     mesh_chips: int = 1,
+    is_first_voice: bool = False,
 ) -> ScoreResult:
     """Compute the expedition score for a single compile attempt.
 
     Formula (success path):
-        pts = int((base + first_ever_bonus) * rarity_mult * newness_mult * streak_mult) + mesh_bonus
+        pts = int((base + first_ever_bonus + first_voice_bonus)
+                  * rarity_mult * newness_mult * streak_mult)
+              + mesh_bonus
 
     Parameters
     ----------
-    success:       Whether compilation succeeded.
-    is_first_ever: True if this is the first successful compile of this model ever.
-    rarity:        Rarity tier (drives a multiplier on the combined base+bonus).
-    newness:       How recently the model appeared on HF (multiplier, only on first-ever).
-    streak:        Consecutive successes before this one (adds 10% per streak, capped at 2x).
-    mesh_chips:    Number of TT chips in the mesh (4+ earns a flat mesh bonus).
+    success:         Whether compilation succeeded.
+    is_first_ever:   True if this is the first successful compile of this model ever.
+    rarity:          Rarity tier (drives a multiplier on the combined base+bonus).
+    newness:         How recently the model appeared on HF (multiplier, only on first-ever).
+    streak:          Consecutive successes before this one (adds 10% per streak, capped at 2x).
+    mesh_chips:      Number of TT chips in the mesh (4+ earns a flat mesh bonus).
+    is_first_voice:  True when a second "real input" inference pass produced decoded text
+                     (the model has spoken for the first time with a themed prompt).
+                     Awards a +100 flat bonus added inside the multiplier bracket.
 
     Returns a ScoreResult with pts and a full breakdown dict for audit/display.
     """
@@ -135,6 +141,9 @@ def compute_score(
 
     base = 50
     first_ever_bonus = 100 if is_first_ever else 0
+    # First Voice: awarded once per model per run when the compiled model produces
+    # real decoded output from a themed prompt (not just tensor stats).
+    first_voice_bonus = 100 if is_first_voice else 0
     rarity_mult = _RARITY_MULT[rarity]
     newness_mult = _NEWNESS_MULT[newness] if is_first_ever else 1.0
     # Streak: +10% per consecutive success, hard-capped at 2x.
@@ -147,7 +156,10 @@ def compute_score(
     elif mesh_chips >= 4:
         mesh_bonus = 50
 
-    pts = int((base + first_ever_bonus) * rarity_mult * newness_mult * streak_mult) + mesh_bonus
+    pts = int(
+        (base + first_ever_bonus + first_voice_bonus)
+        * rarity_mult * newness_mult * streak_mult
+    ) + mesh_bonus
 
     return ScoreResult(
         pts=pts,
@@ -158,6 +170,7 @@ def compute_score(
         breakdown={
             "base": base,
             "first_ever_bonus": first_ever_bonus,
+            "first_voice_bonus": first_voice_bonus,
             "rarity_mult": rarity_mult,
             "newness_mult": newness_mult,
             "streak_mult": streak_mult,

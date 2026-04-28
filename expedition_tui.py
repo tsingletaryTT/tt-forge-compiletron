@@ -357,7 +357,7 @@ class SetupScreen(Screen):
         self._max_cache_gb = 0.0
         self._session_download_max = 0.0
         self._parallel_downloads   = 4
-        self._running      = False  # True while discovery is in progress
+        self._discovering  = False  # True while HF discovery / queue-build is running
         self._setup_done   = False  # True once queues are built (no re-run)
 
     def on_mount(self) -> None:
@@ -408,7 +408,7 @@ class SetupScreen(Screen):
 
         status = (
             "[bold yellow]● Ready — press ENTER[/]"
-            if not self._running else
+            if not self._discovering else
             "[bold cyan]⚙ Discovering…[/]"
         )
 
@@ -440,7 +440,7 @@ class SetupScreen(Screen):
     def _guarded(fn):
         """Decorator: ignore param changes once discovery has started."""
         def wrapper(self):
-            if not self._running:
+            if not self._discovering:
                 fn(self)
                 self._refresh_config()
         return wrapper
@@ -473,9 +473,9 @@ class SetupScreen(Screen):
     def action_sources_frontier(self)-> None: self._seed_only = False; self._frontier_only = True
 
     def action_start(self) -> None:
-        if self._running or self._setup_done:
+        if self._discovering or self._setup_done:
             return
-        self._running = True
+        self._discovering = True
         self._refresh_config()
         log = self.query_one("#setup-log", RichLog)
         log.write("[bold cyan]⚡ Starting expedition setup…[/]")
@@ -640,14 +640,17 @@ class SetupScreen(Screen):
             )
 
         _log(f"\n[bold green]✓ Ready — launching {self._chips} chip(s)...[/]")
-        # post_message is not thread-safe in Textual 7.x; use call_from_thread
-        # to run the screen transition directly on the event loop.
         app.call_from_thread(self._advance_to_run, chip_queues)
 
     def _advance_to_run(self, chip_queues: list[list[dict]]) -> None:
-        """Called on the event loop thread when setup completes."""
-        self._running    = False
-        self._setup_done = True
+        """Called on the event loop thread when setup completes.
+
+        push_screen is synchronous in Textual 7.x (returns AwaitMount, not a
+        coroutine), so this method stays sync.  call_from_thread schedules it on
+        the event loop via run_coroutine_threadsafe.
+        """
+        self._discovering = False
+        self._setup_done  = True
         self.app.push_screen(
             RunScreen(
                 chip_queues  = chip_queues,
@@ -1003,6 +1006,49 @@ class SummaryScreen(Screen):
                     for eline in err.splitlines():
                         log.write(f"    [dim]{eline}[/]")
                 log.write(f"  [dim italic]{hint}[/]\n")
+
+        # ── First Voice entries from this run ─────────────────────────────────
+        all_first_voice = [
+            r for c in chip_results
+            for r in c["successes"]
+            if r.get("first_voice") == "True"
+        ]
+        if all_first_voice:
+            log.write(f"\n[bold magenta]{'─' * 60}[/]")
+            log.write(f"[bold magenta]  🗣 FIRST VOICE ({len(all_first_voice)})[/]")
+            log.write(f"[bold magenta]{'─' * 60}[/]")
+            for r in all_first_voice:
+                artifact = (r.get("artifact") or "").strip()
+                log.write(
+                    f"[bold magenta]🗣[/] [cyan]{r['model']}[/]"
+                    + (f"\n    [italic dim]{artifact}[/]" if artifact else "")
+                )
+
+        # ── Field journal snippet ─────────────────────────────────────────────
+        try:
+            from lib.expedition.notes import read_journal
+            journal_text = read_journal(rn, project_dir=PROJECT_DIR)
+            if journal_text:
+                log.write(f"\n[bold cyan]{'─' * 60}[/]")
+                log.write(f"[bold cyan]  📓 EXPEDITION FIELD JOURNAL[/]")
+                log.write(f"[bold cyan]{'─' * 60}[/]")
+                # Show first 30 lines of the journal as a preview.
+                for line in journal_text.splitlines()[:30]:
+                    # Convert markdown headers and bold to rich markup.
+                    if line.startswith("## "):
+                        log.write(f"[bold yellow]{line[3:]}[/]")
+                    elif line.startswith("**") and line.endswith("**"):
+                        log.write(f"[bold]{line[2:-2]}[/]")
+                    elif line.startswith("> "):
+                        log.write(f"[italic]{line[2:]}[/]")
+                    elif line.startswith("─"):
+                        log.write(f"[dim]{line}[/]")
+                    else:
+                        log.write(line or " ")
+                journal_path = PROJECT_DIR / "data" / "expeditions" / f"expedition_{rn:04d}.md"
+                log.write(f"\n[dim]Full journal: {journal_path}[/]")
+        except Exception:
+            pass
 
         # ── Bestiary total ────────────────────────────────────────────────────
         try:

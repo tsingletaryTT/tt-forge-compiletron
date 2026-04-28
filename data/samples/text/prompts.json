@@ -1,0 +1,66 @@
+{
+  "_comment": "Themed prompt bank for First Voice inference. 1960s World's Fairs, Gertrude Stein, Steinbeck, PKD.",
+
+  "text-generation": [
+    "In 1964, at the New York World's Fair, beneath the gleaming Unisphere, a man stood with a ticket stub and wondered if the city of tomorrow had already arrived or was still",
+    "There is a rose is a rose is a rose is a",
+    "The trucks moved through the Dust Bowl, and in each cab a dream sat like a passenger with no destination except",
+    "The android did not dream. It processed inventory, sorted memory, and when the lights dimmed in the San Francisco ruins it",
+    "Progress is a pavilion. Progress is a fountain. Progress is a monorail. Progress is",
+    "In the exhibit hall of the future, the robot shook hands with the governor and the cameras flashed and the crowd",
+    "Ma Joad said nothing for a long time. She looked at the land. She looked at the sky. Then she said,",
+    "The empathy boxes hummed with borrowed grief. Rick Deckard picked up the dial and turned it until he felt someone else's",
+    "Gertrude Stein ate well in Paris. She collected paintings the way others collect",
+    "At the Westinghouse pavilion, a time capsule was buried fifty feet beneath the fairground, and inside it someone had placed"
+  ],
+
+  "fill-mask": [
+    "At the 1964 World's Fair, visitors marveled at the [MASK] of the future.",
+    "Gertrude Stein wrote that a [MASK] is a rose is a rose.",
+    "The electric car of tomorrow will run on [MASK] energy.",
+    "In the valley of the [MASK], the workers picked what the machines had missed.",
+    "The android passed the Voigt-Kampff test because it had learned to [MASK] like a human.",
+    "Under the Unisphere, the world seemed [MASK] and possible and close.",
+    "A [MASK] is a thing in itself. It is and it is and it is.",
+    "The Okies drove west because the [MASK] had taken everything the banks had not.",
+    "In the pavilion of science, a child pressed her face against the [MASK] and saw her future.",
+    "Philip K. Dick asked whether machines could [MASK], and whether it mattered if they could not."
+  ],
+
+  "question-answering": [
+    {
+      "context": "The 1964 New York World's Fair was held at Flushing Meadows-Corona Park in Queens, New York. The theme was Peace Through Understanding. The Unisphere, a twelve-story-tall stainless steel globe, was constructed as its centerpiece symbol. Over 51 million visitors attended across two seasons, from 1964 to 1965.",
+      "question": "Where was the 1964 World's Fair held?"
+    },
+    {
+      "context": "Gertrude Stein was an American novelist, poet, playwright, and art collector born in Allegheny, Pennsylvania in 1874. She spent most of her adult life in Paris, France, where her apartment at 27 rue de Fleurus became a famous salon for modernist artists including Pablo Picasso and Ernest Hemingway. Her most celebrated line, from the poem Sacred Emily, reads: a rose is a rose is a rose.",
+      "question": "What is Gertrude Stein's most famous line?"
+    },
+    {
+      "context": "John Steinbeck's novel The Grapes of Wrath, published in 1939, follows the Joad family as they flee the Dust Bowl of Oklahoma during the Great Depression. They travel west on Route 66 to California, hoping to find work and a better life. The novel won the Pulitzer Prize for Fiction in 1940 and contributed to Steinbeck receiving the Nobel Prize in Literature in 1962.",
+      "question": "Where do the Joads travel in The Grapes of Wrath?"
+    },
+    {
+      "context": "Philip K. Dick's novel Do Androids Dream of Electric Sheep? was published in 1968. Set in a post-apocalyptic San Francisco after a nuclear war called World War Terminus, it follows bounty hunter Rick Deckard as he is assigned to retire six Nexus-6 model androids who have escaped from Mars colonies. The novel raises questions about empathy, consciousness, and what makes us human.",
+      "question": "What is the name of the main character in Do Androids Dream of Electric Sheep?"
+    },
+    {
+      "context": "The Unisphere was commissioned by United States Steel Corporation and designed by landscape architect Gilmore D. Clarke. It stands 140 feet tall and has a diameter of 120 feet, making it the largest global structure ever built. The sphere is supported by three orbital rings representing the paths of the first orbital satellites. It remains standing today in Flushing Meadows-Corona Park.",
+      "question": "How tall is the Unisphere?"
+    }
+  ],
+
+  "visual-question-answering": [
+    "What is happening in this image?",
+    "Describe what you see in detail.",
+    "What era or time period does this image suggest?",
+    "Is there a person in this image? What are they doing?",
+    "What emotion does this scene convey?"
+  ],
+
+  "image-captioning": [
+    "A photograph showing",
+    "This image depicts",
+    "In this scene,"
+  ]
+}

@@ -80,7 +80,7 @@ _NEWNESS_STYLE = {
 # Using a module-level constant (rather than results[0].keys()) prevents
 # ValueError when success rows and failure rows have different key sets.
 # extrasaction="ignore" in DictWriter allows both row shapes to coexist.
-_CSV_FIELDNAMES = ["model", "status", "pts", "compile_time", "artifact", "first_ever", "error"]
+_CSV_FIELDNAMES = ["model", "status", "pts", "compile_time", "artifact", "first_ever", "first_voice", "error"]
 
 
 class TimeoutException(Exception):
@@ -234,14 +234,16 @@ def _print_failure(model_id: str, error: str, elapsed: float) -> None:
     print(f"\n  {BOLD}{RED}✗ FAILED{RESET}  {DIM}{error[:80]}{RESET}  ({elapsed:.1f}s  −10pts)")
 
 
-def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool, Any, float, str]:
+def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool, Any, float, str, Any]:
     """Run forge compile + inference for one model.
 
-    Returns a 4-tuple (success, output, compile_time, error_str):
+    Returns a 5-tuple (success, output, compile_time, error_str, compiled):
       - success:      True if both compile and inference completed without error.
       - output:       The raw inference output tensor/list (None on failure).
       - compile_time: Seconds spent in forge.compile() (0.0 on failure before compile).
       - error_str:    Empty string on success; "TIMEOUT" or "ExcType: msg" on failure.
+      - compiled:     The forge-compiled module (None on failure); callers may run
+                      additional inference passes (First Voice) without recompiling.
 
     Imports (torch, forge) are deferred so this module can be imported and the
     argument parser exercised without forge or torch installed — important for
@@ -299,14 +301,84 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
         if isinstance(output, list):
             output = output[0] if output else None
 
-        return True, output, compile_time, ""
+        return True, output, compile_time, "", compiled
 
     except TimeoutException as e:
         signal.alarm(0)
-        return False, None, 0.0, "TIMEOUT"
+        return False, None, 0.0, "TIMEOUT", None
     except Exception as e:
         signal.alarm(0)
-        return False, None, 0.0, f"{type(e).__name__}: {str(e)[:300]}"
+        return False, None, 0.0, f"{type(e).__name__}: {str(e)[:300]}", None
+
+
+def _attempt_first_voice(
+    compiled_model,
+    task: str,
+    model_id: str,
+    timeout: int = 60,
+) -> tuple[str, dict | None]:
+    """Run a second 'First Voice' inference pass using a real themed sample input.
+
+    Uses lib.expedition.sampler to pick a sample appropriate for the task,
+    then runs the already-compiled model with it.  Attempts to decode the result
+    into human-readable text.
+
+    Returns a 2-tuple:
+      (first_voice_text, sample_dict)
+    where first_voice_text is the decoded output string (or "" on failure)
+    and sample_dict is the sampler result used (or None on failure).
+
+    This is a best-effort pass — all errors are suppressed so a failed First
+    Voice never blocks the main compile result.
+    """
+    if compiled_model is None:
+        return "", None
+
+    try:
+        import torch
+        from lib.expedition.sampler import get_sample, make_tensor_input
+        from lib.expedition.decoder import decode, FrontierModelInfo
+
+        sample = get_sample(task)
+        if sample is None:
+            return "", None
+
+        tensor_input, suffix = make_tensor_input(sample, seq_len=32)
+        if tensor_input is None:
+            return "", None
+
+        signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(timeout)
+        try:
+            output = compiled_model(tensor_input)
+            signal.alarm(0)
+        except TimeoutException:
+            signal.alarm(0)
+            return "", None
+
+        if isinstance(output, list):
+            output = output[0] if output else None
+        if output is None:
+            return "", None
+
+        # Attempt tokenizer-assisted decode for text models.
+        tokenizer = None
+        if sample["input_type"] == "text":
+            try:
+                from transformers import AutoTokenizer
+                tokenizer = AutoTokenizer.from_pretrained(
+                    model_id, trust_remote_code=True
+                )
+            except Exception:
+                pass
+
+        model_info = FrontierModelInfo(name=model_id, task=task, source="huggingface")
+        text = decode(output, model_info, tokenizer=tokenizer)
+        return text, sample
+
+    except Exception:
+        signal.alarm(0)
+        return "", None
 
 
 @dataclass
@@ -511,7 +583,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             continue
 
         # ── Compile + inference ──────────────────────────────────────────────
-        success, output, compile_time, error_str = _compile_model(loader, chip_id)
+        success, output, compile_time, error_str, compiled_module = _compile_model(loader, chip_id)
         elapsed = time.time() - start
 
         if success:
@@ -521,16 +593,54 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             artifact = decode(output, model_info)
             last_artifact = artifact
 
+            # ── First Voice pass ─────────────────────────────────────────────
+            # Re-run inference with a real themed sample input (image, text prompt,
+            # or audio) to elicit a meaningful decoded output — the model's actual
+            # "voice" rather than random-tensor statistics.  Best-effort: failure is
+            # silent and never blocks the main compile result.
+            first_voice_text, first_voice_sample = _attempt_first_voice(
+                compiled_model=compiled_module,
+                task=item.task,
+                model_id=item.model_id,
+            )
+            is_first_voice = bool(first_voice_text)
+
             score = compute_score(success=True, is_first_ever=is_first_ever,
                                   rarity=rarity, newness=newness,
                                   streak=hud.state.streak,
-                                  mesh_chips=item.mesh_chips)
+                                  mesh_chips=item.mesh_chips,
+                                  is_first_voice=is_first_voice)
             hud.record_success(item.model_id, score)
 
             _print_success(item.model_id, compile_time, elapsed, artifact,
                            score.pts, is_first_ever, hud.state.streak)
 
+            # Print First Voice output if we got one.
+            if is_first_voice and first_voice_sample:
+                print(f"    {GOLD}🗣 First Voice{RESET}  "
+                      f"{DIM}[{first_voice_sample['description']}]{RESET}")
+                print(f"    {PINK}{first_voice_text[:120]}{RESET}")
+
             compiled_at = datetime.datetime.now().isoformat()
+
+            # Write a field journal entry when First Voice succeeds.
+            if is_first_voice and first_voice_sample:
+                try:
+                    from lib.expedition.notes import journal_entry
+                    project_dir = Path(__file__).resolve().parent.parent.parent
+                    journal_entry(
+                        run_number=run_number,
+                        chip_id=chip_id,
+                        model_id=item.model_id,
+                        task=item.task,
+                        sample_description=first_voice_sample["description"],
+                        first_voice_text=first_voice_text,
+                        compile_time_s=compile_time,
+                        score_pts=score.pts,
+                        project_dir=project_dir,
+                    )
+                except Exception:
+                    pass  # journal write failure must never interrupt the run
 
             # Persist the artifact text to data/artifacts/<safe_name>.txt.
             # The default artifacts_dir in Bestiary.save_artifact is "data/artifacts".
@@ -540,7 +650,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                 compiled_at=compiled_at,
                 chip=chip_id,
                 run=run_number,
-                artifact_text=artifact,
+                artifact_text=first_voice_text if is_first_voice else artifact,
             )
 
             # Record the compilation in the bestiary compiled dict.
@@ -554,7 +664,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                 rarity=rarity.value,
                 hf_downloads=item.hf_downloads,
                 hf_created_at=item.hf_created_at,
-                artifact=artifact,
+                artifact=first_voice_text if is_first_voice else artifact,
             )
             # Accumulate points into the per-chip all-time leaderboard entry.
             bestiary.add_chip_points(
@@ -565,7 +675,8 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             )
             results.append({"model": item.model_id, "status": "success",
                             "pts": score.pts, "compile_time": compile_time,
-                            "artifact": artifact, "first_ever": is_first_ever})
+                            "artifact": first_voice_text if is_first_voice else artifact,
+                            "first_ever": is_first_ever, "first_voice": is_first_voice})
         else:
             # Compile or inference failed — record the failure and deduct points.
             _print_failure(item.model_id, error_str, elapsed)
