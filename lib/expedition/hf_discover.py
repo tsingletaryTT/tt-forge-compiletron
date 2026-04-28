@@ -221,7 +221,18 @@ def discover_frontier(
             sort="createdAt",
             direction=-1,   # descending → newest first
             limit=limit,
-            expand=["config"],  # include config.json data inline for model_type filter
+            # expand overrides the default field set — list every field we read.
+            # Omitting any field here leaves it as None in the response.
+            expand=[
+                "config",        # config.json dict for model_type filter
+                "pipeline_tag",  # task type for _SUPPORTED_TAGS check
+                "downloads",     # quality floor
+                "likes",         # community-reputation floor
+                "gated",         # access-control flag
+                "disabled",      # archived/deleted flag
+                "safetensors",   # weight-file metadata for size cap
+                "createdAt",     # creation timestamp for rarity scoring
+            ],
         )
     except Exception:
         # Network errors, auth errors, rate-limits — degrade gracefully.
