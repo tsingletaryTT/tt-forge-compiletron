@@ -15,7 +15,9 @@ from __future__ import annotations
 import argparse
 import fnmatch as _fnmatch
 import json
+import logging as _logging
 import os
+import re
 import shutil as _shutil
 import subprocess
 import sys
@@ -445,7 +447,19 @@ def build_queues(
                                        min_likes=min_likes,
                                        max_params_b=max_params_b,
                                        skip_gated=skip_gated)
-        _section(f"HF FRONTIER  ({len(frontier_items)} discovered)")
+
+        # Author/family dedup: one model per (author, repo-family) per run.
+        # Keeps the most recent or best-sized variant; skips the rest.
+        # Bypassed for large runs (100+ per chip) where diversity is expected.
+        family_note = ""
+        if limit_per_chip == 0 or limit_per_chip < 100:
+            frontier_items, n_dropped = _dedup_by_author_family(
+                frontier_items, target_params_b=max_params_b
+            )
+            if n_dropped:
+                family_note = f"  {_DIM}({n_dropped} family dupes dropped){_RST}"
+
+        _section(f"HF FRONTIER  ({len(frontier_items)} selected){family_note}")
         for item in frontier_items:
             _model_row(item)
 
@@ -475,6 +489,67 @@ def build_queues(
         chip_queues = [q[:limit_per_chip] for q in chip_queues]
 
     return chip_queues
+
+
+# Matches one trailing version/variant token: -0.5, -v1, -v0.2, -2.1, -0
+# Used to collapse model variants (e.g. sparsity-0.5 / sparsity-0.9) into a
+# single family so we only attempt one compile per author/family per run.
+_FAMILY_SUFFIX_RE = re.compile(r'[-_]v?\d+(?:[._]\d+)*$', re.IGNORECASE)
+
+
+def _family_key(repo_name: str) -> str:
+    """Strip one trailing numeric/version token from a repo name (lowercase).
+
+    "icl-pruning-wanda-sparsity-0.5" → "icl-pruning-wanda-sparsity"
+    "Mistral-7B-v0.1"                → "mistral-7b"
+    "bert-base-uncased"              → "bert-base-uncased"  (no numeric suffix)
+    """
+    return _FAMILY_SUFFIX_RE.sub('', repo_name.lower()) or repo_name.lower()
+
+
+def _dedup_by_author_family(
+    items: list[dict],
+    target_params_b: float = 0.0,
+) -> tuple[list[dict], int]:
+    """Keep one model per (author, family) group; return (selected, n_dropped).
+
+    Groups by the author prefix and a family key derived by stripping the
+    trailing numeric/version token from the repo name.  Within each group the
+    winner is chosen by:
+      1. Most recent creation date (expedition favours zero-days).
+      2. Param count closest to 70 % of target_params_b sweet-spot (or
+         smallest params when no target — safer for single-chip).
+      3. Most downloads as a final tiebreak.
+
+    Original discovery order (newest-first from HF API) is preserved in the
+    returned list so priority stays intact for the interleave / round-robin.
+    """
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for item in items:
+        author, _, repo = item["model_id"].partition("/")
+        key = (author.lower(), _family_key(repo))
+        groups.setdefault(key, []).append(item)
+
+    order_map = {item["model_id"]: i for i, item in enumerate(items)}
+    sweet = target_params_b * 0.7 if target_params_b > 0 else 0.0
+
+    selected: list[dict] = []
+    for group in groups.values():
+        if len(group) == 1:
+            selected.append(group[0])
+            continue
+
+        def _score(item, _sweet=sweet):
+            created  = item.get("hf_created_at") or ""
+            params   = item.get("hf_params_b") or 0.0
+            size_sc  = (-abs(params - _sweet) if _sweet > 0 and params > 0
+                        else -params)          # smaller = safer fallback
+            return (created, size_sc, item.get("hf_downloads") or 0)
+
+        selected.append(max(group, key=_score))
+
+    selected.sort(key=lambda x: order_map.get(x["model_id"], 0))
+    return selected, len(items) - len(selected)
 
 
 def _interleave(seed: list, frontier: list, seed_ratio: float) -> list:
@@ -544,6 +619,16 @@ def _run_parallel_downloads(
     from concurrent.futures import CancelledError as _FutureCancelled
     from huggingface_hub import snapshot_download, HfApi
 
+    # Silence the huggingface_hub Python logger for the duration of the
+    # download block — otherwise its INFO messages ("Downloading…", "Fetching…")
+    # land on stdout and tear up the ANSI slot display.
+    _hf_log  = _logging.getLogger("huggingface_hub")
+    _hf_prev = _hf_log.level
+    _hf_log.setLevel(_logging.ERROR)
+    # Also silence filelock and requests noise that leaks through urllib3.
+    for _noisy in ("filelock", "urllib3", "requests"):
+        _logging.getLogger(_noisy).setLevel(_logging.ERROR)
+
     total   = len(items_ordered)
     n_slots = min(max_workers, total)
 
@@ -587,19 +672,21 @@ def _run_parallel_downloads(
                         f"  {_DIM}{_fmt_bytes(nb)}  {_fmt_eta(el)}{sp_s}{_RST}")
             err = s.get("err", "")[:52]
             return f"  {_RED}✗{_RST}  {_DIM}{mid_short}  {err}{_RST}"
-        # Active download — render progress bar
+        # Active download — render progress bar.
+        # Layout: bar  pct  eta  bytes/total  speed  dim:model-id
+        # ETA follows % immediately so "61%  3m24s" reads as one thought.
         ratio = s.get("ratio", 0.0)
         nb    = s.get("new_bytes", 0)
         tb    = s.get("total_bytes", 0)
         speed = s.get("speed", 0.0)
         eta   = s.get("eta", -1.0)
-        pct   = f" {ratio * 100:3.0f}%" if tb > 0 else ""
-        sz    = (f" {_fmt_bytes(nb)}/{_fmt_bytes(tb)}" if tb > 0
-                 else (f" {_fmt_bytes(nb)}" if nb > 0 else ""))
-        sp_s  = f" {_fmt_speed(speed)}"  if speed > 50_000 else ""
-        et_s  = f" {_fmt_eta(eta)}"      if eta   > 5      else ""
+        pct   = f" {_BOLD}{ratio * 100:3.0f}%{_RST}" if tb > 0 else ""
+        et_s  = f"  {_LTEAL}{_fmt_eta(eta)}{_RST}"   if eta > 5      else ""
+        sz    = (f"  {_fmt_bytes(nb)}/{_fmt_bytes(tb)}" if tb > 0
+                 else (f"  {_fmt_bytes(nb)}" if nb > 0 else ""))
+        sp_s  = f"  {_DIM}{_fmt_speed(speed)}{_RST}"  if speed > 50_000 else ""
         bar   = _bar(ratio, width=20)
-        return f"  {bar}{pct}{sz}{sp_s}{et_s}  {_DIM}{mid_short}{_RST}"
+        return f"  {bar}{pct}{et_s}{sz}{sp_s}  {_DIM}{mid_short}{_RST}"
 
     # Reserve n_slots + 1 lines (blank separator + one per slot).
     print()
@@ -625,8 +712,10 @@ def _run_parallel_downloads(
 
     # ── Worker ────────────────────────────────────────────────────────────────
 
-    prev_hf_bar = os.environ.get("HF_HUB_DISABLE_PROGRESS_BARS")
+    prev_hf_bar  = os.environ.get("HF_HUB_DISABLE_PROGRESS_BARS")
+    prev_hf_verb = os.environ.get("HF_HUB_VERBOSITY")
     os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+    os.environ["HF_HUB_VERBOSITY"] = "error"
 
     def _worker(model_id: str, item: dict) -> dict:
         sid = _claim_slot()
@@ -755,6 +844,11 @@ def _run_parallel_downloads(
             os.environ.pop("HF_HUB_DISABLE_PROGRESS_BARS", None)
         else:
             os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = prev_hf_bar
+        if prev_hf_verb is None:
+            os.environ.pop("HF_HUB_VERBOSITY", None)
+        else:
+            os.environ["HF_HUB_VERBOSITY"] = prev_hf_verb
+        _hf_log.setLevel(_hf_prev)
 
     # ── Final display repaint ─────────────────────────────────────────────────
     stop_display.set()
