@@ -66,6 +66,12 @@ _ERROR_RULES: list[tuple[str, str, str, str]] = [
      "loader_missing",
      "No loader available",
      "fix: extend build_dynamic_loader() in hf_discover.py"),
+    # Required optional package not installed (e.g. mamba-ssm, flash-attn).
+    # Matches the HuggingFace transformers pattern "X is required by the Y model".
+    ("is required by the",
+     "missing_dependency",
+     "Missing optional dependency",
+     "fix: pip install the required package or exclude these model types"),
     # Forge internal errors — file upstream bugs
     ("Internal Writer Error",
      "forge_internal",

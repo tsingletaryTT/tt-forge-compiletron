@@ -469,6 +469,29 @@ def build_queues(
                                        max_params_b=max_params_b,
                                        skip_gated=skip_gated)
 
+        # Exclude models whose failure history shows they cannot succeed.
+        # Three buckets of permanent failure:
+        #   unsupported_arch     — architecture not in installed Transformers; won't load
+        #   loader_missing       — build_dynamic_loader() can't trace this pipeline type
+        #   missing_dependency   — required optional package (mamba-ssm etc.) not installed
+        # Plus a catch-all: 3+ attempts of any error OTHER than tracer_output_type.
+        # tracer_output_type is exempted because the new _LogitsWrapper retry in
+        # _compile_model is designed to fix exactly that class of failure — models
+        # that previously racked up tracer errors deserve a fresh shot.
+        _PERM_FAIL_CATS = {"unsupported_arch", "loader_missing", "missing_dependency"}
+        perm_fail_ids = {
+            mid for mid, info in bestiary.failed.items()
+            if info.get("error_category") in _PERM_FAIL_CATS
+            or (info.get("attempts", 0) >= 3
+                and info.get("error_category") != "tracer_output_type")
+        }
+        n_perm_skipped = 0
+        if perm_fail_ids:
+            n_before = len(frontier_items)
+            frontier_items = [it for it in frontier_items
+                              if it["model_id"] not in perm_fail_ids]
+            n_perm_skipped = n_before - len(frontier_items)
+
         # Author/family dedup: one model per (author, repo-family) per run.
         # Keeps the most recent or best-sized variant; skips the rest.
         # Bypassed for large runs (100+ per chip) where diversity is expected.
@@ -477,8 +500,11 @@ def build_queues(
             frontier_items, n_dropped = _dedup_by_author_family(
                 frontier_items, target_params_b=max_params_b
             )
-            if n_dropped:
-                family_note = f"  {_DIM}({n_dropped} family dupes dropped){_RST}"
+            notes = []
+            if n_dropped:       notes.append(f"{n_dropped} family dupes dropped")
+            if n_perm_skipped:  notes.append(f"{n_perm_skipped} perm-failed excluded")
+            if notes:
+                family_note = f"  {_DIM}({', '.join(notes)}){_RST}"
 
         _section(f"HF FRONTIER  ({len(frontier_items)} selected){family_note}")
         for item in frontier_items:

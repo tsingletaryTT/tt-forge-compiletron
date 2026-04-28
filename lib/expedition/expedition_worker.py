@@ -245,9 +245,17 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
       - compiled:     The forge-compiled module (None on failure); callers may run
                       additional inference passes (First Voice) without recompiling.
 
+    Compile is attempted twice for models that fail with a tracer type-inference
+    error.  HuggingFace causal-LM models commonly return a CausalLMOutputWithPast
+    or plain tuple (logits, past_kv) rather than a bare tensor; the forge tracer
+    can't infer types for mixed-type tuples.  On first failure we retry with a
+    _LogitsWrapper that strips the return to the primary tensor, giving the tracer
+    a clean interface.  This converts a large class of frontier models from
+    guaranteed failure to likely success at the cost of one extra compile attempt.
+
     Imports (torch, forge) are deferred so this module can be imported and the
     argument parser exercised without forge or torch installed — important for
-    CI and the Task 6 import-only verification step.
+    CI and the import-only verification step.
 
     Args:
         model_loader: Callable that returns a torch.nn.Module (already .eval()-able).
@@ -258,6 +266,21 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
 
     sys.path.insert(0, os.path.expanduser("~/tt-forge-fe"))
     import forge
+
+    # Wraps a model whose forward() returns a tuple/ModelOutput so the forge
+    # tracer sees a single tensor.  Defined here so torch.nn.Module is in scope.
+    class _LogitsWrapper(torch.nn.Module):
+        def __init__(self, m):
+            super().__init__()
+            self.model = m
+
+        def forward(self, *args, **kwargs):
+            out = self.model(*args, **kwargs)
+            if isinstance(out, (tuple, list)):
+                return out[0]
+            if hasattr(out, "logits"):
+                return out.logits
+            return out
 
     try:
         model = model_loader()
@@ -283,8 +306,29 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
 
         compile_start = time.time()
         _print_progress_step(2, 3, "Compiling for TT hardware...")
-        compiled = forge.compile(model, sample_inputs=[sample_input])
+
+        # Two-stage compile: raw model first, then wrapped on tracer failure.
+        compiled = None
+        compile_error = None
+        for attempt, target in enumerate([model, _LogitsWrapper(model)]):
+            try:
+                compiled = forge.compile(target, sample_inputs=[sample_input])
+                compile_error = None
+                break
+            except Exception as exc:
+                compile_error = exc
+                if attempt == 0 and "Tracer cannot infer type" in str(exc):
+                    _print_live_info(
+                        "Output is tuple — retrying with logits wrapper…", ok=False
+                    )
+                    continue
+                break  # non-tracer error: no point retrying
+
         compile_time = time.time() - compile_start
+
+        if compile_error is not None:
+            e = compile_error
+            return False, None, compile_time, f"{type(e).__name__}: {str(e)[:300]}", None
 
         _print_progress_step(3, 3, f"Running inference on chip {chip_id}...")
         # Use SIGALRM so that a hung inference doesn't stall the entire worker.
@@ -295,7 +339,7 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
             signal.alarm(0)  # cancel the alarm on clean completion
         except TimeoutException:
             signal.alarm(0)
-            return False, None, compile_time, "TIMEOUT"
+            return False, None, compile_time, "TIMEOUT", None
 
         # Unwrap list outputs (forge sometimes returns [tensor]).
         if isinstance(output, list):
@@ -375,7 +419,9 @@ def _attempt_first_voice(
             return "", None
 
         model_info = FrontierModelInfo(name=model_id, task=task, source="huggingface")
-        text = decode(output, model_info, tokenizer=tokenizer)
+        # Pass the actual tensor_input as `inputs` so masked_lm and QA decoders
+        # can locate the [MASK] position / decode the answer span from input_ids.
+        text = decode(output, model_info, inputs=tensor_input, tokenizer=tokenizer)
         return text, sample
 
     except Exception:
