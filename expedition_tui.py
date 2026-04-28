@@ -39,7 +39,6 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.message import Message
 from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import Footer, Header, RichLog, Static
@@ -294,13 +293,6 @@ class ScoreStrip(Static):
 
 
 # ── SetupScreen ───────────────────────────────────────────────────────────────
-
-class _SetupDone(Message):
-    """Posted by _do_setup worker when queues are built and ready."""
-    def __init__(self, chip_queues: list[list[dict]]) -> None:
-        super().__init__()
-        self.chip_queues = chip_queues
-
 
 class SetupScreen(Screen):
     """Interactive config panel + live discovery/download log.
@@ -648,16 +640,17 @@ class SetupScreen(Screen):
             )
 
         _log(f"\n[bold green]✓ Ready — launching {self._chips} chip(s)...[/]")
-        self.post_message(_SetupDone(chip_queues))
+        # post_message is not thread-safe in Textual 7.x; use call_from_thread
+        # to run the screen transition directly on the event loop.
+        app.call_from_thread(self._advance_to_run, chip_queues)
 
-    def on__setup_done(self, event: _SetupDone) -> None:
-        # _SetupDone is a module-level class, so this is the handler that fires.
-        # Push RunScreen immediately — no second Enter press needed.
+    def _advance_to_run(self, chip_queues: list[list[dict]]) -> None:
+        """Called on the event loop thread when setup completes."""
         self._running    = False
         self._setup_done = True
         self.app.push_screen(
             RunScreen(
-                chip_queues  = event.chip_queues,
+                chip_queues  = chip_queues,
                 num_chips    = self._chips,
                 run_number   = self.app.run_number,
                 arch         = self.app.arch,
