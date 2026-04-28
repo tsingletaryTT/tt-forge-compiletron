@@ -72,6 +72,15 @@ _ERROR_RULES: list[tuple[str, str, str, str]] = [
      "missing_dependency",
      "Missing optional dependency",
      "fix: pip install the required package or exclude these model types"),
+    # Forge missing op — model uses a PyTorch operator forge hasn't implemented
+    ("are not implemented",
+     "forge_missing_op",
+     "Forge missing operator",
+     "need: file a forge op request or filter this model_type"),
+    ("not implemented",
+     "forge_missing_op",
+     "Forge missing operator",
+     "need: file a forge op request or filter this model_type"),
     # Forge internal errors — file upstream bugs
     ("Internal Writer Error",
      "forge_internal",

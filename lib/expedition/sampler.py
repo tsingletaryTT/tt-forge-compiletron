@@ -173,6 +173,11 @@ def _text_tensor(data, seq_len: int, tokenizer):
             text = data.get("context", "") + " " + data.get("question", "")
         else:
             text = str(data)
+        # Causal LM tokenizers (LLaMA, Mistral, Qwen, Falcon, GPT-2, …) have no
+        # pad_token because autoregressive training never needs padding.  Set it
+        # to eos_token so padding="max_length" works without raising an error.
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
         enc = tokenizer(text, return_tensors="pt", max_length=seq_len,
                         padding="max_length", truncation=True)
         return enc["input_ids"], f"tokenized ({seq_len} tokens)"

@@ -368,17 +368,23 @@ def _scan_frontier(
     min_likes: int = 0,
     max_params_b: float = 0.0,
     skip_gated: bool = True,
+    proven_authors: set[str] | None = None,
 ) -> list[dict]:
     """
     Query the HuggingFace frontier for models not yet in the bestiary and not
     already covered by the forge-models library.
+
+    When ``proven_authors`` is provided and the main scan yields fewer than 8
+    candidates, the results are supplemented with uncompiled models from those
+    authors — authors whose models have already compiled successfully on TT
+    hardware are statistically likely to produce more compilable work.
 
     Returns a list of queue item dicts, one per discovered FrontierModel.
     The loader_module and loader_class fields are None for frontier models —
     expedition_worker.py will build a dynamic loader at runtime using
     hf_discover.build_dynamic_loader().
     """
-    from lib.expedition.hf_discover import discover_frontier
+    from lib.expedition.hf_discover import discover_frontier, discover_from_authors
     models = discover_frontier(
         compiled_ids=bestiary_compiled_ids,
         known_model_ids=forge_model_ids,
@@ -387,6 +393,19 @@ def _scan_frontier(
         max_params_b=max_params_b,
         skip_gated=skip_gated,
     )
+
+    # If the frontier scan is sparse, supplement with models from authors whose
+    # submissions have already compiled.  These are treated as a separate pool
+    # so they show up distinctly in the queue but apply the same loader path.
+    if proven_authors and len(models) < 8:
+        supplement = discover_from_authors(
+            authors=list(proven_authors),
+            compiled_ids=bestiary_compiled_ids,
+            known_model_ids=forge_model_ids,
+            skip_gated=skip_gated,
+        )
+        found_ids = {m.model_id for m in models}
+        models.extend(m for m in supplement if m.model_id not in found_ids)
     return [
         {
             "model_id": m.model_id,
@@ -459,6 +478,11 @@ def build_queues(
     forge_ids = {item["model_id"] for item in seed_items}
 
     if not seed_only:
+        # Authors whose models have already compiled — used to supplement the
+        # frontier scan when the recent HF window is sparse.
+        proven_authors = {mid.split("/")[0] for mid in bestiary.compiled
+                          if "/" in mid}
+
         # HF frontier discovery involves network calls — spinner keeps the user
         # informed while we wait for the HuggingFace API to respond.
         frontier_items = _with_spinner("querying HuggingFace frontier…",
@@ -467,7 +491,8 @@ def build_queues(
                                        min_downloads=min_downloads,
                                        min_likes=min_likes,
                                        max_params_b=max_params_b,
-                                       skip_gated=skip_gated)
+                                       skip_gated=skip_gated,
+                                       proven_authors=proven_authors)
 
         # Exclude models whose failure history shows they cannot succeed.
         # Three buckets of permanent failure:

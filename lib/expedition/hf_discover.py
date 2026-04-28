@@ -225,7 +225,7 @@ def _model_to_frontier(hf_model) -> FrontierModel:
 def discover_frontier(
     compiled_ids: set[str],
     known_model_ids: set[str],
-    limit: int = 500,
+    limit: int = 1000,
     min_downloads: int = 0,
     min_likes: int = 0,
     max_params_b: float = 0.0,
@@ -364,6 +364,76 @@ def discover_frontier(
                 continue
         seen_ids.add(m.id)
         results.append(_model_to_frontier(m))
+
+    return results
+
+
+def discover_from_authors(
+    authors: list[str],
+    compiled_ids: set[str],
+    known_model_ids: set[str],
+    max_per_author: int = 15,
+    skip_gated: bool = True,
+) -> list[FrontierModel]:
+    """Return uncompiled models from authors whose models have already compiled.
+
+    When the main frontier scan yields few candidates (sparse recent window),
+    supplementing with proven-author models keeps the queue full with targets
+    that are statistically likely to compile — same author usually means same
+    base architecture and same upload patterns.
+
+    Applies the same filters as discover_frontier (tag, format, model_type,
+    gated, disabled) but no downloads/likes floor since these are trusted sources.
+
+    Args:
+        authors:         HuggingFace author names (namespace before the /).
+        compiled_ids:    Model IDs already in the bestiary — skip these.
+        known_model_ids: Forge-models library IDs — handled elsewhere, skip.
+        max_per_author:  Maximum HF API results to fetch per author.
+        skip_gated:      Skip gated repos requiring HF access approval.
+    """
+    if HfApi is None or not authors:
+        return []
+
+    api = HfApi()
+    results: list[FrontierModel] = []
+    # Unified exclusion set so we never return already-known models.
+    excluded = set(compiled_ids) | set(known_model_ids)
+    seen_ids: set[str] = set()
+
+    for author in authors:
+        try:
+            hf_models = api.list_models(
+                author=author,
+                filter="pytorch",
+                sort="createdAt",
+                direction=-1,
+                limit=max_per_author,
+                expand=["config", "pipeline_tag", "downloads", "likes",
+                        "gated", "disabled", "safetensors", "createdAt"],
+            )
+        except Exception:
+            continue
+
+        for m in hf_models:
+            if m.id in excluded or m.id in seen_ids:
+                continue
+            tag = getattr(m, "pipeline_tag", None)
+            if not tag or tag not in _SUPPORTED_TAGS:
+                continue
+            if any(pat in m.id.lower() for pat in _UNSUPPORTED_FORMAT_PATTERNS):
+                continue
+            config = getattr(m, "config", None)
+            if isinstance(config, dict):
+                mt = (config.get("model_type") or "").lower()
+                if not mt or mt in _UNSUPPORTED_MODEL_TYPES:
+                    continue
+            if skip_gated and getattr(m, "gated", None):
+                continue
+            if getattr(m, "disabled", None):
+                continue
+            seen_ids.add(m.id)
+            results.append(_model_to_frontier(m))
 
     return results
 
