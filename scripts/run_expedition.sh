@@ -14,8 +14,8 @@
 # --monitor layout (center column):
 #   ╔═════════╦═══════════════╦═════════╗
 #   ║  Chip 0 ║               ║  Chip 1 ║
-#   ║         ║   tt-smi      ║         ║
-#   ╠═════════╣   (hardware)  ╠═════════╣
+#   ║         ║  tt-toplike   ║         ║
+#   ╠═════════╣  --mode arcade╠═════════╣
 #   ║  Chip 2 ║               ║  Chip 3 ║
 #   ║         ║               ║         ║
 #   ╠═════════╩═══════════════╩═════════╣
@@ -25,7 +25,7 @@
 # Key bindings added to the session:
 #   prefix + B  →  Bestiary summary popup
 #   prefix + G  →  Chip log viewer menu (piped logs)
-#   prefix + M  →  Toggle monitor pane (tt-smi) visibility
+#   prefix + M  →  Toggle monitor pane (tt-toplike) visibility
 #
 # Invoked by expedition.py with:
 #   bash scripts/run_expedition.sh --chips N --run R [--monitor]
@@ -204,11 +204,11 @@ tmux send-keys -t "$P_TL" "bash /tmp/expedition_chip_0.sh" C-m
 
 # Hardware monitor in center column (or right column for non-4-chip runs).
 if [[ -n "$P_MON" ]]; then
-    if command -v tt-smi &>/dev/null; then
-        tmux send-keys -t "$P_MON" "tt-smi" C-m
+    if command -v tt-toplike &>/dev/null; then
+        tmux send-keys -t "$P_MON" "tt-toplike --mode arcade" C-m
     else
         tmux send-keys -t "$P_MON" \
-            "echo 'tt-smi not found — install tenstorrent-software-utils'; watch -n2 'tt-smi -s 2>/dev/null || echo waiting...'" \
+            "echo 'tt-toplike not found — install tenstorrent-software-utils'" \
             C-m
     fi
 fi

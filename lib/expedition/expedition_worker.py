@@ -322,7 +322,9 @@ class QueueItem:
         task:         HuggingFace pipeline task string.
         source:       Data origin: "huggingface", "local", etc.
         rarity:       Pre-computed rarity tier string.
-        hf_downloads: Monthly download count from HuggingFace (None if unavailable).
+        hf_downloads: Total download count from HuggingFace (None if unavailable).
+        hf_likes:     HuggingFace ♥ count (None if unavailable).
+        hf_params_b:  Approximate parameter count in billions (None if unavailable).
         hf_created_at: ISO-8601 creation timestamp (None if unavailable).
         mesh_chips:   Number of TT chips required by this model.
         loader_module: Python module path for non-frontier models (may be None).
@@ -340,6 +342,8 @@ class QueueItem:
     loader_module: Optional[str]
     loader_class: Optional[str]
     is_frontier: bool = False
+    hf_likes: Optional[int] = None
+    hf_params_b: Optional[float] = None
 
 
 def _load_queue(queue_path: str) -> list[QueueItem]:
@@ -384,6 +388,8 @@ def _build_loader(item: QueueItem):
             model_id=item.model_id,
             pipeline_tag=item.task,
             downloads=item.hf_downloads or 0,
+            likes=item.hf_likes or 0,
+            params_b=item.hf_params_b or 0.0,
             created_at=None,
             rarity=compute_rarity(item.hf_downloads),
             newness=Newness.ESTABLISHED,
