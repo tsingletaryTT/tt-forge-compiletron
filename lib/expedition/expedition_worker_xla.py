@@ -38,6 +38,55 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Any
 
+# ── JAX 0.7.x / Flax 0.8.x compatibility patches ─────────────────────────────
+# Two issues with pjrt-plugin-tt 0.9.0 + JAX 0.7.1 + Flax 0.8.5:
+#
+# 1. Flax's trace_level() calls main.level, but JAX 0.7.x removed that
+#    attribute from Trace objects. Patch before any Flax/JAX model imports.
+#
+# 2. pjrt-plugin-tt only exposes "tt" backend. Transformers' from_pretrained
+#    tries to put loaded weights on the "cpu" backend first; redirect to "tt".
+#
+# 3. Flax Module.init runs eagerly and hits SliceOp failures in eager mode.
+#    Use _do_init=False in from_pretrained to skip eager init; JIT inference
+#    compiles SliceOps via XLA which works correctly on TT.
+
+def _apply_jax_compat_patches():
+    try:
+        import flax.core.tracers as _fct
+        def _patched_trace_level(main):
+            if main is None:
+                return float('-inf')
+            if hasattr(main, 'level'):
+                return main.level
+            # Derive nesting depth from parent_trace chain (JAX 0.7.x equivalent)
+            level = 0
+            t = main
+            while (pt := getattr(t, 'parent_trace', None)) is not None:
+                level += 1
+                t = pt
+            return level
+        _fct.trace_level = _patched_trace_level
+    except Exception:
+        pass
+
+    try:
+        import jax._src.xla_bridge as _xb
+        _orig_local_devices = _xb.local_devices
+        def _patched_local_devices(process_index=None, backend=None):
+            try:
+                return _orig_local_devices(process_index=process_index, backend=backend)
+            except RuntimeError:
+                # CPU not available (JAX_PLATFORMS=tt); fall back to tt
+                return _orig_local_devices(process_index=process_index, backend='tt')
+        _xb.local_devices = _patched_local_devices
+        import jax
+        jax.local_devices = _patched_local_devices
+    except Exception:
+        pass
+
+_apply_jax_compat_patches()
+
 # ── ANSI colors ───────────────────────────────────────────────────────────────
 
 BOLD   = "\033[1m"
@@ -219,27 +268,25 @@ def _compile_model_xla(
         # Restrict execution to this chip's device via explicit sharding.
         mesh = Mesh([device], axis_names=("x",))
 
-        # Build the function to JIT. We capture graphdef/params separately
-        # so JAX can treat params as a pytree and shard them properly.
-        try:
-            from flax import nnx
-            graphdef, state = nnx.split(model)
-            flax_params = state
+        # Build the forward function to JIT. Three calling conventions:
+        # 1. HuggingFace FlaxPreTrainedModel: model(**inputs, params=params) → output
+        # 2. Flax NNX modules: nnx.merge + call
+        # 3. Flax Linen modules: model.apply({"params": params}, **inputs)
+        flax_params = params
 
+        # Check for HuggingFace transformers style (FlaxPreTrainedModel).
+        # These classes expose a direct __call__ that takes params as kwarg.
+        from transformers.modeling_flax_utils import FlaxPreTrainedModel  # noqa
+        if isinstance(model, FlaxPreTrainedModel):
             def forward(params, inputs):
-                m = nnx.merge(graphdef, params)
-                out = m(**inputs)
-                # Normalize: return logits tensor regardless of output type.
+                out = model(**inputs, params=params, train=False)
                 if hasattr(out, "logits") and out.logits is not None:
                     return out.logits
                 if isinstance(out, (tuple, list)):
                     return out[0]
                 return out
-
-        except Exception:
-            # Older Flax or non-nnx model — call directly.
-            flax_params = params
-
+        else:
+            # Flax Linen .apply() style.
             def forward(params, inputs):
                 out = model.apply({"params": params}, **inputs)
                 if hasattr(out, "logits") and out.logits is not None:
@@ -434,7 +481,15 @@ def _build_loader_xla(item: QueueItem):
         flax_cls = _FLAX_CLASS.get(item.task, FlaxAutoModelForCausalLM)
 
         def loader():
-            model = flax_cls.from_pretrained(item.model_id, dtype="float32")
+            # Use _do_init=False to skip Flax's eager init which fails on TT
+            # due to SliceOp limitations in pjrt-plugin-tt 0.9.0. JIT inference
+            # compiles SliceOps via XLA which works. Returns (model, params) tuple.
+            result = flax_cls.from_pretrained(item.model_id, dtype="float32", _do_init=False)
+            if isinstance(result, tuple):
+                model, params = result
+            else:
+                model, params = result, result.params
+
             tokenizer = None
             try:
                 tokenizer = AutoTokenizer.from_pretrained(
@@ -451,7 +506,7 @@ def _build_loader_xla(item: QueueItem):
                 def make_input(device):
                     return {"pixel_values": jnp.zeros((1, 3, 224, 224), dtype=jnp.float32)}
 
-            return model, model.params, tokenizer, make_input
+            return model, params, tokenizer, make_input
 
         return loader
 
