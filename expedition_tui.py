@@ -352,6 +352,7 @@ class SetupScreen(Screen):
         Binding("2",          "sources_seed",    "Sources: seed", show=False),
         Binding("3",          "sources_frontier","Sources: HF",   show=False),
         Binding("4",          "toggle_staples",  "Staples",       show=False),
+        Binding("5",          "cycle_backend",   "Backend",       show=False),
         Binding("q",          "quit",            "Quit",          show=True),
     ]
 
@@ -371,6 +372,7 @@ class SetupScreen(Screen):
         self._session_download_max = 0.0
         self._parallel_downloads   = 4
         self._staples      = False  # True → include already-compiled seed models
+        self._backend      = "forge"  # forge | xla | mixed
         self._discovering  = False  # True while HF discovery / queue-build is running
         self._setup_done   = False  # True once queues are built (no re-run)
 
@@ -389,6 +391,7 @@ class SetupScreen(Screen):
         self._session_download_max = app.session_download_max
         self._parallel_downloads   = app.parallel_downloads
         self._staples              = app.staples
+        self._backend              = getattr(app, "backend", "forge")
         self._refresh_config()
 
     def compose(self) -> ComposeResult:
@@ -422,6 +425,7 @@ class SetupScreen(Screen):
             src_str = "ALL"
 
         staples_str = "[bold yellow]ON[/]" if self._staples else "off"
+        backend_str = {"forge": "[bold]forge[/]", "xla": "[bold cyan]XLA[/]", "mixed": "[bold yellow]MIXED[/]"}.get(self._backend, self._backend)
 
         status = (
             "[bold yellow]● Ready — press ENTER[/]"
@@ -442,6 +446,7 @@ class SetupScreen(Screen):
             f"  Max Params   [bold]{pb_str}[/]  [dim]m / n[/]",
             f"  Sources      [bold]{src_str}[/]  [dim]1/2/3[/]",
             f"  Staples      {staples_str}  [dim]4[/]",
+            f"  Backend      {backend_str}  [dim]5[/]",
             "",
             "─" * 34,
             status,
@@ -491,6 +496,8 @@ class SetupScreen(Screen):
     def action_sources_frontier(self)-> None: self._seed_only = False; self._frontier_only = True
     @_guarded
     def action_toggle_staples(self)  -> None: self._staples = not self._staples
+    @_guarded
+    def action_cycle_backend(self)   -> None: self._backend = {"forge": "xla", "xla": "mixed", "mixed": "forge"}[self._backend]
 
     def action_start(self) -> None:
         if self._discovering or self._setup_done:
@@ -680,8 +687,22 @@ class SetupScreen(Screen):
                 run_number   = self.app.run_number,
                 arch         = self.app.arch,
                 project_dir  = self.app._project_dir,
+                backend      = self._backend,
             )
         )
+
+
+def _chip_backend(chip_id: int, backend: str) -> str:
+    """Return the effective backend for a chip given the run's backend setting."""
+    if backend == "mixed":
+        return "forge" if chip_id % 2 == 0 else "xla"
+    return backend
+
+
+def _chip_label(chip_id: int, backend: str) -> str:
+    """Return a badge string like '[XLA]' or '' for the chip panel title."""
+    be = _chip_backend(chip_id, backend)
+    return "\033[96m[XLA]\033[0m" if be == "xla" else ""
 
 
 # ── RunScreen ─────────────────────────────────────────────────────────────────
@@ -724,13 +745,15 @@ class RunScreen(Screen):
     ]
 
     def __init__(self, chip_queues: list[list[dict]], num_chips: int,
-                 run_number: int, arch: str, project_dir: Path, **kwargs) -> None:
+                 run_number: int, arch: str, project_dir: Path,
+                 backend: str = "forge", **kwargs) -> None:
         super().__init__(**kwargs)
         self.chip_queues  = chip_queues
         self.num_chips    = num_chips
         self.run_number   = run_number
         self.arch         = arch
         self._project_dir = project_dir
+        self.backend      = backend   # forge | xla | mixed
         self._chip_rarity: list[str] = ["common"] * 4
         self._chip_streak: list[int] = [0] * 4
         self._chip_best:   list[int] = [0] * 4
@@ -746,14 +769,14 @@ class RunScreen(Screen):
             with Vertical(id="chip-grid"):
                 with Horizontal(id="chip-row-top"):
                     if self.num_chips >= 1:
-                        yield ChipPanel(0, f"⚔ CHIP 0  {_ADVENTURER_TITLES[0]}", id="chip-0")
+                        yield ChipPanel(0, f"⚔ CHIP 0  {_chip_label(0, self.backend)}  {_ADVENTURER_TITLES[0]}", id="chip-0")
                     if self.num_chips >= 2:
-                        yield ChipPanel(1, f"⚔ CHIP 1  {_ADVENTURER_TITLES[1]}", id="chip-1")
+                        yield ChipPanel(1, f"⚔ CHIP 1  {_chip_label(1, self.backend)}  {_ADVENTURER_TITLES[1]}", id="chip-1")
                 if self.num_chips >= 3:
                     with Horizontal(id="chip-row-bottom"):
-                        yield ChipPanel(2, f"⚔ CHIP 2  {_ADVENTURER_TITLES[2]}", id="chip-2")
+                        yield ChipPanel(2, f"⚔ CHIP 2  {_chip_label(2, self.backend)}  {_ADVENTURER_TITLES[2]}", id="chip-2")
                         if self.num_chips >= 4:
-                            yield ChipPanel(3, f"⚔ CHIP 3  {_ADVENTURER_TITLES[3]}", id="chip-3")
+                            yield ChipPanel(3, f"⚔ CHIP 3  {_chip_label(3, self.backend)}  {_ADVENTURER_TITLES[3]}", id="chip-3")
             with Vertical(id="sidebar"):
                 yield HardwareWidget(id="hw")
                 yield EventLog(id="event-log")
@@ -786,21 +809,36 @@ class RunScreen(Screen):
     async def _launch_chip(self, chip_id: int) -> None:
         await asyncio.sleep(chip_id * 4)
 
-        env = {
-            **os.environ,
-            "TT_VISIBLE_DEVICES":      str(chip_id),
-            "TT_METAL_ARCH_NAME":      self.arch,
-            "TT_METAL_LOGGER_LEVEL":   "FATAL",
-            "TT_MESH_GRAPH_DESC_PATH": str(
-                self._project_dir / "mesh_graph_descriptors"
-                / "p100_mesh_graph_descriptor.textproto"
-            ),
-            "PYTHONUNBUFFERED":        "1",
-        }
+        chip_be = _chip_backend(chip_id, self.backend)
+
+        if chip_be == "xla":
+            python_exe  = str(self._project_dir / "xla-venv" / "bin" / "python3")
+            worker_path = str(self._project_dir / "lib" / "expedition" / "expedition_worker_xla.py")
+            env = {k: v for k, v in os.environ.items() if k != "TT_METAL_HOME"}
+            env.update({
+                "TT_VISIBLE_DEVICES":    str(chip_id),
+                "TT_METAL_LOGGER_LEVEL": "FATAL",
+                "JAX_PLATFORMS":         "tt",
+                "PYTHONUNBUFFERED":      "1",
+            })
+        else:
+            python_exe  = sys.executable
+            worker_path = str(self._project_dir / "lib" / "expedition" / "expedition_worker.py")
+            env = {
+                **os.environ,
+                "TT_VISIBLE_DEVICES":      str(chip_id),
+                "TT_METAL_ARCH_NAME":      self.arch,
+                "TT_METAL_LOGGER_LEVEL":   "FATAL",
+                "TT_MESH_GRAPH_DESC_PATH": str(
+                    self._project_dir / "mesh_graph_descriptors"
+                    / "p100_mesh_graph_descriptor.textproto"
+                ),
+                "PYTHONUNBUFFERED":        "1",
+            }
 
         proc = await asyncio.create_subprocess_exec(
-            sys.executable,
-            str(self._project_dir / "lib" / "expedition" / "expedition_worker.py"),
+            python_exe,
+            worker_path,
             "--chip",     str(chip_id),
             "--run",      str(self.run_number),
             "--bestiary", str(self._project_dir / "data" / "bestiary.json"),
@@ -1242,6 +1280,7 @@ class ExpeditionTUI(App[None]):
         session_download_max:   float = 0.0,
         parallel_downloads:     int   = 4,
         staples:                bool  = False,
+        backend:                str   = "forge",
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -1262,6 +1301,7 @@ class ExpeditionTUI(App[None]):
         self.session_download_max = session_download_max
         self.parallel_downloads   = parallel_downloads
         self.staples              = staples
+        self.backend              = backend
 
     def on_mount(self) -> None:
         rn = f"Run #{self.run_number:03d}"
