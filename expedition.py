@@ -251,7 +251,8 @@ def _with_spinner(msg: str, fn, *args, **kwargs):
 
 # ── Queue building ────────────────────────────────────────────────────────────
 
-def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = False) -> list[dict]:
+def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = False,
+                       framework: str | None = None) -> list[dict]:
     """
     Walk ~/code/tt-forge-models and return QueueItem dicts for loaders.
 
@@ -295,6 +296,16 @@ def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = Fals
             rel = loader_py.relative_to(forge_models_root)
             if any(p.startswith("_") or p.startswith(".") for p in rel.parts):
                 continue
+
+            # Framework filter: skip loaders that don't match the requested framework.
+            # "pytorch" skips paths containing /jax/, "jax" skips paths without /jax/.
+            if framework is not None:
+                parts_lower = [p.lower() for p in rel.parts]
+                is_jax = "jax" in parts_lower
+                if framework == "jax" and not is_jax:
+                    continue
+                if framework == "pytorch" and is_jax:
+                    continue
 
             # model_id is the directory path relative to forge-models root, minus the
             # trailing "loader.py" segment — e.g. "facebook/bart-large-cnn".

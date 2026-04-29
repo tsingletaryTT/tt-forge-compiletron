@@ -564,11 +564,16 @@ class SetupScreen(Screen):
         frontier_items: list[dict] = []
 
         # ── Seed scan (forge-models library) ─────────────────────────────────
+        # For mixed backend, scan both frameworks and separate into two pools so
+        # each chip gets loaders it can actually run.
         if not self._frontier_only:
+            fw_map = {"forge": "pytorch", "xla": "jax", "mixed": None}
+            scan_fw = fw_map.get(self._backend, "pytorch")
             label = "⚙ Scanning tt-forge-models library (staples — all included)..." if self._staples \
                 else "⚙ Scanning tt-forge-models library..."
             _log(f"[cyan]{label}[/]")
-            seed_items = _scan_forge_models(compiled_ids, include_all=self._staples)
+            seed_items = _scan_forge_models(compiled_ids, include_all=self._staples,
+                                            framework=scan_fw)
             _log(f"[green]✓ {len(seed_items)} seed model(s) found[/]")
             for item in seed_items:
                 mid  = item.get("model_id", "?")
