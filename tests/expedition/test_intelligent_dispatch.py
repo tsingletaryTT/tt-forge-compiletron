@@ -118,3 +118,39 @@ def test_legendary_4chip_rally_example():
         is_first_voice=True,
     )
     assert s.pts == 16_250
+
+
+# ── Task 3: HF discover library param ────────────────────────────────────────
+
+from unittest.mock import patch, MagicMock
+from lib.expedition.hf_discover import discover_frontier, discover_from_authors
+
+
+def test_discover_frontier_passes_library_to_api():
+    """discover_frontier(library="jax") should call api.list_models(filter="jax", ...)."""
+    mock_api_instance = MagicMock()
+    mock_api_instance.list_models.return_value = []
+    with patch("lib.expedition.hf_discover.HfApi", return_value=mock_api_instance):
+        discover_frontier(compiled_ids=set(), known_model_ids=set(), library="jax")
+    call_kwargs = mock_api_instance.list_models.call_args[1]
+    assert call_kwargs.get("filter") == "jax"
+
+
+def test_discover_frontier_omits_filter_when_library_none():
+    """discover_frontier(library=None) should NOT include 'filter' kwarg."""
+    mock_api_instance = MagicMock()
+    mock_api_instance.list_models.return_value = []
+    with patch("lib.expedition.hf_discover.HfApi", return_value=mock_api_instance):
+        discover_frontier(compiled_ids=set(), known_model_ids=set(), library=None)
+    call_kwargs = mock_api_instance.list_models.call_args[1]
+    assert "filter" not in call_kwargs
+
+
+def test_discover_frontier_default_library_is_pytorch():
+    """Default call should still filter for pytorch (backwards compatible)."""
+    mock_api_instance = MagicMock()
+    mock_api_instance.list_models.return_value = []
+    with patch("lib.expedition.hf_discover.HfApi", return_value=mock_api_instance):
+        discover_frontier(compiled_ids=set(), known_model_ids=set())
+    call_kwargs = mock_api_instance.list_models.call_args[1]
+    assert call_kwargs.get("filter") == "pytorch"

@@ -230,8 +230,9 @@ def discover_frontier(
     min_likes: int = 0,
     max_params_b: float = 0.0,
     skip_gated: bool = True,
+    library: str | None = "pytorch",
 ) -> list[FrontierModel]:
-    """Query HuggingFace for the newest pytorch models and return uncharted ones.
+    """Query HuggingFace for the newest models in a given library and return uncharted ones.
 
     Sorts by creation date descending ("newest first") to maximise zero-day
     finds.  Filter passes applied in order:
@@ -261,6 +262,11 @@ def discover_frontier(
     min_likes:       Community-reputation floor.
     max_params_b:    Size ceiling in billions of parameters (0 = no limit).
     skip_gated:      Skip gated repos that require HF access approval.
+    library:         HuggingFace library tag to filter by (e.g. "pytorch",
+                     "jax", "flax").  Pass ``None`` to discover models from
+                     all libraries — useful for XLA/auto modes that want
+                     Flax-native models alongside PyTorch ones.
+                     Defaults to "pytorch" for backwards compatibility.
 
     Returns an empty list if ``huggingface_hub`` is unavailable or the API
     call fails — callers should treat that as "no new discoveries this tick".
@@ -270,8 +276,7 @@ def discover_frontier(
 
     api = HfApi()
     try:
-        hf_models = api.list_models(
-            filter="pytorch",
+        api_kwargs = dict(
             sort="createdAt",
             direction=-1,   # descending → newest first
             limit=limit,
@@ -288,6 +293,10 @@ def discover_frontier(
                 "createdAt",     # creation timestamp for rarity scoring
             ],
         )
+        # Only pass filter when a library is specified — omitting it discovers all libraries.
+        if library is not None:
+            api_kwargs["filter"] = library
+        hf_models = api.list_models(**api_kwargs)
     except Exception:
         # Network errors, auth errors, rate-limits — degrade gracefully.
         return []
@@ -374,6 +383,7 @@ def discover_from_authors(
     known_model_ids: set[str],
     max_per_author: int = 15,
     skip_gated: bool = True,
+    library: str | None = "pytorch",
 ) -> list[FrontierModel]:
     """Return uncompiled models from authors whose models have already compiled.
 
@@ -391,6 +401,11 @@ def discover_from_authors(
         known_model_ids: Forge-models library IDs — handled elsewhere, skip.
         max_per_author:  Maximum HF API results to fetch per author.
         skip_gated:      Skip gated repos requiring HF access approval.
+        library:         HuggingFace library tag to filter by (e.g. "pytorch",
+                         "jax", "flax").  Pass ``None`` to discover models from
+                         all libraries — useful for XLA/auto modes that want
+                         Flax-native models.  Defaults to "pytorch" for
+                         backwards compatibility.
     """
     if HfApi is None or not authors:
         return []
@@ -403,15 +418,18 @@ def discover_from_authors(
 
     for author in authors:
         try:
-            hf_models = api.list_models(
+            author_kwargs = dict(
                 author=author,
-                filter="pytorch",
                 sort="createdAt",
                 direction=-1,
                 limit=max_per_author,
                 expand=["config", "pipeline_tag", "downloads", "likes",
                         "gated", "disabled", "safetensors", "createdAt"],
             )
+            # Only pass filter when a library is specified — omitting it discovers all libraries.
+            if library is not None:
+                author_kwargs["filter"] = library
+            hf_models = list(api.list_models(**author_kwargs))
         except Exception:
             continue
 
