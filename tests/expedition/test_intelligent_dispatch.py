@@ -235,3 +235,103 @@ def test_scan_frontier_accepts_library_param():
     mod = _load_root_expedition()
     sig = inspect.signature(mod._scan_frontier)
     assert "library" in sig.parameters
+
+
+# ── Task 5: Router ───────────────────────────────────────────────────────────
+
+def test_router_jax_native_routes_to_xla(tmp_path):
+    """Models with library=="jax" or "flax" must be routed to XLA backend."""
+    from lib.expedition.router import route_model
+    b = _make_bestiary(tmp_path)
+    d = route_model(
+        {"model_id": "google/flax-bert", "library": "jax",
+         "hf_downloads": 5000, "mesh_chips": 1},
+        b,
+    )
+    assert d.backend == "xla"
+    assert d.confidence >= 0.9
+    assert d.reason == "jax-native"
+
+
+def test_router_flax_library_routes_to_xla(tmp_path):
+    from lib.expedition.router import route_model
+    b = _make_bestiary(tmp_path)
+    d = route_model(
+        {"model_id": "google/flax-bert", "library": "flax",
+         "hf_downloads": 5000, "mesh_chips": 1},
+        b,
+    )
+    assert d.backend == "xla"
+    assert d.reason == "jax-native"
+
+
+def test_router_default_routes_to_forge(tmp_path):
+    """Pytorch models with no special signals should default to forge."""
+    from lib.expedition.router import route_model
+    b = _make_bestiary(tmp_path)
+    d = route_model(
+        {"model_id": "foo/bar", "library": "pytorch",
+         "hf_downloads": 100, "mesh_chips": 1},
+        b,
+    )
+    assert d.backend == "forge"
+    assert d.reason == "default"
+
+
+def test_router_forge_failure_history_redirects_to_xla(tmp_path):
+    """Models with >=2 forge_missing_op or forge_internal failures redirect to XLA."""
+    from lib.expedition.router import route_model
+    b = _make_bestiary(tmp_path)
+    # Simulate 2 forge_missing_op failures recorded in bestiary
+    b._data["failed"]["org/troubled"] = {
+        "run_first_failed": 1, "attempts": 2,
+        "last_error": "are not implemented in tt-forge",
+        "error_category": "forge_missing_op",
+    }
+    d = route_model(
+        {"model_id": "org/troubled", "library": "pytorch",
+         "hf_downloads": 1000, "mesh_chips": 1},
+        b,
+    )
+    assert d.backend == "xla"
+    assert d.reason == "forge-failure-history"
+
+
+def test_router_large_model_gets_4_chips(tmp_path):
+    """Models with mesh_chips=4 in metadata should be dispatched on 4 chips."""
+    from lib.expedition.router import route_model
+    b = _make_bestiary(tmp_path)
+    d = route_model(
+        {"model_id": "deepseek-ai/deepseek-v3", "library": "pytorch",
+         "hf_downloads": 1_000_000, "mesh_chips": 4, "hf_params_b": 67.0},
+        b,
+        available_chips=set(range(4)),
+    )
+    assert d.chips == 4
+
+
+def test_router_caps_chips_at_available(tmp_path):
+    """If only 2 chips available but model wants 4, cap at 2."""
+    from lib.expedition.router import route_model
+    b = _make_bestiary(tmp_path)
+    d = route_model(
+        {"model_id": "deepseek-ai/deepseek-v3", "library": "pytorch",
+         "hf_downloads": 1_000_000, "mesh_chips": 4},
+        b,
+        available_chips=set(range(2)),
+    )
+    assert d.chips == 2
+
+
+def test_dispatch_decision_has_required_fields(tmp_path):
+    """DispatchDecision must have backend, chips, confidence, reason."""
+    from lib.expedition.router import route_model
+    b = _make_bestiary(tmp_path)
+    d = route_model({"model_id": "a/b", "library": "pytorch",
+                     "hf_downloads": 100, "mesh_chips": 1}, b)
+    assert hasattr(d, "backend")
+    assert hasattr(d, "chips")
+    assert hasattr(d, "confidence")
+    assert hasattr(d, "reason")
+    assert isinstance(d.chips, int)
+    assert 0.0 <= d.confidence <= 1.0
