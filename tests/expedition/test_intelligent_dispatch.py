@@ -335,3 +335,17 @@ def test_dispatch_decision_has_required_fields(tmp_path):
     assert hasattr(d, "reason")
     assert isinstance(d.chips, int)
     assert 0.0 <= d.confidence <= 1.0
+
+
+def test_router_xla_affinity_type_routes_to_xla(tmp_path):
+    """Models with a known XLA-affinity model_type route to XLA at moderate confidence."""
+    from lib.expedition.router import route_model
+    b = _make_bestiary(tmp_path)
+    d = route_model(
+        {"model_id": "org/bert-model", "library": "pytorch", "model_type": "bert",
+         "hf_downloads": 1000, "mesh_chips": 1},
+        b,
+    )
+    assert d.backend == "xla"
+    assert d.reason == "arch-xla-affinity"
+    assert d.confidence == 0.68

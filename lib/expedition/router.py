@@ -11,14 +11,14 @@ from dataclasses import dataclass
 
 from lib.expedition.bestiary import Bestiary
 
-# Architectures whose canonical implementation is Flax-native and that have
-# already proven out on tt-xla.  Models reporting these model_type values
-# are routed to the XLA backend at moderate confidence.
+# Architectures whose canonical implementation is Flax-native and have proven
+# out on tt-xla.  Values are config.model_type strings from HuggingFace
+# config.json (e.g. "bert", not "flax_bert" — the flax_ prefix is a library tag).
 _XLA_AFFINITY_TYPES: frozenset[str] = frozenset({
-    "flax_bert",
-    "flax_gpt2",
-    "flax_roberta",
-    "flax_t5",
+    "bert",
+    "gpt2",
+    "roberta",
+    "t5",
 })
 
 # Error categories that indicate forge cannot handle a model.  Two or more
@@ -62,6 +62,11 @@ def route_model(
         available_chips: Set of chip IDs in this run (used for cap only).
                          Pass the full chip set (not just free chips) — the TUI
                          enforces free-chip quorum separately.
+
+        Note: callers are responsible for populating ``item["library"]`` and
+              ``item["model_type"]`` from HuggingFace metadata. Queue items
+              built from ``hf_discover.py`` include these fields; QueueItem
+              dataclass items from the workers may not.
     """
     model_id   = item.get("model_id", "")
     library    = (item.get("library") or "").lower()
@@ -94,7 +99,7 @@ def route_model(
         reason     = "default"
 
     # ── Chip count ────────────────────────────────────────────────────────────
-    chips = int(item.get("mesh_chips", 1)) or 1
+    chips = max(1, int(item.get("mesh_chips", 1) or 1))
     if available_chips is not None and chips > len(available_chips):
         chips = max(1, len(available_chips))
 
