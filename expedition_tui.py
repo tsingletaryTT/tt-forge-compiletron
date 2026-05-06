@@ -90,6 +90,11 @@ _RE_ANSI    = re.compile(r"\x1b\[[^m]*m")
 # bypassing FilteredStderr.  Suppress it here so it never reaches the panel log.
 _RE_TT_NOISE = re.compile(r"Always \s*\|")
 
+# Keys present in the model dict that are internal dispatch metadata and must
+# not be forwarded to the worker subprocess.  Defined at module level so the
+# frozenset is created once rather than on every _launch_model call.
+_WORKER_SKIP_KEYS = frozenset({"chips_needed", "decision"})
+
 
 def _strip_osc(line: str) -> str:
     return _RE_OSC.sub("", line)
@@ -321,7 +326,7 @@ class RallyBanner(Static):
 
     def append_output(self, line: str) -> None:
         """Stream live output from the lead chip into the banner."""
-        current = str(self.renderable)
+        current = self.content
         lines = current.split("\n")
         lines.append(line.rstrip())
         header = lines[:4]
@@ -968,7 +973,7 @@ class RunScreen(Screen):
         # Write the model dict to a temp JSON file.
         # Strip dispatcher-internal keys that were added by _dispatch_next/_fire_rally
         # and would break QueueItem(**data) deserialization in the worker.
-        _WORKER_SKIP_KEYS = frozenset({"chips_needed", "decision"})
+        # (_WORKER_SKIP_KEYS is defined at module level to avoid recreating it per call.)
         model_for_worker = {k: v for k, v in model.items() if k not in _WORKER_SKIP_KEYS}
         model_json_path = f"/tmp/expedition_model_chip{chip_id}.json"
         Path(model_json_path).write_text(json.dumps(model_for_worker))
