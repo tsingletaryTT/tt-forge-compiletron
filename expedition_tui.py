@@ -624,12 +624,15 @@ class SetupScreen(Screen):
         frontier_items: list[dict] = []
 
         # ── Seed scan (forge-models library) ─────────────────────────────────
+        # Framework map must be defined before the frontier_only branch so that
+        # scan_fw is available for the frontier library filter regardless of mode.
+        fw_map  = {"auto": None, "forge": "pytorch", "xla": "jax", "mixed": None}
+        scan_fw = fw_map.get(self._backend, "pytorch")
+        seed_items: list[dict] = []  # populated below; empty when frontier_only=True
+
         # For mixed backend, scan both frameworks and separate into two pools so
         # each chip gets loaders it can actually run.
         if not self._frontier_only:
-            # Framework map: drives both the seed scan and the frontier library filter.
-            fw_map = {"auto": None, "forge": "pytorch", "xla": "jax", "mixed": None}
-            scan_fw = fw_map.get(self._backend, "pytorch")
             label = "⚙ Scanning tt-forge-models library (staples — all included)..." if self._staples \
                 else "⚙ Scanning tt-forge-models library..."
             _log(f"[cyan]{label}[/]")
