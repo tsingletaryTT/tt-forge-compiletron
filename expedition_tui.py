@@ -765,7 +765,7 @@ class RunScreen(Screen):
         self.run_number   = run_number
         self.arch         = arch
         self._project_dir = project_dir
-        self.backend      = backend   # forge | xla | mixed
+        self.backend      = backend   # auto | forge | xla | mixed
         self._chip_rarity: list[str] = ["common"] * 4
         self._chip_streak: list[int] = [0] * 4
         self._chip_best:   list[int] = [0] * 4
@@ -823,6 +823,8 @@ class RunScreen(Screen):
 
         chip_be = _chip_backend(chip_id, self.backend)
 
+        # NOTE: "auto" falls through to forge here — Task 8 replaces _launch_chip
+        # entirely with a per-model dispatcher that consults router.py.
         if chip_be == "xla":
             python_exe  = str(self._project_dir / "xla-venv" / "bin" / "python3")
             worker_path = str(self._project_dir / "lib" / "expedition" / "expedition_worker_xla.py")
@@ -1292,7 +1294,7 @@ class ExpeditionTUI(App[None]):
         session_download_max:   float = 0.0,
         parallel_downloads:     int   = 4,
         staples:                bool  = False,
-        backend:                str   = "forge",
+        backend:                str   = "auto",
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)

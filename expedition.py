@@ -1249,8 +1249,8 @@ def main():
     run_p.add_argument("--frontier-only",    action="store_true")
     run_p.add_argument("--staples",          action="store_true",
                        help="Include tt-forge-models seed models even if already compiled (regression test mode)")
-    run_p.add_argument("--backend",          choices=["forge", "xla", "mixed"], default="forge",
-                       help="Compilation backend: forge (default), xla (JAX/PJRT), or mixed (even chips=forge, odd chips=xla)")
+    run_p.add_argument("--backend",          choices=["auto", "forge", "xla", "mixed"], default="auto",
+                       help="Compilation backend: auto (default, per-model routing), forge, xla (JAX/PJRT), or mixed (even chips=forge, odd chips=xla)")
     run_p.add_argument("--no-predownload",   action="store_true",
                        help="Skip pre-downloading HF weights (faster start, unequal footing)")
     run_p.add_argument("--monitor",          action="store_true",
@@ -1298,7 +1298,7 @@ def main():
         args.seed_only = False
         args.frontier_only = False
         args.staples = False
-        args.backend = "forge"
+        args.backend = "auto"
         args.no_predownload = False
         args.monitor = False
         args.tui = False
