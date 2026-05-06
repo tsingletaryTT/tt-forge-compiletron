@@ -294,7 +294,8 @@ def discover_frontier(
             ],
         )
         # Only pass filter when a library is specified — omitting it discovers all libraries.
-        if library is not None:
+        # Use falsy check so empty string "" is treated the same as None (no filter).
+        if library:
             api_kwargs["filter"] = library
         hf_models = api.list_models(**api_kwargs)
     except Exception:
@@ -427,7 +428,8 @@ def discover_from_authors(
                         "gated", "disabled", "safetensors", "createdAt"],
             )
             # Only pass filter when a library is specified — omitting it discovers all libraries.
-            if library is not None:
+            # Use falsy check so empty string "" is treated the same as None (no filter).
+            if library:
                 author_kwargs["filter"] = library
             hf_models = list(api.list_models(**author_kwargs))
         except Exception:

@@ -154,3 +154,50 @@ def test_discover_frontier_default_library_is_pytorch():
         discover_frontier(compiled_ids=set(), known_model_ids=set())
     call_kwargs = mock_api_instance.list_models.call_args[1]
     assert call_kwargs.get("filter") == "pytorch"
+
+
+def test_discover_from_authors_passes_library_to_api():
+    """discover_from_authors(library="jax") should call api.list_models(filter="jax", ...)."""
+    mock_api_instance = MagicMock()
+    mock_api_instance.list_models.return_value = []
+    with patch("lib.expedition.hf_discover.HfApi", return_value=mock_api_instance):
+        discover_from_authors(
+            authors=["google"],
+            compiled_ids=set(),
+            known_model_ids=set(),
+            library="jax",
+        )
+    if mock_api_instance.list_models.call_args is not None:
+        call_kwargs = mock_api_instance.list_models.call_args[1]
+        assert call_kwargs.get("filter") == "jax"
+
+
+def test_discover_from_authors_omits_filter_when_library_none():
+    """discover_from_authors(library=None) should NOT include 'filter' kwarg."""
+    mock_api_instance = MagicMock()
+    mock_api_instance.list_models.return_value = []
+    with patch("lib.expedition.hf_discover.HfApi", return_value=mock_api_instance):
+        discover_from_authors(
+            authors=["google"],
+            compiled_ids=set(),
+            known_model_ids=set(),
+            library=None,
+        )
+    if mock_api_instance.list_models.call_args is not None:
+        call_kwargs = mock_api_instance.list_models.call_args[1]
+        assert "filter" not in call_kwargs
+
+
+def test_discover_from_authors_default_library_is_pytorch():
+    """Default discover_from_authors call should still filter for pytorch."""
+    mock_api_instance = MagicMock()
+    mock_api_instance.list_models.return_value = []
+    with patch("lib.expedition.hf_discover.HfApi", return_value=mock_api_instance):
+        discover_from_authors(
+            authors=["google"],
+            compiled_ids=set(),
+            known_model_ids=set(),
+        )
+    if mock_api_instance.list_models.call_args is not None:
+        call_kwargs = mock_api_instance.list_models.call_args[1]
+        assert call_kwargs.get("filter") == "pytorch"
