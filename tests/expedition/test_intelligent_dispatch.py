@@ -70,16 +70,14 @@ def test_mesh_mult_single_chip_unchanged():
 
 def test_mesh_mult_four_chips():
     """4-chip compile earns 2.5× the single-chip score."""
-    s1 = compute_score(True, False, Rarity.COMMON, Newness.ESTABLISHED, 0, mesh_chips=1)
     s4 = compute_score(True, False, Rarity.COMMON, Newness.ESTABLISHED, 0, mesh_chips=4)
-    assert s4.pts == int(s1.pts * 2.5)
+    assert s4.pts == int(50 * 1.0 * 1.0 * 1.0 * 2.5)   # base * rarity * newness * streak * mesh
 
 
 def test_mesh_mult_two_chips():
     """2-chip compile earns 1.5× the single-chip score."""
-    s1 = compute_score(True, False, Rarity.COMMON, Newness.ESTABLISHED, 0, mesh_chips=1)
     s2 = compute_score(True, False, Rarity.COMMON, Newness.ESTABLISHED, 0, mesh_chips=2)
-    assert s2.pts == int(s1.pts * 1.5)
+    assert s2.pts == int(50 * 1.0 * 1.0 * 1.0 * 1.5)   # base * rarity * newness * streak * mesh
 
 
 def test_mesh_mult_in_breakdown():

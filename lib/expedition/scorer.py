@@ -137,6 +137,7 @@ def compute_score(
     is_first_voice:     True when the model produced decoded meaningful output (+100 inside bracket).
     is_opportunist:     True when this model was compiled while a mesh was assembling (+25 flat after bracket).
     is_formation_share: True for non-lead chips in a mesh compile (returns 150 pts flat).
+                        Takes precedence over is_opportunist — both cannot apply.
 
     Returns a ScoreResult with pts and a full breakdown dict for audit/display.
     """
@@ -145,6 +146,8 @@ def compute_score(
             pts=-10, is_first_ever=is_first_ever, rarity=rarity, newness=newness,
             streak_at_score=streak, breakdown={"failure": -10},
         )
+
+    mesh_chips = max(1, mesh_chips)  # guard against 0 or negative chip counts
 
     # Non-lead mesh chip: flat contribution, bypasses normal formula entirely.
     if is_formation_share:
