@@ -355,6 +355,10 @@ def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = Fals
                 "hf_downloads": None,
                 "hf_created_at": None,
                 "mesh_chips": 1,
+                # Seed models are curated forge loaders — always pytorch, always
+                # route to forge. model_type left empty; router falls to default.
+                "library": "pytorch",
+                "model_type": "",
                 "loader_module": module_path,
                 "loader_class": cls_name,
                 "is_frontier": False,
@@ -432,6 +436,8 @@ def _scan_frontier(
             "hf_params_b": m.params_b,
             "hf_created_at": m.created_at.isoformat() if m.created_at else None,
             "mesh_chips": m.mesh_chips,
+            "library": m.library,
+            "model_type": m.model_type,
             "loader_module": None,
             "loader_class": None,
             "is_frontier": True,

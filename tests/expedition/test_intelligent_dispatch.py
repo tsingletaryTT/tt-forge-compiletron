@@ -442,3 +442,93 @@ def test_load_single_model_xla_returns_queue_item(tmp_path):
     item = mod._load_single_model_xla(str(p))
     assert item.model_id == "org/model"
     assert item.task == "text-generation"
+
+
+# ── Gap 1 fill: library + model_type in queue dicts ──────────────────────────
+
+def test_frontier_model_has_library_and_model_type():
+    """FrontierModel dataclass exposes library and model_type fields."""
+    from lib.expedition.hf_discover import FrontierModel, Rarity, Newness
+    import datetime
+    m = FrontierModel(
+        model_id="org/model",
+        pipeline_tag="text-generation",
+        downloads=1000,
+        likes=10,
+        params_b=0.0,
+        created_at=None,
+        rarity=Rarity.COMMON,
+        newness=Newness.ESTABLISHED,
+        library="jax",
+        model_type="bert",
+    )
+    assert m.library == "jax"
+    assert m.model_type == "bert"
+
+
+def test_scan_frontier_queue_dict_includes_library_and_model_type(monkeypatch):
+    """_scan_frontier() queue items carry library and model_type for router."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "expedition_root_gap1",
+        str(Path(__file__).resolve().parent.parent.parent / "expedition.py"),
+    )
+    mod = importlib.util.module_from_spec(spec)
+    import sys as _sys
+    _sys.modules["expedition_root_gap1"] = mod
+    spec.loader.exec_module(mod)
+
+    from lib.expedition.hf_discover import FrontierModel, Rarity, Newness
+    fake_model = FrontierModel(
+        model_id="org/jax-model",
+        pipeline_tag="text-generation",
+        downloads=500,
+        likes=5,
+        params_b=0.0,
+        created_at=None,
+        rarity=Rarity.COMMON,
+        newness=Newness.ESTABLISHED,
+        library="jax",
+        model_type="bert",
+    )
+
+    # Patch discover functions to return our fake model.
+    monkeypatch.setattr(
+        "lib.expedition.hf_discover.discover_frontier", lambda **kw: [fake_model]
+    )
+    monkeypatch.setattr(
+        "lib.expedition.hf_discover.discover_from_authors", lambda **kw: []
+    )
+
+    items = mod._scan_frontier(set(), set())
+    assert len(items) == 1
+    assert items[0]["library"] == "jax"
+    assert items[0]["model_type"] == "bert"
+
+
+def test_router_uses_library_field_for_jax_routing():
+    """route_model() routes to XLA when queue item has library='jax'."""
+    import tempfile
+    from lib.expedition.bestiary import Bestiary
+    from lib.expedition.router import route_model
+
+    with tempfile.NamedTemporaryFile(suffix=".json") as f:
+        b = Bestiary(path=f.name)
+        item = {"model_id": "org/jax-model", "library": "jax", "model_type": ""}
+        d = route_model(item, b)
+    assert d.backend == "xla"
+    assert "jax" in d.reason
+
+
+def test_router_uses_model_type_for_affinity_routing():
+    """route_model() routes to XLA via arch-affinity when model_type='bert'."""
+    import tempfile
+    from lib.expedition.bestiary import Bestiary
+    from lib.expedition.router import route_model
+
+    with tempfile.NamedTemporaryFile(suffix=".json") as f:
+        b = Bestiary(path=f.name)
+        item = {"model_id": "org/my-bert", "library": "pytorch", "model_type": "bert"}
+        d = route_model(item, b)
+    assert d.backend == "xla"
+    assert "affinity" in d.reason

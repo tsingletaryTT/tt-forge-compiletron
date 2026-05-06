@@ -157,6 +157,10 @@ class FrontierModel:
     newness:      How recently the model was published.
     mesh_chips:   Recommended chip count; defaults to 1, raised to 4 for
                   large MoE models detected by name heuristic.
+    library:      HuggingFace library tag (e.g. "pytorch", "jax"). Used by
+                  router.py to route jax/flax models to the XLA backend.
+    model_type:   Value of config.json "model_type" (e.g. "bert", "gpt2").
+                  Used by router.py for architecture-affinity XLA routing.
     """
     model_id: str
     pipeline_tag: str
@@ -167,6 +171,8 @@ class FrontierModel:
     rarity: Rarity
     newness: Newness
     mesh_chips: int = 1
+    library: str = ""
+    model_type: str = ""
 
 
 def _model_to_frontier(hf_model) -> FrontierModel:
@@ -209,6 +215,11 @@ def _model_to_frontier(hf_model) -> FrontierModel:
         params_b = _parse_params_from_name(hf_model.id)
     mesh_chips = 4 if (moe_name_match or params_b > _LARGE_PARAM_THRESHOLD_B) else 1
 
+    # Extract library and model_type for backend routing.
+    library = getattr(hf_model, "library_name", "") or ""
+    config = getattr(hf_model, "config", None)
+    model_type = (config.get("model_type") or "") if isinstance(config, dict) else ""
+
     return FrontierModel(
         model_id=hf_model.id,
         pipeline_tag=hf_model.pipeline_tag or "",
@@ -219,6 +230,8 @@ def _model_to_frontier(hf_model) -> FrontierModel:
         rarity=rarity,
         newness=newness,
         mesh_chips=mesh_chips,
+        library=library,
+        model_type=model_type,
     )
 
 
