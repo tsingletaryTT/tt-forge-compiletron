@@ -716,6 +716,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                 hf_downloads=item.hf_downloads,
                 hf_created_at=item.hf_created_at,
                 artifact=first_voice_text if is_first_voice else artifact,
+                backend="forge",
             )
             # Accumulate points into the per-chip all-time leaderboard entry.
             bestiary.add_chip_points(

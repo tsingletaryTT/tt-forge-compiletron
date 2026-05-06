@@ -716,6 +716,7 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
                 rarity=rarity.value, hf_downloads=item.hf_downloads,
                 hf_created_at=item.hf_created_at,
                 artifact=first_voice_text if is_first_voice else artifact,
+                backend=BACKEND_LABEL,
             )
             bestiary.add_chip_points(chip=chip_id, pts=score.pts,
                                      first_ever=is_first_ever, streak=hud.state.streak)
