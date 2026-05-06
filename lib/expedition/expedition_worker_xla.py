@@ -443,9 +443,35 @@ class QueueItem:
 
 
 def _load_queue(queue_path: str) -> list[QueueItem]:
+    """Deserialize the chip queue JSON into a list of QueueItem dataclasses.
+
+    Args:
+        queue_path: Path to the JSON file produced by the expedition orchestrator.
+
+    Returns:
+        List of QueueItem instances in the order the orchestrator assigned them.
+    """
     with open(queue_path) as f:
         items = json.load(f)
     return [QueueItem(**item) for item in items]
+
+
+def _load_single_model_xla(model_json_path: str) -> QueueItem:
+    """Load a single model JSON written by the TUI dispatcher.
+
+    The TUI can write a one-model JSON file per chip for per-model dispatch,
+    allowing results to accumulate across multiple worker invocations in append
+    mode rather than processing the whole queue in a single long-lived process.
+
+    Args:
+        model_json_path: Path to the single-model JSON file (a dict, not a list).
+
+    Returns:
+        A single QueueItem instance.
+    """
+    with open(model_json_path) as f:
+        data = json.load(f)
+    return QueueItem(**data)
 
 
 def _build_loader_xla(item: QueueItem):
@@ -559,11 +585,24 @@ def _build_loader_xla(item: QueueItem):
 # ── Main worker loop ──────────────────────────────────────────────────────────
 
 def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
-                   queue_path: str, results_path: str) -> None:
+                   queue_path: str | None, results_path: str,
+                   model_json_path: str | None = None) -> None:
     """Main entry point for the XLA per-chip worker.
 
     Same interface as expedition_worker.run_worker but uses JAX/Flax instead
     of forge/PyTorch. Results CSV includes backend="xla" for bestiary queries.
+
+    Args:
+        chip_id:         Zero-based index of the TT chip this worker owns.
+        run_number:      Sequential expedition run number.
+        bestiary_path:   Path to the bestiary JSON file (created if absent).
+        queue_path:      Path to the queue JSON file for this chip. Optional when
+                         model_json_path is provided.
+        results_path:    Path to write the per-chip CSV results file. Opens in append
+                         mode so multiple per-model invocations accumulate results.
+        model_json_path: Optional path to a single-model JSON file (a flat dict rather
+                         than a list). When provided, overrides queue_path and processes
+                         exactly one model. The TUI uses this for per-model dispatch.
     """
     import datetime
     from lib.expedition.bestiary import Bestiary
@@ -586,7 +625,14 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
         sys.exit(1)
 
     bestiary = Bestiary(path=bestiary_path)
-    queue = _load_queue(queue_path)
+    if model_json_path:
+        # Per-model TUI dispatch: process a single model from a flat JSON dict.
+        queue = [_load_single_model_xla(model_json_path)]
+    elif queue_path:
+        # Normal batch dispatch: process the whole chip queue JSON (list of dicts).
+        queue = _load_queue(queue_path)
+    else:
+        raise ValueError("Either queue_path or model_json_path must be provided")
     hud = ChipHUD(chip_id=chip_id, total_models=len(queue))
     hud.write_status()
 
@@ -747,11 +793,17 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
     s = hud.state
     _set_pane_title(f"C{chip_id}·XLA DONE  ✓{s.successes} ✗{s.failures}  {s.pts}pts")
 
+    # Opened in append mode so that per-model TUI dispatch (multiple subprocess
+    # calls for the same chip) accumulates rows rather than overwriting them.
+    # The header guard checks whether the file is new/empty before writing the
+    # header row so it appears exactly once even across repeated appends.
     Path(results_path).parent.mkdir(parents=True, exist_ok=True)
-    with open(results_path, "w", newline="") as f:
+    results_file_empty = not Path(results_path).exists() or Path(results_path).stat().st_size == 0
+    with open(results_path, "a", newline="") as f:
         if results:
             writer = csv.DictWriter(f, fieldnames=_CSV_FIELDNAMES, extrasaction="ignore")
-            writer.writeheader()
+            if results_file_empty:
+                writer.writeheader()
             writer.writerows(results)
 
     print(f"\n{BOLD}{TEAL}{'═'*80}{RESET}")
@@ -768,17 +820,27 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Per-chip XLA Expedition worker: JAX/Flax compile, decode, and score."
     )
-    parser.add_argument("--chip",     type=int, required=True)
-    parser.add_argument("--run",      type=int, required=True)
-    parser.add_argument("--bestiary", default="data/bestiary.json")
-    parser.add_argument("--queue",    required=True)
-    parser.add_argument("--results",  required=True)
+    parser.add_argument("--chip",       type=int, required=True,
+                        help="Zero-based index of the TT chip this worker owns.")
+    parser.add_argument("--run",        type=int, required=True,
+                        help="Sequential expedition run number.")
+    parser.add_argument("--bestiary",   default="data/bestiary.json",
+                        help="Path to the bestiary JSON file.")
+    parser.add_argument("--queue",      default=None,
+                        help="Path to this chip's queue JSON file.")
+    parser.add_argument("--model-json", default=None,
+                        help="Path to a single-model JSON file. Overrides --queue.")
+    parser.add_argument("--results",    required=True,
+                        help="Path to write the per-chip CSV results file.")
     args = parser.parse_args()
+    if not args.queue and not args.model_json:
+        parser.error("one of --queue or --model-json is required")
 
     run_worker_xla(
         chip_id=args.chip,
         run_number=args.run,
         bestiary_path=args.bestiary,
         queue_path=args.queue,
+        model_json_path=args.model_json,
         results_path=args.results,
     )

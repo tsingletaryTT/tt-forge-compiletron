@@ -349,3 +349,28 @@ def test_router_xla_affinity_type_routes_to_xla(tmp_path):
     assert d.backend == "xla"
     assert d.reason == "arch-xla-affinity"
     assert d.confidence == 0.68
+
+
+# ── Task 6: Worker single-model mode ──────────────────────────────────────────
+
+import subprocess
+
+
+def test_forge_worker_accepts_model_json_flag():
+    """expedition_worker.py --help should list --model-json as an argument."""
+    result = subprocess.run(
+        ["python3", "lib/expedition/expedition_worker.py", "--help"],
+        capture_output=True, text=True,
+        cwd="/home/ttuser/code/tt-forge-compiletron",
+    )
+    assert "--model-json" in result.stdout
+
+
+def test_xla_worker_accepts_model_json_flag():
+    """expedition_worker_xla.py --help should list --model-json as an argument."""
+    result = subprocess.run(
+        ["python3", "lib/expedition/expedition_worker_xla.py", "--help"],
+        capture_output=True, text=True,
+        cwd="/home/ttuser/code/tt-forge-compiletron",
+    )
+    assert "--model-json" in result.stdout
