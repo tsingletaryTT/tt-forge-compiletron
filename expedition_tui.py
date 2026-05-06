@@ -372,7 +372,7 @@ class SetupScreen(Screen):
         self._session_download_max = 0.0
         self._parallel_downloads   = 4
         self._staples      = False  # True → include already-compiled seed models
-        self._backend      = "forge"  # forge | xla | mixed
+        self._backend      = "auto"   # auto | forge | xla | mixed
         self._discovering  = False  # True while HF discovery / queue-build is running
         self._setup_done   = False  # True once queues are built (no re-run)
 
@@ -391,7 +391,7 @@ class SetupScreen(Screen):
         self._session_download_max = app.session_download_max
         self._parallel_downloads   = app.parallel_downloads
         self._staples              = app.staples
-        self._backend              = getattr(app, "backend", "forge")
+        self._backend              = getattr(app, "backend", "auto")
         self._refresh_config()
 
     def compose(self) -> ComposeResult:
@@ -425,7 +425,12 @@ class SetupScreen(Screen):
             src_str = "ALL"
 
         staples_str = "[bold yellow]ON[/]" if self._staples else "off"
-        backend_str = {"forge": "[bold]forge[/]", "xla": "[bold cyan]XLA[/]", "mixed": "[bold yellow]MIXED[/]"}.get(self._backend, self._backend)
+        backend_str = {
+            "auto":  "[bold green]AUTO[/]  [dim]routes per-model[/]",
+            "forge": "[bold]forge[/]",
+            "xla":   "[bold cyan]XLA[/]",
+            "mixed": "[bold yellow]MIXED[/]",
+        }.get(self._backend, self._backend)
 
         status = (
             "[bold yellow]● Ready — press ENTER[/]"
@@ -497,7 +502,7 @@ class SetupScreen(Screen):
     @_guarded
     def action_toggle_staples(self)  -> None: self._staples = not self._staples
     @_guarded
-    def action_cycle_backend(self)   -> None: self._backend = {"forge": "xla", "xla": "mixed", "mixed": "forge"}[self._backend]
+    def action_cycle_backend(self)   -> None: self._backend = {"auto": "forge", "forge": "xla", "xla": "mixed", "mixed": "auto"}[self._backend]
 
     def action_start(self) -> None:
         if self._discovering or self._setup_done:
@@ -568,7 +573,7 @@ class SetupScreen(Screen):
         # each chip gets loaders it can actually run.
         if not self._frontier_only:
             # Framework map: drives both the seed scan and the frontier library filter.
-            fw_map = {"forge": "pytorch", "xla": "jax", "mixed": None}
+            fw_map = {"auto": None, "forge": "pytorch", "xla": "jax", "mixed": None}
             scan_fw = fw_map.get(self._backend, "pytorch")
             label = "⚙ Scanning tt-forge-models library (staples — all included)..." if self._staples \
                 else "⚙ Scanning tt-forge-models library..."
