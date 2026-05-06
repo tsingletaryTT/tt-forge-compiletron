@@ -53,3 +53,4 @@ forge_parallel_*/
 
 # Claude artifacts
 .claude/
+.superpowers/
