@@ -279,6 +279,13 @@ class EventLog(RichLog):
         )
 
 
+# Stub — replaced by full RallyBanner class in Task 9.
+class RallyBanner(Static):
+    """Full-width RALLY event banner (visual added in Task 9)."""
+    def append_output(self, line: str) -> None:
+        pass
+
+
 class ScoreStrip(Static):
     DEFAULT_CSS = """
     ScoreStrip {
@@ -770,6 +777,18 @@ class RunScreen(Screen):
         self._chip_streak: list[int] = [0] * 4
         self._chip_best:   list[int] = [0] * 4
         self._done_count  = 0
+        # ── Per-model dispatcher state ────────────────────────────────────────
+        # Flatten chip_queues round-robin into a single ordered pool.
+        self._model_pool: list[dict] = []
+        for i in range(max(len(q) for q in chip_queues) if chip_queues else 0):
+            for q in chip_queues:
+                if i < len(q):
+                    self._model_pool.append(q[i])
+        self._free_chips: set[int]  = set(range(num_chips))
+        self._mesh_holding: dict | None = None
+        self._opportunist_active: bool  = False
+        self._chip_first_dispatch: set[int] = set()
+        self._bestiary = None
 
     def compose(self) -> ComposeResult:
         rn = f"Run #{self.run_number:03d}"
@@ -814,23 +833,113 @@ class RunScreen(Screen):
                 }, indent=2))
         except Exception:
             pass
-        for chip_id in range(self.num_chips):
-            self._launch_chip(chip_id)
+        # Load bestiary for router queries (read-only at run time).
+        from lib.expedition.bestiary import Bestiary as _Bestiary
+        self._bestiary = _Bestiary(path=str(self._project_dir / "data" / "bestiary.json"))
+
+        # Seed the dispatcher — each free chip gets its first model.
+        self._dispatch_next()
+
+    def _get_decision(self, model: dict):
+        """Compute a DispatchDecision for model, respecting self.backend override."""
+        from lib.expedition.router import route_model, DispatchDecision
+        if self.backend == "auto":
+            return route_model(model, self._bestiary,
+                               available_chips=set(range(self.num_chips)))
+        else:
+            chip_be = _chip_backend(0, self.backend) if self.backend != "mixed" else "forge"
+            return DispatchDecision(
+                backend=chip_be,
+                chips=max(1, int(model.get("mesh_chips", 1) or 1)),
+                confidence=1.0,
+                reason="manual",
+            )
+
+    def _dispatch_next(self) -> None:
+        """Find the next dispatchable model and launch it. Called at mount and after each chip completes."""
+        # Check if a waiting mesh model now has quorum.
+        if self._mesh_holding:
+            chips_needed: int = self._mesh_holding["chips_needed"]
+            if len(self._free_chips) >= chips_needed:
+                chip_ids = sorted(self._free_chips)[:chips_needed]
+                self._fire_rally(self._mesh_holding, chip_ids)
+                return
+
+        # Scan the pool for a dispatchable model.
+        for i, model in enumerate(self._model_pool):
+            decision = self._get_decision(model)
+
+            if decision.chips == 1:
+                if self._free_chips:
+                    chip_id = min(self._free_chips)
+                    self._free_chips.discard(chip_id)
+                    self._model_pool.pop(i)
+                    self._launch_model(chip_id, model, decision)
+                    # Keep scanning — other free chips may still need work.
+                    self._dispatch_next()
+                    return
+            else:
+                # Multi-chip model: hold it and keep scanning for single-chip work.
+                if self._mesh_holding is None:
+                    self._mesh_holding = {
+                        **model,
+                        "chips_needed": decision.chips,
+                        "decision": decision,
+                    }
+                    self._opportunist_active = True
+                    self._model_pool.pop(i)
+                    try:
+                        el = self.query_one("#event-log", EventLog)
+                        el.write(
+                            f"[yellow]⏳ MESH ASSEMBLING — "
+                            f"{model.get('model_id', '?').split('/')[-1]} "
+                            f"needs {decision.chips} chips[/]"
+                        )
+                    except Exception:
+                        pass
+                    self._dispatch_next()
+                    return
+                continue
+
+        # Check if run is complete: pool empty, no mesh holding, all chips free.
+        if not self._model_pool and not self._mesh_holding and len(self._free_chips) == self.num_chips:
+            self._on_all_done()
 
     @work
-    async def _launch_chip(self, chip_id: int) -> None:
-        await asyncio.sleep(chip_id * 4)
+    async def _launch_model(self, chip_id: int, model: dict, decision,
+                            mesh_chip_ids: list[int] | None = None) -> None:
+        """Launch a worker subprocess for one model on one or more chips."""
+        # First dispatch to each chip: stagger by chip_id * 2 seconds.
+        if chip_id not in self._chip_first_dispatch:
+            self._chip_first_dispatch.add(chip_id)
+            if chip_id > 0:
+                await asyncio.sleep(chip_id * 2)
 
-        chip_be = _chip_backend(chip_id, self.backend)
+        # Write the model dict to a temp JSON file.
+        model_json_path = f"/tmp/expedition_model_chip{chip_id}.json"
+        Path(model_json_path).write_text(json.dumps(model))
 
-        # NOTE: "auto" falls through to forge here — Task 8 replaces _launch_chip
-        # entirely with a per-model dispatcher that consults router.py.
+        # Results CSV path (append mode — one file per chip across all models).
+        results_path = f"/tmp/expedition_results_chip{chip_id}.csv"
+
+        # Determine backend.
+        if self.backend == "mixed":
+            chip_be = _chip_backend(chip_id, "mixed")
+        else:
+            chip_be = decision.backend
+
+        # Build env for this chip.
+        if mesh_chip_ids:
+            visible = ",".join(str(c) for c in mesh_chip_ids)
+        else:
+            visible = str(chip_id)
+
         if chip_be == "xla":
             python_exe  = str(self._project_dir / "xla-venv" / "bin" / "python3")
             worker_path = str(self._project_dir / "lib" / "expedition" / "expedition_worker_xla.py")
             env = {k: v for k, v in os.environ.items() if k != "TT_METAL_HOME"}
             env.update({
-                "TT_VISIBLE_DEVICES":    str(chip_id),
+                "TT_VISIBLE_DEVICES":    visible,
                 "TT_METAL_LOGGER_LEVEL": "FATAL",
                 "JAX_PLATFORMS":         "tt",
                 "PYTHONUNBUFFERED":      "1",
@@ -840,7 +949,7 @@ class RunScreen(Screen):
             worker_path = str(self._project_dir / "lib" / "expedition" / "expedition_worker.py")
             env = {
                 **os.environ,
-                "TT_VISIBLE_DEVICES":      str(chip_id),
+                "TT_VISIBLE_DEVICES":      visible,
                 "TT_METAL_ARCH_NAME":      self.arch,
                 "TT_METAL_LOGGER_LEVEL":   "FATAL",
                 "TT_MESH_GRAPH_DESC_PATH": str(
@@ -850,50 +959,103 @@ class RunScreen(Screen):
                 "PYTHONUNBUFFERED":        "1",
             }
 
+        # Write confidence label to the chip panel.
+        try:
+            panel = self.query_one(f"#chip-{chip_id}", ChipPanel)
+            chip_label = mesh_chip_ids or [chip_id]
+            panel.write_line(
+                f"\033[2m  routing: {chip_be} · conf {decision.confidence:.2f} "
+                f"· {len(chip_label)}-chip\033[0m\n"
+            )
+        except Exception:
+            pass
+
         proc = await asyncio.create_subprocess_exec(
             python_exe,
             worker_path,
-            "--chip",     str(chip_id),
-            "--run",      str(self.run_number),
-            "--bestiary", str(self._project_dir / "data" / "bestiary.json"),
-            "--queue",    f"/tmp/expedition_queue_chip{chip_id}.json",
-            "--results",  f"/tmp/expedition_results_chip{chip_id}.csv",
+            "--chip",       str(chip_id),
+            "--run",        str(self.run_number),
+            "--bestiary",   str(self._project_dir / "data" / "bestiary.json"),
+            "--model-json", model_json_path,
+            "--results",    results_path,
             env=env,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             stdin=asyncio.subprocess.DEVNULL,
         )
 
-        panel = self.query_one(f"#chip-{chip_id}", ChipPanel)
+        try:
+            panel = self.query_one(f"#chip-{chip_id}", ChipPanel)
+        except Exception:
+            panel = None
 
         async for raw in proc.stdout:
             line = raw.decode("utf-8", errors="replace")
-            panel.write_line(line)
+            if panel:
+                panel.write_line(line)
+            # During a RALLY, also stream output to the rally banner (Task 9 adds widget).
+            if mesh_chip_ids:
+                try:
+                    self.query_one("#rally-banner", RallyBanner).append_output(line)
+                except Exception:
+                    pass
             self._parse_for_events(chip_id, line)
 
         await proc.wait()
-        panel.mark_done(proc.returncode == 0)
+        if panel:
+            panel.mark_done(proc.returncode == 0)
+
         status = _read_status(chip_id)
         pts    = int(status.get("pts", 0))
         try:
-            combat = self.query_one("#event-log", EventLog)
-            combat.log_chip_done(chip_id, pts, self._chip_best[chip_id])
+            el = self.query_one("#event-log", EventLog)
+            el.log_chip_done(chip_id, pts, self._chip_best[chip_id])
         except Exception:
             pass
 
-        self._done_count += 1
-        if self._done_count >= self.num_chips:
+        # Free the chip(s) and continue dispatching.
+        if mesh_chip_ids:
+            for cid in mesh_chip_ids:
+                self._on_chip_free(cid)
+            # Hide RALLY banner, restore chip grid (Task 9 adds these widgets).
             try:
-                el = self.query_one("#event-log", EventLog)
-                el.write(f"\n[bold green]{'═'*34}[/]")
-                el.write("[bold green]  ⚡ ALL CHIPS COMPLETE[/]")
-                for n in (3, 2, 1):
-                    el.write(f"[dim]  → Results in {n}...[/]")
-                    await asyncio.sleep(0.8)
-                el.write(f"[bold green]{'═'*34}[/]")
+                self.query_one("#rally-banner").display = False
+                self.query_one("#chip-grid").display    = True
             except Exception:
-                await asyncio.sleep(2.4)
-            self.app.push_screen(SummaryScreen(self.num_chips, self.run_number))
+                pass
+        else:
+            self._on_chip_free(chip_id)
+
+    def _on_chip_free(self, chip_id: int) -> None:
+        """Mark a chip as free and trigger the next dispatch cycle."""
+        self._free_chips.add(chip_id)
+        self._done_count += 1
+        self._dispatch_next()
+
+    @work
+    async def _on_all_done(self) -> None:
+        """Animate the completion banner then push to SummaryScreen."""
+        try:
+            el = self.query_one("#event-log", EventLog)
+            el.write(f"\n[bold green]{'═'*34}[/]")
+            el.write("[bold green]  ⚡ ALL CHIPS COMPLETE[/]")
+            for n in (3, 2, 1):
+                el.write(f"[dim]  → Results in {n}...[/]")
+                await asyncio.sleep(0.8)
+            el.write(f"[bold green]{'═'*34}[/]")
+        except Exception:
+            await asyncio.sleep(2.4)
+        self.app.push_screen(SummaryScreen(self.num_chips, self.run_number))
+
+    def _fire_rally(self, mesh_model: dict, chip_ids: list[int]) -> None:
+        """Stub — fires mesh model without RALLY banner. Task 9 replaces with full visual."""
+        self._mesh_holding = None
+        self._opportunist_active = False
+        for cid in chip_ids:
+            self._free_chips.discard(cid)
+        decision = mesh_model.get("decision")
+        lead = chip_ids[0]
+        self._launch_model(lead, mesh_model, decision, mesh_chip_ids=chip_ids)
 
     def _parse_for_events(self, chip_id: int, line: str) -> None:
         rm = _RE_RARITY.search(line)
