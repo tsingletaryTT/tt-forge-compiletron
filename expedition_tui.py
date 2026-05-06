@@ -567,6 +567,7 @@ class SetupScreen(Screen):
         # For mixed backend, scan both frameworks and separate into two pools so
         # each chip gets loaders it can actually run.
         if not self._frontier_only:
+            # Framework map: drives both the seed scan and the frontier library filter.
             fw_map = {"forge": "pytorch", "xla": "jax", "mixed": None}
             scan_fw = fw_map.get(self._backend, "pytorch")
             label = "⚙ Scanning tt-forge-models library (staples — all included)..." if self._staples \
@@ -592,6 +593,7 @@ class SetupScreen(Screen):
                 min_likes     = self._min_likes,
                 max_params_b  = self._max_params_b,
                 skip_gated    = not self._allow_gated,
+                library       = scan_fw,
             )
             _log(f"[green]✓ {len(frontier_items)} frontier model(s) discovered[/]")
             for item in frontier_items:
