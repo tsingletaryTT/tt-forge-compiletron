@@ -169,6 +169,23 @@ class Bestiary:
         """Return True if this model has at least one successful compilation recorded."""
         return model_id in self._data["compiled"]
 
+    def is_compiled_by(self, model_id: str, backend: str) -> bool:
+        """Return True if this model was successfully compiled by the given backend.
+
+        Checks the ``backends_succeeded`` list first (populated since the backend
+        tracking feature was added). Falls back to the ``backend`` field for entries
+        written before ``backends_succeeded`` existed, defaulting to "forge" for
+        legacy entries that predate the field entirely.
+
+        Args:
+            model_id: HuggingFace model identifier.
+            backend:  Backend name to test, e.g. "forge" or "xla".
+        """
+        entry = self._data["compiled"].get(model_id)
+        if not entry:
+            return False
+        return backend in entry.get("backends_succeeded", [entry.get("backend", "forge")])
+
     # ── mutation ──────────────────────────────────────────────────────────────
 
     def record_success(
@@ -183,6 +200,7 @@ class Bestiary:
         hf_downloads: int | None,
         hf_created_at: str | None,
         artifact: str,
+        backend: str = "forge",
     ) -> None:
         """Record a successful compilation.
 
@@ -190,6 +208,12 @@ class Bestiary:
         subsequent calls, increments counters and updates best_time_s if the
         new run was faster. The artifact field is always overwritten with the
         most recent decoded inference output.
+
+        Backend tracking: ``backend`` records which compilation backend produced
+        this success. On first success, ``backend`` and ``backends_succeeded``
+        (a list) are both initialised. On subsequent calls, the backend is appended
+        to ``backends_succeeded`` if not already present; the original ``backend``
+        field is preserved as the first-ever successful backend.
 
         Args:
             model_id:      HuggingFace model identifier (e.g. "openai/whisper-large-v3").
@@ -202,10 +226,12 @@ class Bestiary:
             hf_downloads:  Monthly downloads from HuggingFace model card (None if unavailable).
             hf_created_at: ISO-8601 creation timestamp from HuggingFace (None if unavailable).
             artifact:      Decoded inference output string — the model's "voice" in the bestiary.
+            backend:       Compilation backend used: "forge" (default) or "xla".
         """
         now = datetime.now(timezone.utc).isoformat()
         if model_id not in self._data["compiled"]:
-            # First-time entry: capture all immutable metadata from this run.
+            # First-time entry: capture all immutable metadata from this run,
+            # including which backend first compiled this model successfully.
             self._data["compiled"][model_id] = {
                 "first_compiled": now,
                 "first_chip": chip,
@@ -218,6 +244,8 @@ class Bestiary:
                 "hf_downloads": hf_downloads,
                 "hf_created_at": hf_created_at,
                 "artifact": artifact,
+                "backend": backend,
+                "backends_succeeded": [backend],
             }
         entry = self._data["compiled"][model_id]
         entry["successes"] += 1
@@ -226,6 +254,12 @@ class Bestiary:
             entry["best_time_s"] = time_s
         # Always update artifact so the bestiary reflects the most recent output.
         entry["artifact"] = artifact
+        # Accumulate the set of backends that have successfully compiled this model.
+        # setdefault handles legacy entries written before this field existed,
+        # seeding the list from the stored `backend` field (defaulting to "forge").
+        entry.setdefault("backends_succeeded", [entry.get("backend", "forge")])
+        if backend not in entry["backends_succeeded"]:
+            entry["backends_succeeded"].append(backend)
 
     def record_failure(self, model_id: str, run: int, error: str) -> None:
         """Track a failed compilation attempt for retry-interest purposes.
