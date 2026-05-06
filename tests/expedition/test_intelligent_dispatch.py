@@ -55,3 +55,68 @@ def test_is_compiled_by_returns_true_for_matching_backend(tmp_path):
 def test_is_compiled_by_returns_false_for_unknown_model(tmp_path):
     b = _make_bestiary(tmp_path)
     assert b.is_compiled_by("nonexistent/model", "forge") is False
+
+
+# ── Task 2: Scorer mesh_mult ──────────────────────────────────────────────────
+
+from lib.expedition.scorer import compute_score, Rarity, Newness
+
+
+def test_mesh_mult_single_chip_unchanged():
+    """1-chip compile should produce same points as before (mesh_mult = 1.0)."""
+    s = compute_score(True, False, Rarity.COMMON, Newness.ESTABLISHED, 0, mesh_chips=1)
+    assert s.pts == int(50 * 1.0 * 1.0 * 1.0 * 1.0)   # 50
+
+
+def test_mesh_mult_four_chips():
+    """4-chip compile earns 2.5× the single-chip score."""
+    s1 = compute_score(True, False, Rarity.COMMON, Newness.ESTABLISHED, 0, mesh_chips=1)
+    s4 = compute_score(True, False, Rarity.COMMON, Newness.ESTABLISHED, 0, mesh_chips=4)
+    assert s4.pts == int(s1.pts * 2.5)
+
+
+def test_mesh_mult_two_chips():
+    """2-chip compile earns 1.5× the single-chip score."""
+    s1 = compute_score(True, False, Rarity.COMMON, Newness.ESTABLISHED, 0, mesh_chips=1)
+    s2 = compute_score(True, False, Rarity.COMMON, Newness.ESTABLISHED, 0, mesh_chips=2)
+    assert s2.pts == int(s1.pts * 1.5)
+
+
+def test_mesh_mult_in_breakdown():
+    """Breakdown dict should expose mesh_mult and not have old mesh_bonus key."""
+    s = compute_score(True, False, Rarity.COMMON, Newness.ESTABLISHED, 0, mesh_chips=4)
+    assert "mesh_mult" in s.breakdown
+    assert "mesh_bonus" not in s.breakdown
+    assert s.breakdown["mesh_mult"] == 2.5
+
+
+def test_opportunist_bonus():
+    """is_opportunist=True adds flat +25 after bracket."""
+    s_plain = compute_score(True, False, Rarity.COMMON, Newness.ESTABLISHED, 0)
+    s_opp   = compute_score(True, False, Rarity.COMMON, Newness.ESTABLISHED, 0, is_opportunist=True)
+    assert s_opp.pts == s_plain.pts + 25
+    assert s_opp.breakdown["opportunist_bonus"] == 25
+
+
+def test_formation_share_flat_150():
+    """is_formation_share=True returns exactly 150 pts regardless of other params."""
+    s = compute_score(True, True, Rarity.LEGENDARY, Newness.ZERO_DAY, 5, is_formation_share=True)
+    assert s.pts == 150
+    assert s.breakdown["formation_share"] is True
+
+
+def test_legendary_4chip_rally_example():
+    """Sanity-check the scoring example from the design spec."""
+    # base=50, first_ever=100, first_voice=100 → 250
+    # rarity=4.0, newness=5.0, streak=1.3, mesh=2.5
+    # int(250 * 4.0 * 5.0 * 1.3 * 2.5) = 16250
+    s = compute_score(
+        success=True,
+        is_first_ever=True,
+        rarity=Rarity.LEGENDARY,
+        newness=Newness.ZERO_DAY,
+        streak=3,
+        mesh_chips=4,
+        is_first_voice=True,
+    )
+    assert s.pts == 16_250
