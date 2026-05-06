@@ -832,6 +832,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if not args.queue and not args.model_json:
         parser.error("one of --queue or --model-json is required")
+    if args.queue and args.model_json:
+        parser.error("--queue and --model-json are mutually exclusive")
 
     run_worker(
         chip_id=args.chip,

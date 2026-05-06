@@ -374,3 +374,71 @@ def test_xla_worker_accepts_model_json_flag():
         cwd="/home/ttuser/code/tt-forge-compiletron",
     )
     assert "--model-json" in result.stdout
+
+
+# ── Task 7: Loader behavioral tests ──────────────────────────────────────────
+
+def test_load_single_model_returns_queue_item(tmp_path):
+    """_load_single_model reads a flat JSON dict into a QueueItem."""
+    import importlib.util, sys
+    spec = importlib.util.spec_from_file_location(
+        "expedition_worker_root",
+        "/home/ttuser/code/tt-forge-compiletron/lib/expedition/expedition_worker.py",
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["expedition_worker_root"] = mod
+    spec.loader.exec_module(mod)
+
+    # All required fields for expedition_worker.QueueItem (non-defaulted fields
+    # must be present; loader_module/loader_class accept None per Optional[str]).
+    model_data = {
+        "model_id": "org/model",
+        "display_name": "model",
+        "task": "text-generation",
+        "source": "huggingface",
+        "rarity": "common",
+        "hf_downloads": 1000,
+        "hf_created_at": None,
+        "mesh_chips": 1,
+        "loader_module": None,
+        "loader_class": None,
+    }
+    p = tmp_path / "model.json"
+    p.write_text(json.dumps(model_data))
+
+    item = mod._load_single_model(str(p))
+    assert item.model_id == "org/model"
+    assert item.task == "text-generation"
+
+
+def test_load_single_model_xla_returns_queue_item(tmp_path):
+    """_load_single_model_xla reads a flat JSON dict into a QueueItem."""
+    import importlib.util, sys
+    spec = importlib.util.spec_from_file_location(
+        "expedition_worker_xla_root",
+        "/home/ttuser/code/tt-forge-compiletron/lib/expedition/expedition_worker_xla.py",
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["expedition_worker_xla_root"] = mod
+    spec.loader.exec_module(mod)
+
+    # All required fields for expedition_worker_xla.QueueItem (non-defaulted fields
+    # must be present; loader_module/loader_class accept None per Optional[str]).
+    model_data = {
+        "model_id": "org/model",
+        "display_name": "model",
+        "task": "text-generation",
+        "source": "huggingface",
+        "rarity": "common",
+        "hf_downloads": 1000,
+        "hf_created_at": None,
+        "mesh_chips": 1,
+        "loader_module": None,
+        "loader_class": None,
+    }
+    p = tmp_path / "model.json"
+    p.write_text(json.dumps(model_data))
+
+    item = mod._load_single_model_xla(str(p))
+    assert item.model_id == "org/model"
+    assert item.task == "text-generation"
