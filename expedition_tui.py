@@ -279,11 +279,54 @@ class EventLog(RichLog):
         )
 
 
-# Stub — replaced by full RallyBanner class in Task 9.
 class RallyBanner(Static):
-    """Full-width RALLY event banner (visual added in Task 9)."""
+    """Full-width banner that replaces the chip grid during a RALLY compile.
+
+    Shown when all chips commit to one large model (mesh dispatch). Displays
+    model name, chip count, live compile output from the lead chip, and a
+    dim status row for each locked chip.
+    """
+
+    DEFAULT_CSS = """
+    RallyBanner {
+        display: none;
+        width: 1fr;
+        height: 1fr;
+        border: double gold;
+        padding: 1 2;
+        color: $text;
+    }
+    """
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__("", **kwargs)
+        self._model_name = ""
+        self._chip_ids: list[int] = []
+        self._backend = ""
+        self._confidence = 0.0
+
+    def start(self, model: dict, chip_ids: list[int], decision) -> None:
+        """Activate the banner for the given model and chip configuration."""
+        self._model_name = model.get("model_id", "?").split("/")[-1]
+        self._chip_ids   = chip_ids
+        self._backend    = decision.backend
+        self._confidence = decision.confidence
+        chips_str = "·".join(str(c) for c in chip_ids)
+        self.update(
+            f"[bold gold]⚡⚡ RALLY — CHIPS {chips_str} ASSEMBLED ⚡⚡[/]\n"
+            f"[dim]{self._model_name}  ·  {len(chip_ids)}-chip mesh  ·  "
+            f"{self._backend}  ·  conf {self._confidence:.2f}[/]\n\n"
+            f"[green]▶ Compiling on mesh {chips_str}...[/]\n"
+        )
+
     def append_output(self, line: str) -> None:
-        pass
+        """Stream live output from the lead chip into the banner."""
+        current = str(self.renderable)
+        lines = current.split("\n")
+        lines.append(line.rstrip())
+        header = lines[:4]
+        tail   = lines[4:][-6:]
+        self.update("\n".join(header + tail))
 
 
 class ScoreStrip(Static):
@@ -755,6 +798,11 @@ class RunScreen(Screen):
         height: 1fr;
         layout: vertical;
     }
+    #rally-banner {
+        display: none;
+        width: 3fr;
+        height: 1fr;
+    }
     """
 
     BINDINGS = [
@@ -809,6 +857,7 @@ class RunScreen(Screen):
                         yield ChipPanel(2, f"⚔ CHIP 2  {_chip_label(2, self.backend)}  {_ADVENTURER_TITLES[2]}", id="chip-2")
                         if self.num_chips >= 4:
                             yield ChipPanel(3, f"⚔ CHIP 3  {_chip_label(3, self.backend)}  {_ADVENTURER_TITLES[3]}", id="chip-3")
+            yield RallyBanner(id="rally-banner")
             with Vertical(id="sidebar"):
                 yield HardwareWidget(id="hw")
                 yield EventLog(id="event-log")
@@ -1059,13 +1108,36 @@ class RunScreen(Screen):
             await asyncio.sleep(2.4)
         self.app.push_screen(SummaryScreen(self.num_chips, self.run_number))
 
-    def _fire_rally(self, mesh_model: dict, chip_ids: list[int]) -> None:
-        """Stub — fires mesh model without RALLY banner. Task 9 replaces with full visual."""
-        self._mesh_holding = None
+    @work
+    async def _fire_rally(self, mesh_model: dict, chip_ids: list[int]) -> None:
+        """Handle a RALLY event: show banner, fire mesh subprocess."""
+        self._mesh_holding      = None
         self._opportunist_active = False
         for cid in chip_ids:
             self._free_chips.discard(cid)
+
         decision = mesh_model.get("decision")
+
+        # Show RALLY banner, hide chip grid.
+        try:
+            self.query_one("#chip-grid").display    = False
+            self.query_one("#rally-banner").display = True
+            rally = self.query_one("#rally-banner", RallyBanner)
+            rally.start(mesh_model, chip_ids, decision)
+        except Exception:
+            pass
+
+        try:
+            el = self.query_one("#event-log", EventLog)
+            chips_str = "+".join(str(c) for c in chip_ids)
+            el.write(
+                f"[bold gold]⚡ RALLY — {mesh_model.get('model_id','?').split('/')[-1]} "
+                f"on chips {chips_str}[/]"
+            )
+        except Exception:
+            pass
+
+        # Launch a single multi-chip subprocess on the lead chip.
         lead = chip_ids[0]
         self._launch_model(lead, mesh_model, decision, mesh_chip_ids=chip_ids)
 
