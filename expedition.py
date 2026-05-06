@@ -380,6 +380,7 @@ def _scan_frontier(
     max_params_b: float = 0.0,
     skip_gated: bool = True,
     proven_authors: set[str] | None = None,
+    library: str | None = "pytorch",
 ) -> list[dict]:
     """
     Query the HuggingFace frontier for models not yet in the bestiary and not
@@ -403,6 +404,7 @@ def _scan_frontier(
         min_likes=min_likes,
         max_params_b=max_params_b,
         skip_gated=skip_gated,
+        library=library,
     )
 
     # If the frontier scan is sparse, supplement with models from authors whose
@@ -414,6 +416,7 @@ def _scan_frontier(
             compiled_ids=bestiary_compiled_ids,
             known_model_ids=forge_model_ids,
             skip_gated=skip_gated,
+            library=library,
         )
         found_ids = {m.model_id for m in models}
         models.extend(m for m in supplement if m.model_id not in found_ids)
@@ -682,18 +685,28 @@ def _interleave(seed: list, frontier: list, seed_ratio: float) -> list:
 
 # ── Pre-download ─────────────────────────────────────────────────────────────
 
-# File patterns to skip when mirroring a model from HuggingFace.
-# These are large binary formats specific to Flax/TF/Rust/OpenNMT that
-# tt-forge never consumes; excluding them saves significant download time
-# and disk space for multi-billion-parameter models.
-_IGNORE_PATTERNS = [
-    "*.msgpack",   # Flax/JAX checkpoints
-    "*.h5",        # Keras/TF HDF5 weights
+# Patterns to ignore when pre-downloading for forge-onnx backend.
+# Forge only needs PyTorch safetensors — skip Flax/TF/Keras formats.
+_FORGE_IGNORE_PATTERNS = [
+    "*.msgpack",   # Flax/JAX checkpoints (not needed by forge)
     "flax_model*", # Flax model shards
+    "*.h5",        # Keras/TF HDF5 weights
     "tf_model*",   # TensorFlow SavedModel
     "rust_model*", # Rust/candle weights
     "*.ot",        # OpenNMT tokenizer files
 ]
+
+# Patterns to ignore when pre-downloading for tt-xla backend.
+# XLA needs Flax weights (.msgpack) — skip TF/Keras/Rust/PyTorch-only formats.
+_XLA_IGNORE_PATTERNS = [
+    "*.h5",        # Keras/TF HDF5 weights
+    "tf_model*",   # TensorFlow SavedModel
+    "rust_model*", # Rust/candle weights
+    "*.ot",        # OpenNMT tokenizer files
+]
+
+# Default patterns for CLI paths that don't route per-model (conservative: forge-safe).
+_IGNORE_PATTERNS = _FORGE_IGNORE_PATTERNS
 
 
 def _run_parallel_downloads(

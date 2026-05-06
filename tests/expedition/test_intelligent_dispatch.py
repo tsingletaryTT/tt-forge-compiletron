@@ -201,3 +201,37 @@ def test_discover_from_authors_default_library_is_pytorch():
     if mock_api_instance.list_models.call_args is not None:
         call_kwargs = mock_api_instance.list_models.call_args[1]
         assert call_kwargs.get("filter") == "pytorch"
+
+
+# ── Task 4: Pattern split ─────────────────────────────────────────────────────
+
+def _load_root_expedition():
+    """Load the root expedition.py module explicitly, bypassing the tests/expedition package."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "expedition_root",
+        str(Path(__file__).resolve().parent.parent.parent / "expedition.py"),
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_forge_ignore_patterns_excludes_msgpack():
+    """Forge patterns must exclude .msgpack (Flax weights) since forge doesn't need them."""
+    mod = _load_root_expedition()
+    assert any("msgpack" in p for p in mod._FORGE_IGNORE_PATTERNS)
+
+
+def test_xla_ignore_patterns_includes_msgpack():
+    """XLA patterns must NOT exclude .msgpack (Flax weights are required by XLA)."""
+    mod = _load_root_expedition()
+    assert not any("msgpack" in p for p in mod._XLA_IGNORE_PATTERNS)
+
+
+def test_scan_frontier_accepts_library_param():
+    """_scan_frontier must accept a library keyword argument without raising."""
+    import inspect
+    mod = _load_root_expedition()
+    sig = inspect.signature(mod._scan_frontier)
+    assert "library" in sig.parameters
