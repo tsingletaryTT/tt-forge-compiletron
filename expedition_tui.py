@@ -789,6 +789,7 @@ class RunScreen(Screen):
         self._opportunist_active: bool  = False
         self._chip_first_dispatch: set[int] = set()
         self._bestiary = None
+        self._all_done: bool = False
 
     def compose(self) -> ComposeResult:
         rn = f"Run #{self.run_number:03d}"
@@ -850,7 +851,7 @@ class RunScreen(Screen):
             chip_be = _chip_backend(0, self.backend) if self.backend != "mixed" else "forge"
             return DispatchDecision(
                 backend=chip_be,
-                chips=max(1, int(model.get("mesh_chips", 1) or 1)),
+                chips=min(max(1, int(model.get("mesh_chips", 1) or 1)), self.num_chips),
                 confidence=1.0,
                 reason="manual",
             )
@@ -916,8 +917,12 @@ class RunScreen(Screen):
                 await asyncio.sleep(chip_id * 2)
 
         # Write the model dict to a temp JSON file.
+        # Strip dispatcher-internal keys that were added by _dispatch_next/_fire_rally
+        # and would break QueueItem(**data) deserialization in the worker.
+        _WORKER_SKIP_KEYS = frozenset({"chips_needed", "decision"})
+        model_for_worker = {k: v for k, v in model.items() if k not in _WORKER_SKIP_KEYS}
         model_json_path = f"/tmp/expedition_model_chip{chip_id}.json"
-        Path(model_json_path).write_text(json.dumps(model))
+        Path(model_json_path).write_text(json.dumps(model_for_worker))
 
         # Results CSV path (append mode — one file per chip across all models).
         results_path = f"/tmp/expedition_results_chip{chip_id}.csv"
@@ -1034,7 +1039,14 @@ class RunScreen(Screen):
 
     @work
     async def _on_all_done(self) -> None:
-        """Animate the completion banner then push to SummaryScreen."""
+        """Animate the completion banner then push to SummaryScreen.
+
+        Guard against double-invocation: if _chip_complete fires simultaneously
+        for the last two chips (e.g. mesh run), only the first call proceeds.
+        """
+        if self._all_done:
+            return
+        self._all_done = True
         try:
             el = self.query_one("#event-log", EventLog)
             el.write(f"\n[bold green]{'═'*34}[/]")
