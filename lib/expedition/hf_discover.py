@@ -241,6 +241,7 @@ def discover_frontier(
     limit: int = 1000,
     min_downloads: int = 0,
     min_likes: int = 0,
+    max_dl_like_ratio: int = 0,
     max_params_b: float = 0.0,
     skip_gated: bool = True,
     library: str | None = "pytorch",
@@ -260,26 +261,36 @@ def discover_frontier(
     5. Model ID not in ``compiled_ids`` or ``known_model_ids``.
     6. Not a duplicate ID (HF API can return the same repo twice).
     7. Quality bar: ``downloads >= min_downloads``, ``likes >= min_likes``.
-    8. Gated models skipped when ``skip_gated=True`` (can't be downloaded
+    8. Engagement ratio: when ``max_dl_like_ratio > 0``, models where
+       ``downloads / likes > max_dl_like_ratio`` are rejected.  Bots inflate
+       raw download counts without generating ♥ clicks, so a lopsided ratio
+       is the strongest single signal of artificial traffic.  Only applied
+       when ``likes > 0`` (the ``min_likes`` floor handles the zero-likes case).
+    9. Gated models skipped when ``skip_gated=True`` (can't be downloaded
        without explicit HuggingFace approval).
-    9. Size cap: when ``max_params_b > 0``, models whose safetensors metadata
+    10. Size cap: when ``max_params_b > 0``, models whose safetensors metadata
        reports more than that many billion parameters are skipped.  Models
        with no safetensors metadata are passed through (size unknown).
 
     Parameters
     ----------
-    compiled_ids:    Already-compiled model IDs — skip these.
-    known_model_ids: Forge-models library IDs — handled elsewhere, skip.
-    limit:           Maximum number of HF API results to fetch.
-    min_downloads:   Quality floor — models below this are experiments/noise.
-    min_likes:       Community-reputation floor.
-    max_params_b:    Size ceiling in billions of parameters (0 = no limit).
-    skip_gated:      Skip gated repos that require HF access approval.
-    library:         HuggingFace library tag to filter by (e.g. "pytorch",
-                     "jax", "flax").  Pass ``None`` to discover models from
-                     all libraries — useful for XLA/auto modes that want
-                     Flax-native models alongside PyTorch ones.
-                     Defaults to "pytorch" for backwards compatibility.
+    compiled_ids:      Already-compiled model IDs — skip these.
+    known_model_ids:   Forge-models library IDs — handled elsewhere, skip.
+    limit:             Maximum number of HF API results to fetch.
+    min_downloads:     Quality floor — models below this are experiments/noise.
+    min_likes:         Community-reputation floor.  Likes require a human click
+                       and are much harder to inflate artificially than downloads.
+    max_dl_like_ratio: Engagement cap — reject models where
+                       ``downloads / likes > max_dl_like_ratio``.  A ratio of
+                       300 means a model with 30,000 downloads must have ≥ 100
+                       likes to qualify.  Set to 0 to disable (no ratio check).
+    max_params_b:      Size ceiling in billions of parameters (0 = no limit).
+    skip_gated:        Skip gated repos that require HF access approval.
+    library:           HuggingFace library tag to filter by (e.g. "pytorch",
+                       "jax", "flax").  Pass ``None`` to discover models from
+                       all libraries — useful for XLA/auto modes that want
+                       Flax-native models alongside PyTorch ones.
+                       Defaults to "pytorch" for backwards compatibility.
 
     Returns an empty list if ``huggingface_hub`` is unavailable or the API
     call fails — callers should treat that as "no new discoveries this tick".
@@ -359,6 +370,14 @@ def discover_frontier(
             continue
         if lk < min_likes:
             _log.debug("skipped_low_likes model=%s likes=%d", m.id, lk)
+            continue
+        # Engagement ratio guard — bots inflate downloads without generating likes.
+        # A healthy model has at most max_dl_like_ratio downloads per like.
+        # Only checked when the ratio cap is enabled and likes > 0 (the min_likes
+        # floor already handles the zero-likes case).
+        if max_dl_like_ratio > 0 and lk > 0 and dl / lk > max_dl_like_ratio:
+            _log.debug("skipped_bot_ratio model=%s downloads=%d likes=%d ratio=%.0f",
+                       m.id, dl, lk, dl / lk)
             continue
         # Gated models require an explicit HF access grant — skip by default.
         if skip_gated and getattr(m, "gated", None):

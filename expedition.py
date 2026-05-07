@@ -380,7 +380,8 @@ def _scan_frontier(
     bestiary_compiled_ids: set[str],
     forge_model_ids: set[str],
     min_downloads: int = 50,
-    min_likes: int = 5,
+    min_likes: int = 10,
+    max_dl_like_ratio: int = 300,
     max_params_b: float = 0.0,
     skip_gated: bool = True,
     proven_authors: set[str] | None = None,
@@ -406,6 +407,7 @@ def _scan_frontier(
         known_model_ids=forge_model_ids,
         min_downloads=min_downloads,
         min_likes=min_likes,
+        max_dl_like_ratio=max_dl_like_ratio,
         max_params_b=max_params_b,
         skip_gated=skip_gated,
         library=library,
@@ -452,7 +454,8 @@ def build_queues(
     frontier_only: bool = False,
     limit: int = 0,
     min_downloads: int = 50,
-    min_likes: int = 5,
+    min_likes: int = 10,
+    max_dl_like_ratio: int = 300,
     max_params_b: float = 0.0,
     skip_gated: bool = True,
     staples: bool = False,
@@ -524,6 +527,7 @@ def build_queues(
                                        compiled_ids, forge_ids,
                                        min_downloads=min_downloads,
                                        min_likes=min_likes,
+                                       max_dl_like_ratio=max_dl_like_ratio,
                                        max_params_b=max_params_b,
                                        skip_gated=skip_gated,
                                        proven_authors=proven_authors)
@@ -1279,9 +1283,12 @@ def main():
     run_p.add_argument("--min-downloads",    type=int,   default=50, metavar="N",
                        help="Skip frontier models with fewer than N total downloads "
                             "(default 50; try 1000 for proven models, 10000 for popular ones)")
-    run_p.add_argument("--min-likes",        type=int,   default=5, metavar="N",
+    run_p.add_argument("--min-likes",        type=int,   default=10, metavar="N",
                        help="Skip frontier models with fewer than N HuggingFace likes "
-                            "(default 5; 0 to disable)")
+                            "(default 10; 0 to disable)")
+    run_p.add_argument("--max-dl-like-ratio", type=int,  default=300, metavar="R",
+                       help="Skip frontier models where downloads/likes > R — bots inflate "
+                            "download counts without generating likes (default 300; 0 to disable)")
     run_p.add_argument("--max-model-params", type=float, default=0.0, metavar="B",
                        help="Skip frontier models larger than B billion parameters "
                             "(0=off; try 7 for single-chip sweet-spot, 13 for upper limit)")
@@ -1324,6 +1331,7 @@ def main():
         args.tui = False
         args.min_downloads = 0
         args.min_likes = 0
+        args.max_dl_like_ratio = 0
         args.max_model_params = 0.0
         args.allow_gated = False
         args.max_cache_gb = 0.0
@@ -1367,6 +1375,7 @@ def main():
             no_predownload=True,
             min_downloads=args.min_downloads,
             min_likes=args.min_likes,
+            max_dl_like_ratio=getattr(args, "max_dl_like_ratio", 300),
             max_params_b=args.max_model_params,
             allow_gated=args.allow_gated,
             max_cache_gb=args.max_cache_gb,
@@ -1387,6 +1396,7 @@ def main():
         limit=args.limit,
         min_downloads=args.min_downloads,
         min_likes=args.min_likes,
+        max_dl_like_ratio=args.max_dl_like_ratio,
         max_params_b=args.max_model_params,
         skip_gated=not args.allow_gated,
         staples=args.staples,

@@ -419,8 +419,9 @@ class SetupScreen(Screen):
         self._seed_only    = False
         self._frontier_only= False
         self._no_predownload = False
-        self._min_downloads= 50
-        self._min_likes    = 5
+        self._min_downloads    = 50
+        self._min_likes        = 10
+        self._max_dl_like_ratio = 300
         self._max_params_b = 0.0
         self._allow_gated  = False
         self._max_cache_gb = 0.0
@@ -438,8 +439,9 @@ class SetupScreen(Screen):
         self._seed_only     = app.seed_only
         self._frontier_only = app.frontier_only
         self._no_predownload= app.no_predownload
-        self._min_downloads = app.min_downloads
-        self._min_likes     = app.min_likes
+        self._min_downloads     = app.min_downloads
+        self._min_likes         = app.min_likes
+        self._max_dl_like_ratio = getattr(app, "max_dl_like_ratio", 300)
         self._max_params_b  = app.max_params_b
         self._allow_gated   = app.allow_gated
         self._max_cache_gb  = app.max_cache_gb
@@ -467,6 +469,7 @@ class SetupScreen(Screen):
         limit_str = str(self._limit) if self._limit > 0 else "∞"
         dl_str    = f"{self._min_downloads:,}" if self._min_downloads else "off"
         lk_str    = str(self._min_likes) if self._min_likes else "off"
+        ratio_str = str(self._max_dl_like_ratio) if self._max_dl_like_ratio else "off"
         if self._max_params_b > 0:
             pb_str = f"{self._max_params_b:.0f}B"
         else:
@@ -503,6 +506,7 @@ class SetupScreen(Screen):
             f"  Limit        [bold]{limit_str}[/]   [dim]+ / -[/]",
             f"  Min Downloads[bold]{dl_str}[/]  [dim][ / ][/]",
             f"  Min Likes    [bold]{lk_str}[/]  [dim], / .[/]",
+            f"  DL:Like Ratio[bold]{ratio_str}[/]  [dim](bot guard)[/]",
             f"  Max Params   [bold]{pb_str}[/]  [dim]m / n[/]",
             f"  Sources      [bold]{src_str}[/]  [dim]1/2/3[/]",
             f"  Staples      {staples_str}  [dim]4[/]",
@@ -652,11 +656,12 @@ class SetupScreen(Screen):
             frontier_items = _scan_frontier(
                 compiled_ids,
                 forge_ids,
-                min_downloads = self._min_downloads,
-                min_likes     = self._min_likes,
-                max_params_b  = self._max_params_b,
-                skip_gated    = not self._allow_gated,
-                library       = scan_fw,
+                min_downloads    = self._min_downloads,
+                min_likes        = self._min_likes,
+                max_dl_like_ratio = self._max_dl_like_ratio,
+                max_params_b     = self._max_params_b,
+                skip_gated       = not self._allow_gated,
+                library          = scan_fw,
             )
             _log(f"[green]✓ {len(frontier_items)} frontier model(s) discovered[/]")
             for item in frontier_items:
@@ -1541,7 +1546,8 @@ class ExpeditionTUI(App[None]):
         frontier_only:          bool  = False,
         no_predownload:         bool  = False,
         min_downloads:          int   = 50,
-        min_likes:              int   = 5,
+        min_likes:              int   = 10,
+        max_dl_like_ratio:      int   = 300,
         max_params_b:           float = 0.0,
         allow_gated:            bool  = False,
         max_cache_gb:           float = 0.0,
@@ -1563,6 +1569,7 @@ class ExpeditionTUI(App[None]):
         self.no_predownload       = no_predownload
         self.min_downloads        = min_downloads
         self.min_likes            = min_likes
+        self.max_dl_like_ratio    = max_dl_like_ratio
         self.max_params_b         = max_params_b
         self.allow_gated          = allow_gated
         self.max_cache_gb         = max_cache_gb
