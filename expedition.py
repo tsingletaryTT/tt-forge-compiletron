@@ -491,6 +491,20 @@ def build_queues(
         # scan (which involves importlib reflection and can take a few seconds).
         seed_items = _with_spinner("scanning tt-forge-models library…",
                                    _scan_forge_models, compiled_ids, staples)
+
+        # Always include at least one seed model as a canary — a known-good
+        # baseline that confirms the hardware/forge stack is healthy, and a
+        # fast first-win to seed the scoreboard.  If all seed models are
+        # already in the bestiary (and --staples wasn't set), pull one at
+        # random from the full zoo ignoring the compiled filter.
+        if not seed_items:
+            all_seeds = _scan_forge_models(set(), include_all=True)
+            if all_seeds:
+                import random as _random
+                canary = _random.choice(all_seeds)
+                canary = dict(canary)   # copy so we can annotate safely
+                seed_items = [canary]
+
         _section(f"FORGE MODELS  ({len(seed_items)} seed)")
         for item in seed_items:
             _model_row(item)
