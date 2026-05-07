@@ -936,49 +936,66 @@ def _run_parallel_downloads(
 
     ok_c = fail_c = skip_c = 0
     stop_reason: str | None = None
+    all_futures: list = []
 
+    # Manage the executor manually (not via `with`) so KeyboardInterrupt can
+    # call shutdown(wait=False) and return immediately rather than blocking
+    # until every in-flight download thread finishes.
+    executor = ThreadPoolExecutor(max_workers=n_slots)
     try:
-        with ThreadPoolExecutor(max_workers=n_slots) as executor:
-            future_map = {executor.submit(_worker, mid, item): mid
-                          for mid, item in items_ordered}
-            all_futures = list(future_map)
+        future_map = {executor.submit(_worker, mid, item): mid
+                      for mid, item in items_ordered}
+        all_futures = list(future_map)
 
-            for fut in as_completed(all_futures):
-                try:
-                    res = fut.result()
-                except _FutureCancelled:
-                    continue   # already counted in skip_c via cancel loop below
-                except Exception as e:
-                    res = {"model_id": future_map[fut], "ok": False,
-                           "err": str(e)[:80], "cached": False,
-                           "elapsed": 0, "new_bytes": 0}
+        for fut in as_completed(all_futures):
+            try:
+                res = fut.result()
+            except _FutureCancelled:
+                continue   # already counted in skip_c via cancel loop below
+            except Exception as e:
+                res = {"model_id": future_map[fut], "ok": False,
+                       "err": str(e)[:80], "cached": False,
+                       "elapsed": 0, "new_bytes": 0}
 
-                if res["ok"]:
-                    ok_c += 1
-                else:
-                    fail_c += 1
+            if res["ok"]:
+                ok_c += 1
+            else:
+                fail_c += 1
 
-                if stop_reason:
-                    continue  # let running futures finish; skip checks
+            if stop_reason:
+                continue  # let running futures finish; skip checks
 
-                current_gb = _hf_cache_gb()
-                session_gb = current_gb - baseline_gb
-                free_gb    = _shutil.disk_usage(cache_root).free / 1e9
+            current_gb = _hf_cache_gb()
+            session_gb = current_gb - baseline_gb
+            free_gb    = _shutil.disk_usage(cache_root).free / 1e9
 
-                if max_cache_gb > 0 and current_gb >= max_cache_gb:
-                    stop_reason = f"cache at {current_gb:.1f}/{max_cache_gb:.0f} GB"
-                elif (session_download_max_gb > 0
-                      and session_gb >= session_download_max_gb):
-                    stop_reason = (f"session cap "
-                                   f"{session_gb:.1f}/{session_download_max_gb:.0f} GB")
-                elif free_gb < 5.0:
-                    stop_reason = f"disk critically low ({free_gb:.1f} GB free)"
+            if max_cache_gb > 0 and current_gb >= max_cache_gb:
+                stop_reason = f"cache at {current_gb:.1f}/{max_cache_gb:.0f} GB"
+            elif (session_download_max_gb > 0
+                  and session_gb >= session_download_max_gb):
+                stop_reason = (f"session cap "
+                               f"{session_gb:.1f}/{session_download_max_gb:.0f} GB")
+            elif free_gb < 5.0:
+                stop_reason = f"disk critically low ({free_gb:.1f} GB free)"
 
-                if stop_reason:
-                    for f in all_futures:
-                        if not f.done() and f.cancel():
-                            skip_c += 1
+            if stop_reason:
+                for f in all_futures:
+                    if not f.done() and f.cancel():
+                        skip_c += 1
+
+    except KeyboardInterrupt:
+        # Cancel every future we can; release the executor without waiting for
+        # in-flight threads — they are daemon threads and will die on exit.
+        for f in all_futures:
+            f.cancel()
+        executor.shutdown(wait=False)
+        stop_display.set()
+        disp.join(timeout=0.5)
+        print(f"\n{_YELLOW}⚠  download interrupted{_RST}")
+        raise  # propagate so main() can exit cleanly
+
     finally:
+        executor.shutdown(wait=False)
         if prev_hf_bar is None:
             os.environ.pop("HF_HUB_DISABLE_PROGRESS_BARS", None)
         else:
@@ -1452,4 +1469,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print(f"\n{_YELLOW}interrupted{_RST}")
+        sys.exit(130)  # standard exit code for Ctrl-C
