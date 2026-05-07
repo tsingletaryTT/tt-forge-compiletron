@@ -1,95 +1,27 @@
-# TT-Forge Compiletron - Full Dependencies
-# This includes all dependencies needed for Forge compilation
+# TT-Forge Compiletron — application dependencies
+#
+# NOTE: torch, torchvision, transformers, numpy, jax, flax, etc. are
+# provided by the forge environment (source ~/tt-forge-fe/env/activate).
+# Do NOT pip-install them here — install this file AFTER activating forge.
+#
+# XLA backend (jax/pjrt) deps go in the separate xla-venv:
+#   python3 -m venv xla-venv
+#   xla-venv/bin/pip install pjrt-plugin-tt jax==0.7.1 jaxlib==0.7.1 \
+#       flax==0.8.5 "transformers<5.0" torch \
+#       --index-url https://pypi.tenstorrent.com/simple/
 
-# ============================================================================
-# FORGE CORE DEPENDENCIES (from tt-forge-fe/env/core_requirements.txt)
-# ============================================================================
+# TUI
+textual>=0.59.0
 
-setuptools>=61
-chex>=0.1.7
-dataclasses-json==0.5.7
-datasets==2.14.6
-decorator==5.1.1
-flatbuffers==24.3.25
-flax>=0.10.6
-jax==0.7.1
-loguru==0.5.3
-networkx==2.8.5
-numpy==1.26.4
-onnx>=1.15.0
-onnxruntime>=1.16.3
-opencv-python-headless==4.11.0.86
-pandas>=2.2.0
-pybind11>=2.13.6
-pyinstrument>=4.1.1
-scipy>=1.8.0
-tensorflow==2.19.0
-tensorboard==2.19.0
-tf2onnx==1.15.1
-transformers==4.52.4
-requests==2.28.2
-tflite==2.10.0
-ultralytics==8.3.91
-paddlepaddle==2.6.2
-paddlenlp==2.8.1
-aistudio-sdk==0.2.6
-pytorch_forecasting
-patool
-openpyxl==3.1.5
-GitPython==3.1.44
-mlp-mixer-pytorch==0.2.0
-gliner==0.2.7
-ase==3.24.0
-hippynn==0.0.3
-bi-lstm-crf==0.2.1
-peft
-pyclipper>=1.3.0
-shapely==2.1.1
-pyarrow==20.0.0
+# HuggingFace model discovery
+huggingface_hub>=0.20.0
 
-# ============================================================================
-# COMPILETRON SPECIFIC
-# ============================================================================
-
-# PyTorch (version compatible with above)
-torch>=2.0.0
-torchvision>=0.15.0
-
-# Terminal UI for compilation showcase
+# ASCII banners
 pyfiglet>=0.8.0
 
 # Utilities
+requests>=2.28.0
 tqdm>=4.65.0
 
 # Testing
 pytest>=7.0.0
-
-# Audio processing (for model demos)
-librosa>=0.10.0
-soundfile>=0.12.1
-
-# Image processing
-matplotlib>=3.7.0
-Pillow>=10.0.0
-
-# ============================================================================
-# IMPORTANT: TT-Forge Installation
-# ============================================================================
-#
-# tt-forge CANNOT be installed via pip - it must be built from source
-#
-# Installation steps:
-# 1. Clone the repository:
-#    cd ~
-#    git clone https://github.com/tenstorrent/tt-forge-fe.git
-#
-# 2. Build tt-forge (takes 45-60 minutes):
-#    cd ~/tt-forge-fe
-#    ./build_forge.sh
-#
-# 3. Activate the environment:
-#    source ~/tt-forge-fe/env/activate
-#
-# For detailed instructions, see: docs/FORGE_SETUP.md
-#
-# ============================================================================

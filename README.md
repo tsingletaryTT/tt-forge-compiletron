@@ -1,12 +1,16 @@
 # TT-Forge Compiletron
 
-Runs TT-Forge model compilation demos across Tenstorrent hardware.
-Spawns a 4-pane tmux grid — one per chip — with live ASCII progress bars,
-rotating figlet banners, and a victory celebration when all models finish.
+A competitive model-compilation game for Tenstorrent hardware. Discovers models
+from HuggingFace and the tt-forge-models zoo, compiles them across all available
+chips in parallel, scores results by rarity and novelty, and maintains a bestiary
+of everything that has ever compiled.
 
-<img width="3840" height="2002" alt="tt-forge-compiletron demo" src="https://github.com/user-attachments/assets/3e93d7d6-8e02-49f6-92cb-e2d93c6caec2" />
+Supports two compilation backends — **tt-forge** (PyTorch via forge) and **tt-xla**
+(JAX/Flax via PJRT plugin) — selectable per-chip or in mixed mode.
 
-**Tested on:** 4× P300C Blackhole chips &nbsp;|&nbsp; **101 models** across 15+ architectures &nbsp;|&nbsp; **94.4% success rate**
+<img width="3840" height="2002" alt="tt-forge-compiletron TUI" src="https://github.com/user-attachments/assets/3e93d7d6-8e02-49f6-92cb-e2d93c6caec2" />
+
+**Tested on:** 4× P300C Blackhole chips
 
 ---
 
@@ -16,121 +20,214 @@ rotating figlet banners, and a victory celebration when all models finish.
 git clone git@github.com:tsingletaryTT/tt-forge-compiletron.git
 cd tt-forge-compiletron
 pip install -r requirements.txt
+
+# Activate tt-forge backend
 source ~/tt-forge-fe/env/activate
 
-bash scripts/run_4way_tmux.sh       # launches the 4-chip demo
+# Launch TUI (recommended)
+python3 expedition.py run --tui
+
+# Or CLI, 4-chip forge run, 20 models
+python3 expedition.py run --chips 4 --limit 20
 ```
 
-See [INSTALL.md](INSTALL.md) for Docker setup and detailed prerequisites.
+### XLA backend (JAX/PJRT)
+
+```bash
+# One-time setup
+python3 -m venv xla-venv
+xla-venv/bin/pip install pjrt-plugin-tt jax==0.7.1 jaxlib==0.7.1 \
+    flax==0.8.5 "transformers<5.0" torch --index-url https://pypi.tenstorrent.com/simple/
+
+# Run with XLA backend
+python3 expedition.py run --tui --backend xla
+```
+
+---
+
+## The TUI
+
+`expedition.py run --tui` opens a 3-screen Textual app:
+
+```
+╔══════════════════════════════════════════
+║  EXPEDITION #007 SETUP
+
+  Seeds: tt-forge-models + HuggingFace frontier
+  Backend: forge  [cycle with 5]
+  Chips:   4      Limit: 20
+
+  [Enter] Start   [Q] Quit
+╚══════════════════════════════════════════
+```
+
+**Setup screen** — configure chips, limit, backend (forge / xla / mixed),
+and source filters. Press Enter to start.
+
+**Run screen** — one panel per chip, live event log, scrolling compilation
+banners, real-time scores, and First Voice inference output.
+
+**Summary screen** — points leaderboard by chip, compile-time histogram,
+failure details, all-time bestiary stats.
 
 ---
 
 ## CLI reference
 
 ```bash
-python3 compiletron.py detect                   # detect hardware (uses tt-smi)
-python3 compiletron.py models list              # all 101 models
-python3 compiletron.py models families          # grouped by architecture
-python3 compiletron.py models quick             # fastest 5 (good for smoke tests)
-python3 compiletron.py models info ResNet-50    # details for one model
-python3 compiletron.py models estimate --count 50 --chips 4
+# Run modes
+python3 expedition.py run --tui                    # interactive TUI
+python3 expedition.py run --chips 4 --limit 20     # CLI, 4 chips, 20 models
+python3 expedition.py run --backend xla            # JAX/PJRT backend
+python3 expedition.py run --backend mixed          # even chips=forge, odd=xla
+python3 expedition.py run --seed-only              # tt-forge-models zoo only
+python3 expedition.py run --frontier-only          # HuggingFace frontier only
+python3 expedition.py run --staples                # re-run proven seed models
 
-python3 compiletron.py run --quick              # compile 5 fastest models
-python3 compiletron.py run --chip 0 --family resnet
-python3 compiletron.py run --parallel           # launches run_4way_tmux.sh
+# Discovery filters
+python3 expedition.py run --min-downloads 1000     # skip obscure models
+python3 expedition.py run --min-likes 5            # skip experiment dumps
+python3 expedition.py run --max-model-params 7     # single-chip sweet-spot
 
-python3 compiletron.py results                  # view saved results
-python3 compiletron.py results report --output report.md
+# Download controls
+python3 expedition.py run --max-cache-gb 150       # cap HF cache at 150 GB
+python3 expedition.py run --session-download-max 60 # limit this run to 60 GB
+python3 expedition.py run --no-predownload         # skip pre-fetch, start faster
+
+# Hardware
+python3 expedition.py run --monitor                # add tt-smi pane
 ```
 
 ---
 
 ## How it works
 
-`scripts/run_4way_tmux.sh` opens a tmux session with this layout:
-
 ```
-┌──────────────┬──────────────
-│  Chip 0      │  Chip 1
-├──────────────┼──────────────
-│  Chip 2      │  Chip 3
-├──────────────┴──────────────
-│  [████░░] progress per chip
+expedition.py               CLI + queue builder
+expedition_tui.py           Textual TUI (Setup / Run / Summary screens)
+lib/expedition/
+  expedition_worker.py      per-chip forge worker (PyTorch / tt-forge)
+  expedition_worker_xla.py  per-chip XLA worker  (JAX / PJRT)
+  bestiary.py               compiled-model database (data/bestiary.json)
+  scorer.py                 rarity × newness → points
+  decoder.py                output → human-readable First Voice text
+  sampler.py                themed inference samples per task type
+  hud.py                    per-chip stats tracker
+  notes.py                  run journal (data/expeditions/)
+  hf_discover.py            live HuggingFace frontier discovery
+  router.py                 per-model backend dispatch (auto mode)
 ```
 
-Each pane runs `lib/worker.py` independently. Models are distributed
-round-robin: chip N compiles models N, N+4, N+8, … The bottom strip
-shows live `█░` progress bars for all four chips (updated every second).
+**Queue building** — each run scans the tt-forge-models JAX/PyTorch zoo and
+the HuggingFace Hub for recently-created models. One model per author/family
+per run. Seed models already in the bestiary are skipped (use `--staples` to
+force-include them).
 
-**Auto-detect**: the script prefers native if `~/tt-forge-fe/env/activate`
-exists, otherwise falls back to Docker.
+**Compilation** — forge backend calls `forge.compile()`; XLA backend JIT-traces
+via `jax.jit` on the PJRT TT plugin. Each chip runs its worker as a subprocess;
+results are streamed back via a CSV file.
+
+**Scoring** — points are awarded on compile success:
+- Base: +200 pts
+- First-ever compiled: ×5 bonus (1000 pts)
+- Rarity tiers: legendary (×2), rare (×1.5), uncommon (×1.2)
+- Newness: zero-day (+300), hot (+100), fresh (+50)
+- Streak: 🔥 bonus for consecutive successes on same chip
+- First Voice: +100 pts if inference produces meaningful output
+
+**Bestiary** (`data/bestiary.json`) — persistent database. Tracks every
+model ever compiled: artifact shape, task, compile time, chip, run number,
+first-voice text, and all-time chip leaderboard.
+
+**First Voice** — after a successful compile, each worker runs a themed
+inference pass using a curated sample from `lib/expedition/sampler.py`
+(stories, images, questions). Decoders in `lib/expedition/decoder.py`
+turn raw logits into readable predictions, e.g.:
+```
+🗣 First Voice  [At the Westinghouse pavilion, a time capsule was buried...]
+→ The (10%) | A (3%) | " (3%)
+```
 
 ---
 
-## Model library
+## Backends
 
-101 models in `lib/models.py`, spanning:
+### auto (default — intelligent dispatch)
 
-| Family | Count | Compile time |
-|---|---|---|
-| RegNet (X/Y) | 15 | 2–8s |
-| VGG | 8 | 1–4s |
-| EfficientNet B0–B7 | 8 | 3–25s |
-| Swin Transformer | 6 | 18–45s |
-| ResNet | 5 | 3–15s |
-| DenseNet | 4 | 40–116s |
-| ViT | 4 | 20–50s |
-| ConvNeXt | 4 | 20–45s |
-| + MobileNet, MNASNet, ResNeXt, SqueezeNet, AlexNet, … | | |
+Automatically selects the best backend per model. JAX/Flax models are
+routed to xla; PyTorch models go to forge. Falls back to forge when
+affinity is ambiguous. Requires both backends to be available.
 
-Add a model by appending a tuple to `MODEL_LIST` in `lib/models.py`:
+### forge
 
-```python
-("MyModel", "family", lambda: my_loader(), (1, 3, 224, 224), "notes",
- {'time': 10.0, 'success': 1.0, 'params': '25M', 'complexity': 'medium'}),
-```
+Uses `tt-forge-fe` to compile PyTorch models via `forge.compile()`.
+Requires `source ~/tt-forge-fe/env/activate`.
+
+### xla
+
+Uses `pjrt-plugin-tt` to JIT-compile Flax/JAX models onto TT hardware
+via the PJRT plugin interface. Models load via `FlaxAutoModel*` from
+transformers. Compiled in a separate `xla-venv` virtualenv.
+
+Three compatibility patches are applied automatically for
+pjrt-plugin-tt 0.9.0 + JAX 0.7.1 + Flax 0.8.5:
+- `flax.core.tracers.trace_level` — JAX 0.7.x removed `.level` from trace objects
+- `jax.local_devices` — redirects cpu-backend requests to tt (only tt is available)
+- `_do_init=False` — skips eager Flax init (SliceOp fails in eager mode; JIT works)
+
+### mixed
+
+Even-numbered chips run forge; odd-numbered chips run xla. Useful for
+side-by-side comparison of the two compilation stacks.
 
 ---
 
 ## Project layout
 
 ```
-compiletron.py          CLI entry point
+expedition.py               main CLI + TUI launcher
+expedition_tui.py           Textual TUI (3 screens)
 lib/
-  worker.py             per-chip compilation worker (visual pipeline)
-  models.py             MODEL_LIST — 101 models with metadata
-  hardware.py           tt-smi hardware detection
-  discovery.py          scan Forge repos / HuggingFace for new models
-scripts/
-  run_4way_tmux.sh      4-chip tmux orchestrator (native + docker)
-  status_display.sh     renders bottom progress bar strip
-  docker/               Docker-mode worker scripts
-  examples/             ready-to-run workflow scripts
-docs/
-  FORGE_SETUP.md        build tt-forge-fe from source
-  MULTI_CHIP.md         round-robin distribution details
-  MODEL_LIBRARY.md      full model catalog
-  CONTAINER_USAGE.md    Docker usage guide
-  DOCKER_REFERENCE.md   Docker build reference
-  PARALLEL_4CHIP_GUIDE.md  4-chip setup walkthrough
-tests/                  29 unit tests (no hardware required)
+  expedition/               expedition subsystems
+    bestiary.py             model history database
+    decoder.py              logit → text decoder (First Voice)
+    expedition_worker.py    forge per-chip worker
+    expedition_worker_xla.py XLA per-chip worker
+    hf_discover.py          HuggingFace frontier scanner
+    hud.py                  per-chip run state tracker
+    notes.py                run journal writer
+    router.py               per-model backend dispatch (auto mode)
+    sampler.py              themed inference samples
+    scorer.py               rarity/newness scoring
+  discovery.py              seed model scanner (tt-forge-models)
+  hardware.py               tt-smi hardware detection
+data/
+  bestiary.json             compiled-model database
+  expeditions/              per-run journals
+  artifacts/                first-voice output archives
+  runs/                     per-chip result CSVs
+xla-venv/                   separate venv for JAX/PJRT dependencies
+requirements.txt            forge-mode dependencies
 ```
 
 ---
 
-## Testing
+## Data files
 
-```bash
-./run_tests.sh
-# or
-python3 -m pytest tests/ -v -p no:asyncio
+```
+data/bestiary.json          all-time compiled model records + chip scores
+data/expeditions/run_NNN.md per-run journal with first-voice highlights
 ```
 
-All 29 tests pass without hardware (uses mock tt-smi data).
+The bestiary persists across runs and is never overwritten — new compiles
+accumulate. It is the canonical record of what the hardware has proven it
+can compile.
 
 ---
 
-## Source
+## Legacy entry point
 
-Extracted from `~/tt-forge-creative-demos/` — original 4-chip sweep
-with 102/108 models passing on 2026-03-21.
+The original `compiletron.py` / `lib/worker.py` / `lib/models.py` stack
+(static 101-model list, tmux 4-pane display) still works but is no longer
+the primary interface. `expedition.py` supersedes it with live model
+discovery, dynamic queuing, scoring, and dual backends.

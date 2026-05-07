@@ -51,6 +51,16 @@ Thumbs.db
 /tmp/
 forge_parallel_*/
 
+# Memoize cache
+.pkl_memoize_py3/
+
+# XLA venv
+xla-venv/
+
+# Local data (bestiary/expeditions persist separately)
+data/artifacts/
+data/runs/
+
 # Claude artifacts
 .claude/
 .superpowers/

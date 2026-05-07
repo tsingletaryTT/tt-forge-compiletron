@@ -8,42 +8,25 @@ services:
     image: tt-forge-compiletron:latest
     container_name: tt-forge-compiletron
 
-    # Access to Tenstorrent hardware
     devices:
       - /dev/tenstorrent:/dev/tenstorrent
 
-    # Volumes for persistent data and host dependencies
     volumes:
-      # tt-metal and tt-forge-fe from host (read-only)
-      - ${TT_METAL_HOME:-~/tt-metal}:/tt-metal:ro
-      - ${FORGE_HOME:-~/tt-forge-fe}:/tt-forge-fe:ro
+      # Persistent bestiary + run journals
+      - compiletron-data:/app/data
+      # HuggingFace model cache (avoids re-downloading between runs)
+      - compiletron-hf-cache:/root/.cache/huggingface
 
-      # Persistent volumes for cache and results
-      - compiletron-cache:/cache
-      - compiletron-results:/results
-
-      # Optional: custom models directory
-      - ${MODELS_DIR:-./models}:/models
-
-    # Environment variables
     environment:
-      - TT_METAL_HOME=/tt-metal
-      - FORGE_HOME=/tt-forge-fe
-      - CACHE_DIR=/cache
-      - RESULTS_DIR=/results
       - PYTHONUNBUFFERED=1
 
-    # Resource limits (optional)
-    # mem_limit: 64g
-    # cpus: 16
-
-    # Keep container running for interactive use
     stdin_open: true
     tty: true
 
+    command: ["run", "--tui", "--chips", "4"]
+
 volumes:
-  # Named volumes for persistence
-  compiletron-cache:
+  compiletron-data:
     driver: local
-  compiletron-results:
+  compiletron-hf-cache:
     driver: local
