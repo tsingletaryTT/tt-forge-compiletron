@@ -419,8 +419,8 @@ class SetupScreen(Screen):
         self._seed_only    = False
         self._frontier_only= False
         self._no_predownload = False
-        self._min_downloads= 0
-        self._min_likes    = 0
+        self._min_downloads= 50
+        self._min_likes    = 5
         self._max_params_b = 0.0
         self._allow_gated  = False
         self._max_cache_gb = 0.0
@@ -1540,8 +1540,8 @@ class ExpeditionTUI(App[None]):
         seed_only:              bool  = False,
         frontier_only:          bool  = False,
         no_predownload:         bool  = False,
-        min_downloads:          int   = 0,
-        min_likes:              int   = 0,
+        min_downloads:          int   = 50,
+        min_likes:              int   = 5,
         max_params_b:           float = 0.0,
         allow_gated:            bool  = False,
         max_cache_gb:           float = 0.0,

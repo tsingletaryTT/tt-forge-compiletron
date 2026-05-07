@@ -379,8 +379,8 @@ def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = Fals
 def _scan_frontier(
     bestiary_compiled_ids: set[str],
     forge_model_ids: set[str],
-    min_downloads: int = 0,
-    min_likes: int = 0,
+    min_downloads: int = 50,
+    min_likes: int = 5,
     max_params_b: float = 0.0,
     skip_gated: bool = True,
     proven_authors: set[str] | None = None,
@@ -451,8 +451,8 @@ def build_queues(
     seed_only: bool = False,
     frontier_only: bool = False,
     limit: int = 0,
-    min_downloads: int = 0,
-    min_likes: int = 0,
+    min_downloads: int = 50,
+    min_likes: int = 5,
     max_params_b: float = 0.0,
     skip_gated: bool = True,
     staples: bool = False,
@@ -1262,12 +1262,12 @@ def main():
     run_p.add_argument("--monitor",          action="store_true",
                        help="Add a tt-smi hardware monitor pane in the center column")
     # ── Quality / reputation bar ──────────────────────────────────────────────
-    run_p.add_argument("--min-downloads",    type=int,   default=0, metavar="N",
+    run_p.add_argument("--min-downloads",    type=int,   default=50, metavar="N",
                        help="Skip frontier models with fewer than N total downloads "
-                            "(0=off; try 1000 for proven models, 10000 for popular ones)")
-    run_p.add_argument("--min-likes",        type=int,   default=0, metavar="N",
+                            "(default 50; try 1000 for proven models, 10000 for popular ones)")
+    run_p.add_argument("--min-likes",        type=int,   default=5, metavar="N",
                        help="Skip frontier models with fewer than N HuggingFace likes "
-                            "(0=off; try 5 to filter pure experiment dumps)")
+                            "(default 5; 0 to disable)")
     run_p.add_argument("--max-model-params", type=float, default=0.0, metavar="B",
                        help="Skip frontier models larger than B billion parameters "
                             "(0=off; try 7 for single-chip sweet-spot, 13 for upper limit)")
