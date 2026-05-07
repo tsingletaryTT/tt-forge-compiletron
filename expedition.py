@@ -991,7 +991,7 @@ def _run_parallel_downloads(
         executor.shutdown(wait=False)
         stop_display.set()
         disp.join(timeout=0.5)
-        print(f"\n{_YELLOW}⚠  download interrupted{_RST}")
+        print(f"\n{_RED}⚠  download interrupted{_RST}")
         raise  # propagate so main() can exit cleanly
 
     finally:
@@ -1346,9 +1346,9 @@ def main():
         args.no_predownload = False
         args.monitor = False
         args.tui = False
-        args.min_downloads = 0
-        args.min_likes = 0
-        args.max_dl_like_ratio = 0
+        args.min_downloads = 50
+        args.min_likes = 10
+        args.max_dl_like_ratio = 300
         args.max_model_params = 0.0
         args.allow_gated = False
         args.max_cache_gb = 0.0
@@ -1472,5 +1472,8 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print(f"\n{_YELLOW}interrupted{_RST}")
-        sys.exit(130)  # standard exit code for Ctrl-C
+        print(f"\n{_RED}interrupted{_RST}")
+        # os._exit skips Python's atexit/threading shutdown, which would
+        # otherwise block trying to join daemon download threads and print
+        # a second KeyboardInterrupt traceback.
+        os._exit(130)
