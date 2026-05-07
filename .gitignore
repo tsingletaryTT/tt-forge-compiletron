@@ -59,7 +59,9 @@ xla-venv/
 
 # Local data (bestiary/expeditions persist separately)
 data/artifacts/
-data/runs/
+data/runs/run_[0-9]*.json
+data/bestiary.json
+data/expeditions/
 
 # Claude artifacts
 .claude/

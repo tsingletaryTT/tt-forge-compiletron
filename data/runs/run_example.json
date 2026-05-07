@@ -1,0 +1,38 @@
+{
+  "_note": "Example run summary — actual run files are created by expedition.py and named run_001.json, run_002.json, etc.",
+  "run": 1,
+  "timestamp": "2026-04-01T10:30:00.000000",
+  "chips": 4,
+  "chip_results": [
+    {
+      "chip_id": 0,
+      "pts": 1640,
+      "successes": 3,
+      "failures": 1,
+      "first_evers": 2
+    },
+    {
+      "chip_id": 1,
+      "pts": 1200,
+      "successes": 2,
+      "failures": 2,
+      "first_evers": 2
+    },
+    {
+      "chip_id": 2,
+      "pts": 440,
+      "successes": 1,
+      "failures": 3,
+      "first_evers": 0
+    },
+    {
+      "chip_id": 3,
+      "pts": -20,
+      "successes": 0,
+      "failures": 2,
+      "first_evers": 0
+    }
+  ],
+  "new_bestiary_entries": 4,
+  "total_failures": 8
+}
