@@ -272,10 +272,24 @@ def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = Fals
     if not forge_models_root.exists():
         return []
 
-    # Make the forge-models tree importable so we can load loader modules.
-    # The path is removed in the finally block below to avoid polluting
-    # sys.path for the remainder of the process.
-    sys.path.insert(0, str(forge_models_root))
+    import importlib
+    import types
+
+    # The forge-models loaders use relative imports that reach all the way up to
+    # the root of the repo (e.g. `from ...base import ForgeModel`).  The directory
+    # name "tt-forge-models" contains a hyphen, so it cannot be imported as a
+    # normal Python package.  The workaround is to register a synthetic root
+    # package ("_forgems") that points to the forge-models directory.  All child
+    # packages then import via "_forgems.musicgen_small.pytorch.loader" etc., and
+    # their relative imports resolve correctly against the synthetic root.
+    _PKG = "_forgems"
+    if _PKG not in sys.modules:
+        root_mod = types.ModuleType(_PKG)
+        root_mod.__path__ = [str(forge_models_root)]
+        root_mod.__package__ = _PKG
+        root_mod.__file__ = str(forge_models_root / "__init__.py")
+        sys.modules[_PKG] = root_mod
+
     items = []
 
     # Suppress C-level fd-2 noise (XLA/CUDA factory warnings, protobuf
@@ -297,10 +311,16 @@ def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = Fals
             if any(p.startswith("_") or p.startswith(".") for p in rel.parts):
                 continue
 
+            parts_lower = [p.lower() for p in rel.parts]
+
+            # Skip ONNX loaders — they require an onnx_tmp_path argument that
+            # the generic worker cannot supply.
+            if "onnx" in parts_lower:
+                continue
+
             # Framework filter: skip loaders that don't match the requested framework.
             # "pytorch" skips paths containing /jax/, "jax" skips paths without /jax/.
             if framework is not None:
-                parts_lower = [p.lower() for p in rel.parts]
                 is_jax = "jax" in parts_lower
                 if framework == "jax" and not is_jax:
                     continue
@@ -314,13 +334,15 @@ def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = Fals
             if not include_all and model_id in bestiary_compiled_ids:
                 continue
 
-            # Convert path to dotted module path for importlib.
-            module_path = ".".join(rel.parts[:-1]) + ".loader"
+            # Import via the synthetic "_forgems" root package so that relative
+            # imports in the loader (e.g. `from ...base import ForgeModel`) resolve
+            # correctly against the forge-models root.
+            module_path = _PKG + "." + ".".join(rel.parts[:-1]) + ".loader"
 
             try:
-                import importlib
                 mod = importlib.import_module(module_path)
-                from base import ForgeModel
+                # ForgeModel is defined in the synthetic package's base module.
+                ForgeModel = sys.modules[f"{_PKG}.base"].ForgeModel  # type: ignore[attr-defined]
                 cls_name = None
                 for name in dir(mod):
                     obj = getattr(mod, name)
@@ -345,6 +367,10 @@ def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = Fals
                 # Any import/reflection failure is non-fatal: skip this loader.
                 continue
 
+            # Derive the library tag from the loader path so the router can send
+            # JAX loaders to the XLA backend instead of forge.
+            loader_lib = "jax" if "jax" in parts_lower else "pytorch"
+
             items.append({
                 "model_id": model_id,
                 # Derive a human-readable display name from the first path component.
@@ -355,10 +381,13 @@ def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = Fals
                 "hf_downloads": None,
                 "hf_created_at": None,
                 "mesh_chips": 1,
-                # Seed models are curated forge loaders — always pytorch, always
-                # route to forge. model_type left empty; router falls to default.
-                "library": "pytorch",
+                # library reflects the actual framework so the dispatch router can
+                # send JAX loaders to XLA and pytorch loaders to forge.
+                "library": loader_lib,
                 "model_type": "",
+                # Store the _forgems-prefixed module path so expedition_worker
+                # can import the same way (synthetic root stays registered for
+                # the lifetime of the process).
                 "loader_module": module_path,
                 "loader_class": cls_name,
                 "is_frontier": False,
@@ -367,11 +396,6 @@ def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = Fals
         # Restore fd 2 before doing anything else so subsequent prints are visible.
         os.dup2(_saved_fd2, 2)
         os.close(_saved_fd2)
-        # Always restore sys.path even if an unexpected exception occurs mid-scan.
-        try:
-            sys.path.remove(str(forge_models_root))
-        except ValueError:
-            pass
 
     return items
 
@@ -380,7 +404,7 @@ def _scan_frontier(
     bestiary_compiled_ids: set[str],
     forge_model_ids: set[str],
     min_downloads: int = 50,
-    min_likes: int = 10,
+    min_likes: int = 1,
     max_dl_like_ratio: int = 300,
     max_params_b: float = 0.0,
     skip_gated: bool = True,
@@ -454,7 +478,7 @@ def build_queues(
     frontier_only: bool = False,
     limit: int = 0,
     min_downloads: int = 50,
-    min_likes: int = 10,
+    min_likes: int = 1,
     max_dl_like_ratio: int = 300,
     max_params_b: float = 0.0,
     skip_gated: bool = True,
@@ -1300,9 +1324,9 @@ def main():
     run_p.add_argument("--min-downloads",    type=int,   default=50, metavar="N",
                        help="Skip frontier models with fewer than N total downloads "
                             "(default 50; try 1000 for proven models, 10000 for popular ones)")
-    run_p.add_argument("--min-likes",        type=int,   default=10, metavar="N",
+    run_p.add_argument("--min-likes",        type=int,   default=1, metavar="N",
                        help="Skip frontier models with fewer than N HuggingFace likes "
-                            "(default 10; 0 to disable)")
+                            "(default 1; 0 to disable)")
     run_p.add_argument("--max-dl-like-ratio", type=int,  default=300, metavar="R",
                        help="Skip frontier models where downloads/likes > R — bots inflate "
                             "download counts without generating likes (default 300; 0 to disable)")
@@ -1347,7 +1371,7 @@ def main():
         args.monitor = False
         args.tui = False
         args.min_downloads = 50
-        args.min_likes = 10
+        args.min_likes = 1
         args.max_dl_like_ratio = 300
         args.max_model_params = 0.0
         args.allow_gated = False

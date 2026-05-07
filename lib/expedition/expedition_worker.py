@@ -450,6 +450,8 @@ class QueueItem:
         loader_module: Python module path for non-frontier models (may be None).
         loader_class:  Class name within loader_module (may be None).
         is_frontier:  True if this is a newly-discovered HuggingFace model (dynamic loader).
+        library:      Model framework library ("pytorch", "jax", etc.; None = unknown).
+        model_type:   HuggingFace model architecture type (None for seed models).
     """
     model_id: str
     display_name: str
@@ -464,6 +466,8 @@ class QueueItem:
     is_frontier: bool = False
     hf_likes: Optional[int] = None
     hf_params_b: Optional[float] = None
+    library: Optional[str] = None
+    model_type: Optional[str] = None
 
 
 def _load_queue(queue_path: str) -> list[QueueItem]:
@@ -543,18 +547,47 @@ def _build_loader(item: QueueItem):
             raise ValueError(
                 f"Non-frontier model {item.model_id!r} missing loader_module/loader_class"
             )
-        import importlib
+
+        # JAX/Flax models must not run through the forge (PyTorch) worker.
+        # The router should have sent them to the XLA worker; if they arrive
+        # here it's a misconfiguration — fail fast with a clear message.
+        if (item.library or "").lower() in ("jax", "flax"):
+            raise ValueError(
+                f"JAX model {item.model_id!r} routed to forge worker — "
+                "check backend setting (should be 'auto' or 'xla')"
+            )
+
+        import importlib, types
         forge_models_path = os.path.expanduser("~/code/tt-forge-models")
-        if forge_models_path not in sys.path:
-            sys.path.insert(0, forge_models_path)
+        # Loader modules are stored with a "_forgems." prefix so that their
+        # relative imports resolve against the forge-models root (the directory
+        # name has a hyphen and can't be a real Python package).
+        _PKG = "_forgems"
+        if _PKG not in sys.modules:
+            root_mod = types.ModuleType(_PKG)
+            root_mod.__path__ = [forge_models_path]
+            root_mod.__package__ = _PKG
+            root_mod.__file__ = os.path.join(forge_models_path, "__init__.py")
+            sys.modules[_PKG] = root_mod
         mod = importlib.import_module(item.loader_module)
         cls = getattr(mod, item.loader_class)
         instance = cls()
         def loader():
             return instance.load_model()
-        # Prefer the loader instance's own _input_type if declared; fall back to
-        # "image" since most tt-forge-models loaders are vision models.
-        loader._input_type = getattr(instance, "_input_type", "image")
+        # Derive input type from task string first; fall back to the loader's
+        # own _input_type hint, then to "image" for unlabelled vision models.
+        # This prevents NLP models from receiving an image-shaped dummy tensor.
+        task_lower = (item.task or "").lower()
+        if any(x in task_lower for x in (
+            "nlp", "text", "lm", "token", "qa", "squad", "masked",
+            "causal", "seq2seq", "translation", "summarization",
+            "sentiment", "ner", "classification",
+        )) and "image" not in task_lower and "vision" not in task_lower:
+            loader._input_type = "text"
+        elif any(x in task_lower for x in ("audio", "speech", "wav", "asr")):
+            loader._input_type = "audio"
+        else:
+            loader._input_type = getattr(instance, "_input_type", "image")
         return loader
 
 

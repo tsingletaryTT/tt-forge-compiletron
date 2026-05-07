@@ -420,7 +420,7 @@ class SetupScreen(Screen):
         self._frontier_only= False
         self._no_predownload = False
         self._min_downloads    = 50
-        self._min_likes        = 10
+        self._min_likes        = 1
         self._max_dl_like_ratio = 300
         self._max_params_b = 0.0
         self._allow_gated  = False
@@ -647,6 +647,16 @@ class SetupScreen(Screen):
                 mid  = item.get("model_id", "?")
                 task = item.get("task") or item.get("source") or ""
                 _log(f"  [dim]· {mid}  {task}[/]")
+
+            # Canary injection: if all forge-models are already compiled,
+            # pick one random one anyway so we always have ≥1 model to run.
+            if not seed_items and not self._staples:
+                all_seeds = _scan_forge_models(set(), include_all=True, framework=scan_fw)
+                if all_seeds:
+                    import random as _random
+                    canary = dict(_random.choice(all_seeds))
+                    seed_items = [canary]
+                    _log(f"[yellow]⚡ canary injected — all forge models compiled; re-testing {canary['model_id']}[/]")
 
         forge_ids = {item["model_id"] for item in seed_items}
 
@@ -896,6 +906,20 @@ class RunScreen(Screen):
                 }, indent=2))
         except Exception:
             pass
+
+        # Clear stale per-chip temp files from previous runs so the score strip
+        # and summary screen don't show stale state.
+        status_dir = Path(os.environ.get("EXPEDITION_STATUS_DIR", "/tmp"))
+        for chip_id in range(self.num_chips):
+            for fname in (
+                status_dir / f"expedition_chip_{chip_id}.status",
+                Path(f"/tmp/expedition_results_chip{chip_id}.csv"),
+            ):
+                try:
+                    fname.unlink(missing_ok=True)
+                except Exception:
+                    pass
+
         # Load bestiary for router queries (read-only at run time).
         from lib.expedition.bestiary import Bestiary as _Bestiary
         self._bestiary = _Bestiary(path=str(self._project_dir / "data" / "bestiary.json"))
@@ -1006,10 +1030,14 @@ class RunScreen(Screen):
             worker_path = str(self._project_dir / "lib" / "expedition" / "expedition_worker_xla.py")
             env = {k: v for k, v in os.environ.items() if k != "TT_METAL_HOME"}
             env.update({
-                "TT_VISIBLE_DEVICES":    visible,
-                "TT_METAL_LOGGER_LEVEL": "FATAL",
-                "JAX_PLATFORMS":         "tt",
-                "PYTHONUNBUFFERED":      "1",
+                "TT_VISIBLE_DEVICES":      visible,
+                "TT_METAL_LOGGER_LEVEL":   "FATAL",
+                "TT_MESH_GRAPH_DESC_PATH": str(
+                    self._project_dir / "mesh_graph_descriptors"
+                    / "p100_mesh_graph_descriptor.textproto"
+                ),
+                "JAX_PLATFORMS":           "tt",
+                "PYTHONUNBUFFERED":        "1",
             })
         else:
             python_exe  = sys.executable
@@ -1546,7 +1574,7 @@ class ExpeditionTUI(App[None]):
         frontier_only:          bool  = False,
         no_predownload:         bool  = False,
         min_downloads:          int   = 50,
-        min_likes:              int   = 10,
+        min_likes:              int   = 1,
         max_dl_like_ratio:      int   = 300,
         max_params_b:           float = 0.0,
         allow_gated:            bool  = False,

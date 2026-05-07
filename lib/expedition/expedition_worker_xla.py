@@ -440,6 +440,8 @@ class QueueItem:
     is_frontier: bool = False
     hf_likes: Optional[int] = None
     hf_params_b: Optional[float] = None
+    library: Optional[str] = None
+    model_type: Optional[str] = None
 
 
 def _load_queue(queue_path: str) -> list[QueueItem]:
@@ -542,9 +544,16 @@ def _build_loader_xla(item: QueueItem):
             raise ValueError(
                 f"Non-frontier XLA model {item.model_id!r} missing loader_module/loader_class"
             )
-        import importlib
-        if forge_models_path not in sys.path:
-            sys.path.insert(0, forge_models_path)
+        import importlib, types
+        # Register synthetic _forgems root package so relative imports in the
+        # loaders (e.g. `from ....base import ForgeModel`) resolve correctly.
+        _PKG = "_forgems"
+        if _PKG not in sys.modules:
+            root_mod = types.ModuleType(_PKG)
+            root_mod.__path__ = [forge_models_path]
+            root_mod.__package__ = _PKG
+            root_mod.__file__ = os.path.join(forge_models_path, "__init__.py")
+            sys.modules[_PKG] = root_mod
 
         mod = importlib.import_module(item.loader_module)
         cls = getattr(mod, item.loader_class)
