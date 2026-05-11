@@ -6,10 +6,14 @@ compress_cast.py  --  Post-process an asciinema v2 cast file.
      events whose terminal-output string contains a raw (unescaped)
      newline don't corrupt the line-by-line parse.
   2. Clamps idle gaps between events to MAX_IDLE seconds.
-  3. Writes a clean, line-per-event output file.
+  3. Floors gaps below MIN_GAP seconds so burst events (many writes < 1ms
+     apart) spread into smooth scrolling animation instead of a single-frame
+     flash.  Without this, Textual's batched terminal writes create jerky
+     playback where the screen jumps suddenly then freezes.
+  4. Writes a clean, line-per-event output file.
 
 Usage:
-    python3 scripts/compress_cast.py INPUT.cast OUTPUT.cast [--max-idle SECS]
+    python3 scripts/compress_cast.py INPUT.cast OUTPUT.cast [--max-idle SECS] [--min-gap SECS]
 """
 import argparse, json, sys
 from pathlib import Path
@@ -52,17 +56,24 @@ def parse_cast_robust(path: Path):
     return header, events
 
 
-def compress(events, max_idle: float):
-    """Clamp idle gaps > max_idle to max_idle, returning new event list."""
+def compress(events, max_idle: float, min_gap: float = 0.0):
+    """Clamp idle gaps > max_idle and floor gaps < min_gap.
+
+    max_idle removes long dead zones (compilation pauses).
+    min_gap spreads burst events — many writes < 1ms apart that the
+    asciinema player would render as a single flash become a short
+    animation instead, eliminating the jerky stop-motion look.
+    """
     out = []
-    offset = 0.0
-    prev_t = 0.0
+    out_t = 0.0  # running output timestamp (accounts for both adjustments)
+    prev_in_t = 0.0  # previous input timestamp
     for ev in events:
-        real_gap = ev[0] - prev_t
-        if real_gap > max_idle:
-            offset += real_gap - max_idle
-        out.append([round(ev[0] - offset, 4), ev[1], ev[2]])
-        prev_t = ev[0]
+        real_gap = ev[0] - prev_in_t
+        # Clamp the gap to [min_gap, max_idle].
+        adj_gap = min(max_idle, max(min_gap, real_gap)) if max_idle > 0 else max(min_gap, real_gap)
+        out_t += adj_gap
+        out.append([round(out_t, 4), ev[1], ev[2]])
+        prev_in_t = ev[0]
     return out
 
 
@@ -72,6 +83,9 @@ def main():
     ap.add_argument("output", type=Path)
     ap.add_argument("--max-idle", type=float, default=1.5,
                     help="Max gap between events in seconds (default 1.5)")
+    ap.add_argument("--min-gap", type=float, default=0.0,
+                    help="Min gap between events in seconds (default 0 = off). "
+                         "Use 0.02 to smooth out burst writes.")
     args = ap.parse_args()
 
     print(f"Parsing {args.input} …", file=sys.stderr)
@@ -83,11 +97,11 @@ def main():
     original_dur = events[-1][0]
     print(f"  {len(events)} events, {original_dur:.1f}s raw", file=sys.stderr)
 
-    compressed = compress(events, args.max_idle)
+    compressed = compress(events, args.max_idle, args.min_gap)
     final_dur = compressed[-1][0]
     savings = original_dur - final_dur
     print(f"  → {len(compressed)} events, {final_dur:.1f}s compressed "
-          f"(saved {savings:.1f}s)", file=sys.stderr)
+          f"({'saved' if savings >= 0 else 'added'} {abs(savings):.1f}s)", file=sys.stderr)
     print(f"  At 2x: {final_dur/2/60:.1f} min   "
           f"At 3x: {final_dur/3/60:.1f} min", file=sys.stderr)
 
