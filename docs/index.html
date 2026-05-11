@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TT-Forge Compiletron — Expedition Mode</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/asciinema-player@3.7.0/dist/bundle/asciinema-player.css">
+<style>
+/* ── Root palette (Tenstorrent dark theme) ─────────────────────────────── */
+:root {
+  --bg0:    #0a1e28;
+  --bg1:    #0F2A35;
+  --bg2:    #1A3C47;
+  --bg3:    #243D4A;
+  --teal:   #4FD1C5;
+  --teal2:  #81E6D9;
+  --pink:   #EC96B8;
+  --gold:   #F4C471;
+  --green:  #27AE60;
+  --red:    #FF6B6B;
+  --blue:   #60A5FA;
+  --text:   #E8F0F2;
+  --muted:  #607D8B;
+  --dim:    #3a5a68;
+  --mono:   'JetBrains Mono', 'Courier New', monospace;
+  --sans:   'Inter', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg0);
+  color: var(--text);
+  font-family: var(--sans);
+  line-height: 1.7;
+}
+
+/* ── Nav ───────────────────────────────────────────────────────────────── */
+nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(10, 30, 40, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--dim);
+  padding: 0.6rem 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+}
+nav .brand {
+  color: var(--teal);
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+nav a {
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+nav a:hover { color: var(--teal2); }
+nav .spacer { flex: 1; }
+nav .gh-link {
+  color: var(--text);
+  border: 1px solid var(--dim);
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  transition: border-color 0.2s;
+}
+nav .gh-link:hover { border-color: var(--teal); color: var(--teal2); }
+
+/* ── Layout helpers ────────────────────────────────────────────────────── */
+section {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 5rem 2rem;
+}
+section.wide {
+  max-width: 1200px;
+}
+h1, h2, h3 {
+  font-family: var(--mono);
+  letter-spacing: -0.02em;
+}
+h2 {
+  color: var(--teal);
+  font-size: 1.5rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+h2::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 1.3em;
+  background: var(--teal);
+  border-radius: 2px;
+}
+h3 {
+  color: var(--gold);
+  font-size: 1.05rem;
+  margin-bottom: 0.8rem;
+}
+p { color: #c8d8de; margin-bottom: 1rem; }
+p:last-child { margin-bottom: 0; }
+strong { color: var(--teal2); }
+a { color: var(--teal); }
+a:hover { color: var(--teal2); }
+
+/* ── Hero ──────────────────────────────────────────────────────────────── */
+#hero {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 4rem 2rem 2rem;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(79,209,197,0.12) 0%, transparent 60%),
+    linear-gradient(180deg, var(--bg0) 0%, var(--bg1) 100%);
+}
+
+.hero-ascii {
+  font-family: var(--mono);
+  font-size: clamp(0.45rem, 1.1vw, 0.75rem);
+  line-height: 1.15;
+  color: var(--teal);
+  text-shadow: 0 0 20px rgba(79,209,197,0.5);
+  white-space: pre;
+  margin-bottom: 1.5rem;
+  animation: glow 3s ease-in-out infinite alternate;
+}
+@keyframes glow {
+  from { text-shadow: 0 0 10px rgba(79,209,197,0.3); }
+  to   { text-shadow: 0 0 30px rgba(79,209,197,0.7); }
+}
+
+.hero-sub {
+  font-family: var(--mono);
+  font-size: clamp(0.8rem, 1.8vw, 1.1rem);
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.05em;
+}
+
+.hero-tagline {
+  font-size: clamp(0.9rem, 2.5vw, 1.25rem);
+  color: var(--text);
+  margin-bottom: 2.5rem;
+  max-width: 640px;
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-bottom: 2.5rem;
+}
+.badge {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 20px;
+  border: 1px solid;
+}
+.badge-teal   { color: var(--teal);  border-color: var(--teal);  background: rgba(79,209,197,0.08); }
+.badge-gold   { color: var(--gold);  border-color: var(--gold);  background: rgba(244,196,113,0.08); }
+.badge-pink   { color: var(--pink);  border-color: var(--pink);  background: rgba(236,150,184,0.08); }
+.badge-green  { color: var(--green); border-color: var(--green); background: rgba(39,174,96,0.08); }
+
+.cta-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.btn {
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  padding: 0.65rem 1.6rem;
+  border-radius: 6px;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+.btn-primary {
+  background: var(--teal);
+  color: var(--bg0);
+  font-weight: 700;
+}
+.btn-primary:hover { background: var(--teal2); color: var(--bg0); }
+.btn-secondary {
+  border: 1px solid var(--dim);
+  color: var(--text);
+}
+.btn-secondary:hover { border-color: var(--teal); color: var(--teal); }
+
+.hero-screenshot {
+  margin-top: 3rem;
+  width: 100%;
+  max-width: 960px;
+  border-radius: 8px;
+  border: 1px solid var(--dim);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+}
+
+/* ── Timeline / story ──────────────────────────────────────────────────── */
+.timeline {
+  position: relative;
+  padding-left: 2rem;
+}
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.4rem;
+  bottom: 0.4rem;
+  width: 2px;
+  background: linear-gradient(to bottom, var(--teal), var(--pink), var(--gold));
+}
+.tl-item {
+  position: relative;
+  margin-bottom: 2.5rem;
+}
+.tl-dot {
+  position: absolute;
+  left: -2.4rem;
+  top: 0.35rem;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid;
+}
+.tl-dot-teal  { border-color: var(--teal);  background: var(--bg1); }
+.tl-dot-pink  { border-color: var(--pink);  background: var(--bg1); }
+.tl-dot-gold  { border-color: var(--gold);  background: var(--bg1); }
+.tl-dot-green { border-color: var(--green); background: var(--bg1); }
+.tl-date {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.tl-title {
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  color: var(--teal2);
+  margin-bottom: 0.4rem;
+}
+.tl-body { color: #c8d8de; font-size: 0.95rem; }
+
+/* ── Demo player ───────────────────────────────────────────────────────── */
+#demo {
+  background: var(--bg0);
+  padding: 4rem 2rem;
+}
+#demo h2 { max-width: 1000px; margin: 0 auto 1.5rem; }
+.player-wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--dim);
+  box-shadow: 0 32px 100px rgba(0,0,0,0.7);
+}
+.player-bar {
+  background: var(--bg2);
+  padding: 0.5rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.dot { width: 12px; height: 12px; border-radius: 50%; }
+.dot-r { background: #ff5f57; }
+.dot-y { background: #febc2e; }
+.dot-g { background: #28c840; }
+.player-title {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-left: 0.5rem;
+}
+#demo-player .ap-player { border-radius: 0; }
+.demo-hint {
+  max-width: 1100px;
+  margin: 1rem auto 0;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ── Two-column cards ──────────────────────────────────────────────────── */
+.card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+@media (max-width: 680px) { .card-grid { grid-template-columns: 1fr; } }
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--dim);
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+.card h3 { margin-bottom: 0.6rem; }
+.card p { font-size: 0.92rem; color: #a8c4cc; }
+.card code {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--teal2);
+  background: var(--bg1);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+
+/* ── Code blocks ───────────────────────────────────────────────────────── */
+pre {
+  background: var(--bg1);
+  border: 1px solid var(--dim);
+  border-left: 3px solid var(--teal);
+  border-radius: 6px;
+  padding: 1.2rem 1.4rem;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--teal2);
+  margin: 1rem 0;
+}
+pre .comment { color: var(--muted); }
+pre .prompt   { color: var(--gold); user-select: none; }
+pre .cmd      { color: var(--text); }
+
+/* ── Score table ───────────────────────────────────────────────────────── */
+.score-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  margin-top: 1rem;
+}
+.score-table th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--dim);
+  color: var(--muted);
+  font-weight: 400;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+}
+.score-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  vertical-align: top;
+}
+.score-table tr:last-child td { border-bottom: none; }
+.pts { color: var(--gold); font-weight: 700; }
+.event-name { color: var(--teal2); }
+
+/* ── Architecture tree ─────────────────────────────────────────────────── */
+.arch-tree {
+  font-family: var(--mono);
+  font-size: 0.83rem;
+  line-height: 1.9;
+  color: #a8c4cc;
+  background: var(--bg1);
+  border: 1px solid var(--dim);
+  border-left: 3px solid var(--pink);
+  border-radius: 6px;
+  padding: 1.2rem 1.4rem;
+}
+.arch-tree .dir  { color: var(--teal2); font-weight: 700; }
+.arch-tree .file { color: #a8c4cc; }
+.arch-tree .note { color: var(--muted); }
+.arch-tree .hi   { color: var(--gold); }
+
+/* ── Backend comparison ────────────────────────────────────────────────── */
+.backend-cmp {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+@media (max-width: 680px) { .backend-cmp { grid-template-columns: 1fr; } }
+.be-card {
+  background: var(--bg2);
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+.be-card.forge { border-top: 3px solid var(--teal); }
+.be-card.xla   { border-top: 3px solid var(--pink); }
+.be-card h3 { font-size: 1.1rem; margin-bottom: 0.8rem; }
+.be-label { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.1em; color: var(--muted); }
+.be-card ul { list-style: none; padding: 0; }
+.be-card li {
+  font-size: 0.9rem;
+  color: #a8c4cc;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  display: flex;
+  gap: 0.5rem;
+}
+.be-card li::before { content: '·'; color: var(--muted); flex-shrink: 0; }
+
+/* ── Rarity row ────────────────────────────────────────────────────────── */
+.rarity-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+.rarity-badge {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  padding: 0.4rem 1rem;
+  border-radius: 20px;
+  border: 1px solid;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────── */
+footer {
+  border-top: 1px solid var(--dim);
+  padding: 2rem;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+footer a { color: var(--teal); text-decoration: none; }
+
+/* ── Divider ───────────────────────────────────────────────────────────── */
+.section-divider {
+  max-width: 1000px;
+  margin: 0 auto;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--dim), transparent);
+}
+</style>
+</head>
+<body>
+
+<!-- ── Nav ────────────────────────────────────────────────────────────── -->
+<nav>
+  <a class="brand" href="#">⚡ TT-Forge Compiletron</a>
+  <a href="#story">Story</a>
+  <a href="#demo">Demo</a>
+  <a href="#backends">Backends</a>
+  <a href="#roguelike">Roguelike</a>
+  <a href="#quickstart">Quick Start</a>
+  <div class="spacer"></div>
+  <a class="gh-link" href="https://github.com/tsingletaryTT/tt-forge-compiletron" target="_blank">GitHub ↗</a>
+</nav>
+
+<!-- ── Hero ───────────────────────────────────────────────────────────── -->
+<section id="hero">
+  <pre class="hero-ascii">
+ ████████╗████████╗      ███████╗ ██████╗ ██████╗  ██████╗ ███████╗
+    ██╔══╝╚══██╔══╝      ██╔════╝██╔═══██╗██╔══██╗██╔════╝ ██╔════╝
+    ██║      ██║         █████╗  ██║   ██║██████╔╝██║  ███╗█████╗
+    ██║      ██║         ██╔══╝  ██║   ██║██╔══██╗██║   ██║██╔══╝
+    ██║      ██║         ██║     ╚██████╔╝██║  ██║╚██████╔╝███████╗
+    ╚═╝      ╚═╝         ╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝</pre>
+
+  <div class="hero-sub">C &nbsp; O &nbsp; M &nbsp; P &nbsp; I &nbsp; L &nbsp; E &nbsp; T &nbsp; R &nbsp; O &nbsp; N</div>
+  <p class="hero-tagline">
+    A roguelike model-compilation game for Tenstorrent Blackhole hardware.
+    Discovers AI models from the wild, compiles them, scores by rarity,
+    and builds a bestiary of everything the silicon has ever learned to run.
+  </p>
+
+  <div class="badge-row">
+    <span class="badge badge-teal">Tenstorrent Blackhole</span>
+    <span class="badge badge-gold">tt-forge · PyTorch</span>
+    <span class="badge badge-pink">XLA · JAX · PJRT</span>
+    <span class="badge badge-green">242 seed models</span>
+    <span class="badge badge-teal">Live HuggingFace discovery</span>
+  </div>
+
+  <div class="cta-row">
+    <a class="btn btn-primary" href="#quickstart">Quick Start</a>
+    <a class="btn btn-secondary" href="#demo">Watch Demo</a>
+    <a class="btn btn-secondary" href="https://github.com/tsingletaryTT/tt-forge-compiletron" target="_blank">GitHub ↗</a>
+  </div>
+
+  <img class="hero-screenshot"
+       src="https://github.com/user-attachments/assets/3e93d7d6-8e02-49f6-92cb-e2d93c6caec2"
+       alt="TT-Forge Compiletron TUI — four chip panels, expedition log, and live scoring"
+       onerror="this.style.display='none'">
+</section>
+
+<!-- ── Story ──────────────────────────────────────────────────────────── -->
+<section id="story">
+  <h2>The Story</h2>
+
+  <p>
+    Tenstorrent ships real silicon — Blackhole chips with enough compute to
+    run the entire modern transformer zoo — but testing which models actually
+    compile requires patience, iteration, and a lot of terminal windows.
+    <strong>Compiletron</strong> started as the answer to one question:
+    <em>"what if the compilation loop were a game?"</em>
+  </p>
+
+  <div class="timeline" style="margin-top:2.5rem">
+
+    <div class="tl-item">
+      <div class="tl-dot tl-dot-teal"></div>
+      <div class="tl-date">Origin</div>
+      <div class="tl-title">compiletron.py — The First Draft</div>
+      <div class="tl-body">
+        A single 300-line script. Four tmux panes. A hard-coded list of
+        101 models from <code>tt-forge-models</code>. Each pane ran
+        <code>forge.compile()</code> in a loop and printed pass/fail.
+        No scoring, no discovery, no state between runs. Blunt and effective.
+      </div>
+    </div>
+
+    <div class="tl-item">
+      <div class="tl-dot tl-dot-pink"></div>
+      <div class="tl-date">The Upgrade</div>
+      <div class="tl-title">expedition.py — Live Discovery + Roguelike Scoring</div>
+      <div class="tl-body">
+        The static list became a <strong>live HuggingFace frontier scanner</strong>:
+        every run discovers newly-published models, filters by download count and
+        quality signals, pre-fetches weights in parallel, then dispatches one model
+        per chip across all available hardware. A roguelike scoring system
+        replaced the binary pass/fail — rarity, newness, streaks, and
+        <em>First Voice</em> (post-compile inference) all add points.
+        A persistent <strong>Bestiary</strong> records every model ever compiled.
+      </div>
+    </div>
+
+    <div class="tl-item">
+      <div class="tl-dot tl-dot-gold"></div>
+      <div class="tl-date">The Interface</div>
+      <div class="tl-title">Textual TUI — Setup → Run → Summary</div>
+      <div class="tl-body">
+        The tmux four-pane layout became a full
+        <strong>Textual TUI</strong> with three screens:
+        <em>Setup</em> (configure chips, backend, filters),
+        <em>Run</em> (live chip panels, expedition log, streaming worker output),
+        and <em>Summary</em> (chip leaderboard, compile-time histogram, new
+        bestiary entries, all-time stats). Every run feels like a dungeon clear.
+      </div>
+    </div>
+
+    <div class="tl-item">
+      <div class="tl-dot tl-dot-green"></div>
+      <div class="tl-date">Dual Backend</div>
+      <div class="tl-title">tt-forge + XLA/PJRT — Two Stacks, One Expedition</div>
+      <div class="tl-body">
+        With the <strong>pjrt-plugin-tt</strong> landing in the Tenstorrent
+        software stack, JAX/Flax models could now compile directly onto
+        Blackhole via the PJRT interface. The XLA backend joined as a
+        first-class citizen: per-chip backend selection, automatic routing
+        (<em>auto</em> mode sends JAX models to XLA and PyTorch to forge),
+        and a <em>mixed</em> mode for side-by-side backend comparison
+        on the same run.
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ── Demo ───────────────────────────────────────────────────────────── -->
+<section id="demo" class="wide" style="padding-left:0;padding-right:0">
+  <h2 style="padding:0 2rem;max-width:1200px;margin-left:auto;margin-right:auto">Live Demo</h2>
+  <div class="player-wrap">
+    <div class="player-bar">
+      <div class="dot dot-r"></div>
+      <div class="dot dot-y"></div>
+      <div class="dot dot-g"></div>
+      <span class="player-title">expedition #007 — 4 chips — seed-only — forge + xla</span>
+    </div>
+    <div id="demo-player"></div>
+  </div>
+  <p class="demo-hint">
+    Scripted demo · 62 seconds · regenerate from hardware with
+    <code style="font-family:var(--mono);font-size:0.78rem;color:var(--teal2)">bash scripts/record_demo.sh</code>
+  </p>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ── Backends ───────────────────────────────────────────────────────── -->
+<section id="backends">
+  <h2>Two Compilation Stacks</h2>
+
+  <p>
+    Compiletron runs both of Tenstorrent's compilation pathways simultaneously.
+    The <code>--backend auto</code> mode routes each model to the right stack
+    based on its framework; <code>mixed</code> mode splits chips evenly for
+    direct comparison.
+  </p>
+
+  <div class="backend-cmp">
+    <div class="be-card forge">
+      <div class="be-label">BACKEND A</div>
+      <h3 style="color:var(--teal)">tt-forge (PyTorch)</h3>
+      <ul>
+        <li>Compiles PyTorch <code>nn.Module</code> graphs via <code>forge.compile()</code></li>
+        <li>Covers the full <code>tt-forge-models</code> seed zoo (230+ models)</li>
+        <li>Transformers, CNNs, GANs, ResNets, ViTs, DQNs — anything PyTorch</li>
+        <li>Output: compiled TorchScript-style graph on TT device</li>
+        <li>Requires: <code>source ~/tt-forge-fe/env/activate</code></li>
+      </ul>
+    </div>
+
+    <div class="be-card xla">
+      <div class="be-label">BACKEND B</div>
+      <h3 style="color:var(--pink)">XLA / JAX (PJRT)</h3>
+      <ul>
+        <li>Compiles Flax/JAX models via <code>jax.jit</code> + PJRT plugin</li>
+        <li>Uses <code>pjrt-plugin-tt</code> — the TT PJRT backend for XLA</li>
+        <li>Covers JAX loaders in <code>tt-forge-models</code> and HF Flax models</li>
+        <li>JIT compilation on first call — XLA traces, then dispatches to TT</li>
+        <li>Requires: <code>~/tt-xla/venv</code> with <code>pjrt-plugin-tt</code></li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 style="margin-top:2rem">From tt-forge to XLA: The PJRT Story</h3>
+  <p>
+    <strong>tt-forge</strong> (formerly <em>TT-Buda</em>) was the first-party
+    compilation framework: take a PyTorch model, lower it through tt-forge's
+    graph passes, and produce a runnable binary for TT hardware. It works, it's
+    battle-tested, and it handles the vast majority of the PyTorch ecosystem.
+  </p>
+  <p>
+    <strong>XLA + PJRT</strong> opened a second door. The PJRT (Plugin Registration
+    and Targeting) interface is the standard plugin contract that XLA-based
+    frameworks (JAX, TensorFlow) use to target hardware backends. Once
+    <code>pjrt-plugin-tt</code> landed, the entire JAX/Flax model ecosystem
+    became compilable on Tenstorrent hardware — including the Flax variants of
+    BERT, GPT-2, T5, and AlexNet that live in <code>tt-forge-models</code>.
+    Three compatibility patches are applied automatically at worker start
+    to handle the pjrt + JAX 0.7.x + Flax 0.8.x interaction.
+  </p>
+
+  <pre><span class="comment"># Select backend at runtime — or let the router decide</span>
+<span class="prompt">$</span> <span class="cmd">python3 expedition.py run --tui --backend forge   </span><span class="comment"># PyTorch only</span>
+<span class="prompt">$</span> <span class="cmd">python3 expedition.py run --tui --backend xla     </span><span class="comment"># JAX/PJRT only</span>
+<span class="prompt">$</span> <span class="cmd">python3 expedition.py run --tui --backend mixed   </span><span class="comment"># even=forge, odd=xla</span>
+<span class="prompt">$</span> <span class="cmd">python3 expedition.py run --tui                   </span><span class="comment"># auto-route per model</span></pre>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ── Roguelike ──────────────────────────────────────────────────────── -->
+<section id="roguelike">
+  <h2>The Roguelike Layer</h2>
+
+  <p>
+    Every model that compiles is a victory. Not all victories are equal.
+    Compiletron borrows from the vocabulary of roguelikes — dungeon crawlers
+    like <em>Nethack</em>, <em>Spelunky</em>, and <em>Caves of Qud</em> —
+    to make each run feel like an expedition into the unknown.
+  </p>
+
+  <div class="card-grid">
+    <div class="card">
+      <h3>★ Rarity Tiers</h3>
+      <p>
+        Each model is classified by HuggingFace download count into a rarity
+        tier. Obscure models that hardly anyone has tried are <strong>Legendary</strong>.
+        Mainstream models are <strong>Common</strong>. Compiling a Legendary is
+        worth 5× the base points.
+      </p>
+      <div class="rarity-row" style="margin-top:0.75rem">
+        <span class="rarity-badge" style="color:var(--gold);border-color:var(--gold)">★★★ Legendary</span>
+        <span class="rarity-badge" style="color:var(--pink);border-color:var(--pink)">★★ Epic</span>
+        <span class="rarity-badge" style="color:var(--teal);border-color:var(--teal)">★ Rare</span>
+        <span class="rarity-badge" style="color:var(--blue);border-color:var(--blue)">◇ Uncommon</span>
+        <span class="rarity-badge" style="color:var(--muted);border-color:var(--muted)">· Common</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>◈ Newness Bonus</h3>
+      <p>
+        Models published in the last 24 hours are <strong>Zero-Day</strong>
+        (+300 pts). Last week is <strong>Hot</strong> (+100 pts).
+        Last month is <strong>Fresh</strong> (+50 pts).
+        Compiling something the day it was published is the highest honour.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>🔥 Streak Multiplier</h3>
+      <p>
+        Each chip earns a streak for consecutive successful compiles. Streaks
+        unlock bonus points. Lose the streak on any failure. Chips compete
+        to maintain the longest run.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>🗣 First Voice</h3>
+      <p>
+        After a successful compile, the worker runs a themed inference pass —
+        feeding a curated prompt from <code>lib/expedition/sampler.py</code>
+        (short fiction, images, questions). The decoder in
+        <code>decoder.py</code> turns raw logits into readable text.
+        First Voice earns +100 pts and a journal entry.
+      </p>
+    </div>
+  </div>
+
+  <h3 style="margin-top:2.5rem">Scoring Reference</h3>
+  <table class="score-table">
+    <thead>
+      <tr>
+        <th>Event</th>
+        <th>Points</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td class="event-name">Base success</td><td class="pts">+200</td><td>Any successful compile</td></tr>
+      <tr><td class="event-name">First-ever compiled</td><td class="pts">×5 bonus</td><td>Not previously in bestiary → ×5 multiplier on all points</td></tr>
+      <tr><td class="event-name">Legendary rarity</td><td class="pts">×2.0</td><td>&lt; 1,000 downloads on HuggingFace</td></tr>
+      <tr><td class="event-name">Epic rarity</td><td class="pts">×1.75</td><td>1K–10K downloads</td></tr>
+      <tr><td class="event-name">Rare rarity</td><td class="pts">×1.5</td><td>10K–100K downloads</td></tr>
+      <tr><td class="event-name">Uncommon rarity</td><td class="pts">×1.2</td><td>100K–1M downloads</td></tr>
+      <tr><td class="event-name">Zero-day newness</td><td class="pts">+300</td><td>Published &lt; 24h ago</td></tr>
+      <tr><td class="event-name">Hot newness</td><td class="pts">+100</td><td>Published &lt; 7 days ago</td></tr>
+      <tr><td class="event-name">Streak (🔥×N)</td><td class="pts">+50×N</td><td>Consecutive successes on same chip</td></tr>
+      <tr><td class="event-name">First Voice</td><td class="pts">+100</td><td>Inference produces meaningful output</td></tr>
+      <tr><td class="event-name">Failure penalty</td><td class="pts">−10</td><td>Compile or inference error</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="margin-top:2.5rem">The Bestiary</h3>
+  <p>
+    <code>data/bestiary.json</code> is the permanent record: every model that
+    has ever compiled on this hardware, with its artifact shape, compile time,
+    First Voice text, chip, and run number. It accumulates across runs and is
+    never overwritten. The chip leaderboard inside tracks all-time point totals
+    per chip — chips compete across every expedition.
+  </p>
+  <p>
+    Per-run journals are written to <code>data/expeditions/run_NNN.md</code>
+    with prose summaries of every First Voice result — a field log of what the
+    hardware has spoken.
+  </p>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ── Architecture ───────────────────────────────────────────────────── -->
+<section id="arch">
+  <h2>Architecture</h2>
+
+  <p>
+    Compiletron is a thin orchestration layer over two independent compilation
+    stacks. The TUI drives everything; workers are subprocesses that stream
+    results back through CSV files.
+  </p>
+
+  <div class="arch-tree">
+<span class="dir">expedition.py</span>             <span class="note"># CLI entry point + queue builder</span>
+<span class="dir">expedition_tui.py</span>         <span class="note"># Textual TUI — SetupScreen · RunScreen · SummaryScreen</span>
+<span class="hi">lib/expedition/</span>
+  <span class="file">expedition_worker.py</span>    <span class="note"># per-chip forge worker (PyTorch → forge.compile)</span>
+  <span class="file">expedition_worker_xla.py</span> <span class="note"># per-chip XLA worker  (JAX → jax.jit → PJRT)</span>
+  <span class="file">router.py</span>               <span class="note"># per-model backend dispatch (auto mode)</span>
+  <span class="file">bestiary.py</span>             <span class="note"># compiled-model database  data/bestiary.json</span>
+  <span class="file">scorer.py</span>               <span class="note"># rarity × newness × streak → points</span>
+  <span class="file">decoder.py</span>             <span class="note"># logits → First Voice text (top-k predictions)</span>
+  <span class="file">sampler.py</span>             <span class="note"># themed inference samples per task type</span>
+  <span class="file">hf_discover.py</span>         <span class="note"># live HuggingFace frontier scanner</span>
+  <span class="file">hud.py</span>                 <span class="note"># per-chip real-time state tracker</span>
+  <span class="file">notes.py</span>               <span class="note"># expedition journal writer</span>
+<span class="hi">data/</span>
+  <span class="file">bestiary.json</span>          <span class="note"># all-time compiled model records</span>
+  <span class="file">expeditions/</span>           <span class="note"># per-run markdown journals</span>
+<span class="hi">scripts/</span>
+  <span class="file">record_demo.sh</span>         <span class="note"># asciinema recording with tmux automation</span>
+  <span class="file">gen_demo_cast.py</span>       <span class="note"># scripted demo cast generator</span>
+  </div>
+
+  <div class="card-grid" style="margin-top:1.5rem">
+    <div class="card">
+      <h3>Queue Building</h3>
+      <p>
+        Each run scans the <code>tt-forge-models</code> zoo (242 loaders after
+        filtering ONNX and IRD-locked models) and the HuggingFace Hub for
+        recently-created models. One model per author-family per run.
+        Seed models already in the bestiary are skipped unless
+        <code>--staples</code> forces a re-run.
+      </p>
+    </div>
+    <div class="card">
+      <h3>Per-Chip Workers</h3>
+      <p>
+        Each chip gets its own subprocess — <code>expedition_worker.py</code>
+        (forge) or <code>expedition_worker_xla.py</code> (XLA) — launched by
+        the TUI with its device assignment. Results stream back through
+        <code>/tmp/expedition_results_chipN.csv</code>. Chips never share state.
+      </p>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ── Quick Start ────────────────────────────────────────────────────── -->
+<section id="quickstart">
+  <h2>Quick Start</h2>
+
+  <pre><span class="comment"># Clone and install</span>
+<span class="prompt">$</span> <span class="cmd">git clone git@github.com:tsingletaryTT/tt-forge-compiletron.git</span>
+<span class="prompt">$</span> <span class="cmd">cd tt-forge-compiletron</span>
+<span class="prompt">$</span> <span class="cmd">pip install -r requirements.txt</span>
+
+<span class="comment"># Activate the tt-forge environment (required for forge backend)</span>
+<span class="prompt">$</span> <span class="cmd">source ~/tt-forge-fe/env/activate</span>
+
+<span class="comment"># Launch the TUI — auto-detects chips, discovers live HF models</span>
+<span class="prompt">$</span> <span class="cmd">python3 expedition.py run --tui</span>
+
+<span class="comment"># Seed-only run: 4 chips, 1 model per chip, no HF download</span>
+<span class="prompt">$</span> <span class="cmd">python3 expedition.py run --tui --seed-only --limit 4 --chips 4 --no-predownload</span>
+
+<span class="comment"># XLA backend (JAX/PJRT) — requires ~/tt-xla/venv</span>
+<span class="prompt">$</span> <span class="cmd">python3 expedition.py run --tui --backend xla --seed-only</span>
+
+<span class="comment"># Mixed mode: even chips = forge, odd chips = XLA</span>
+<span class="prompt">$</span> <span class="cmd">python3 expedition.py run --tui --backend mixed</span>
+
+<span class="comment"># Staples: re-run proven seed models (regression test after forge update)</span>
+<span class="prompt">$</span> <span class="cmd">python3 expedition.py run --tui --staples --limit 8</span>
+
+<span class="comment"># High-quality frontier: min 1000 downloads, max 7B params</span>
+<span class="prompt">$</span> <span class="cmd">python3 expedition.py run --tui --min-downloads 1000 --max-model-params 7</span></pre>
+
+  <h3 style="margin-top:2rem">XLA Environment Setup</h3>
+  <pre><span class="comment"># The XLA worker uses ~/tt-xla/venv — set it up once:</span>
+<span class="prompt">$</span> <span class="cmd">git clone https://github.com/tenstorrent/tt-xla ~/tt-xla</span>
+<span class="prompt">$</span> <span class="cmd">python3.12 -m venv ~/tt-xla/venv</span>
+<span class="prompt">$</span> <span class="cmd">cd ~/tt-xla && pip install -e python_package/pjrt_plugin_tt</span>
+<span class="prompt">$</span> <span class="cmd">~/tt-xla/venv/bin/pip install jax jaxlib flax transformers</span></pre>
+
+  <h3 style="margin-top:2rem">Record a Demo</h3>
+  <pre><span class="comment"># Capture a live expedition run as an asciinema cast</span>
+<span class="prompt">$</span> <span class="cmd">bash scripts/record_demo.sh</span>
+<span class="comment"># Outputs docs/demo.cast — embed with the asciinema player above</span>
+
+<span class="comment"># Or regenerate the scripted placeholder (no hardware required)</span>
+<span class="prompt">$</span> <span class="cmd">python3 scripts/gen_demo_cast.py > docs/demo.cast</span></pre>
+</section>
+
+<!-- ── Footer ─────────────────────────────────────────────────────────── -->
+<footer>
+  <p>
+    TT-Forge Compiletron ·
+    <a href="https://github.com/tsingletaryTT/tt-forge-compiletron">github.com/tsingletaryTT/tt-forge-compiletron</a>
+    · Built on <a href="https://tenstorrent.com">Tenstorrent</a> Blackhole silicon
+  </p>
+  <p style="margin-top:0.4rem">
+    tt-forge · pjrt-plugin-tt · JAX · Flax · Textual · HuggingFace Hub
+  </p>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/asciinema-player@3.7.0/dist/bundle/asciinema-player.min.js"></script>
+<script>
+  AsciinemaPlayer.create('./demo.cast', document.getElementById('demo-player'), {
+    cols: 180,
+    rows: 48,
+    speed: 1.25,
+    theme: 'solarized-dark',
+    autoPlay: false,
+    loop: true,
+    fit: 'width',
+    controls: true,
+    terminalLineHeight: 1.3,
+    terminalFontFamily: "'JetBrains Mono', 'Courier New', monospace",
+    terminalFontSize: '13px',
+  });
+</script>
+</body>
+</html>
