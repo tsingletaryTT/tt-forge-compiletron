@@ -25,7 +25,8 @@ cd "$(dirname "$0")/.."
 CAST="docs/demo.cast"
 SESSION="compiletron-demo-$$"
 COLS=180
-ROWS=48
+ROWS=50
+MODELS_PER_CHIP=6   # 6 per chip = 24 total across 4 chips
 
 # ── preflight ────────────────────────────────────────────────────────────────
 for dep in asciinema tmux python3; do
@@ -47,7 +48,8 @@ echo "║  TT-Forge Compiletron — Demo Recording"
 echo "║"
 echo "║  Terminal: ${COLS}×${ROWS}"
 echo "║  Output:   $CAST"
-echo "║  Run:      --seed-only --limit 4 --chips 4 --no-predownload"
+echo "║  Run:      --seed-only --limit 24 --chips 4 --no-predownload"
+echo "║            (6 models per chip)"
 echo "╚══════════════════════════════════════════════════════════════"
 echo ""
 echo "The TUI will launch automatically."
@@ -69,7 +71,7 @@ asciinema rec "$CAST" \
 
         # Launch the TUI in the session.
         tmux send-keys -t '"$SESSION"' \
-            \"python3 expedition.py run --tui --seed-only --limit 4 --chips 4 --no-predownload\" \
+            \"python3 expedition.py run --tui --seed-only --limit 24 --chips 4 --no-predownload\" \
             Enter
 
         # After 8 seconds the Setup screen will have rendered.
