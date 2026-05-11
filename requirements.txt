@@ -12,6 +12,7 @@
 
 # TUI
 textual>=0.59.0
+rich>=13.0.0          # used directly (Panel, Table, Text) — textual pulls it transitively
 
 # HuggingFace model discovery
 huggingface_hub>=0.20.0

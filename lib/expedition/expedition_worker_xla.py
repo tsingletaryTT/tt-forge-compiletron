@@ -628,9 +628,34 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
     try:
         device = _setup_jax(chip_id)
     except Exception as e:
-        print(f"{RED}✗ JAX/TT device init failed: {e}{RESET}")
+        err_short = str(e)[:200]
+        print(f"{RED}✗ JAX/TT device init failed: {err_short}{RESET}")
         print(f"{DIM}  Is pjrt-plugin-tt installed in this Python environment?{RESET}")
         print(f"{DIM}  Run: xla-venv/bin/pip show pjrt-plugin-tt{RESET}")
+        # Write failure rows for every model in this dispatch so the TUI gets
+        # a proper result instead of silence (which leaves the chip stuck).
+        try:
+            if model_json_path:
+                _fail_items = [_load_single_model_xla(model_json_path)]
+            elif queue_path:
+                _fail_items = _load_queue(queue_path)
+            else:
+                _fail_items = []
+            if _fail_items:
+                Path(results_path).parent.mkdir(parents=True, exist_ok=True)
+                _empty = not Path(results_path).exists() or Path(results_path).stat().st_size == 0
+                with open(results_path, "a", newline="") as _f:
+                    _w = csv.DictWriter(_f, fieldnames=_CSV_FIELDNAMES, extrasaction="ignore")
+                    if _empty:
+                        _w.writeheader()
+                    for _it in _fail_items:
+                        _w.writerow({
+                            "model": _it.model_id, "status": "failed",
+                            "error": f"XLA init failed: {err_short}", "pts": -10,
+                            "backend": BACKEND_LABEL,
+                        })
+        except Exception:
+            pass
         sys.exit(1)
 
     bestiary = Bestiary(path=bestiary_path)
