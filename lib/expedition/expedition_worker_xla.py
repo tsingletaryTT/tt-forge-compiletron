@@ -5,7 +5,7 @@ Per-chip XLA expedition worker. Runs the JAX/PJRT compile pipeline for each
 model in this chip's queue, then pipes results through decoder → scorer → hud.
 
 Invoked by the expedition orchestrator (TUI or CLI) as:
-  xla-venv/bin/python3 lib/expedition/expedition_worker_xla.py \
+  ~/tt-xla/venv/bin/python3 lib/expedition/expedition_worker_xla.py \
       --chip N --run R --bestiary data/bestiary.json \
       --queue /tmp/expedition_queue_chipN.json \
       --results /tmp/expedition_results_chipN.csv
@@ -286,9 +286,14 @@ def _compile_model_xla(
                     return out[0]
                 return out
         else:
-            # Flax Linen .apply() style.
+            # Flax Linen .apply() style. Supports two input conventions:
+            # - dict inputs (e.g. {"pixel_values": ...}): unpacked as kwargs
+            # - raw array inputs (e.g. AlexNet): passed positionally with train=False
             def forward(params, inputs):
-                out = model.apply({"params": params}, **inputs)
+                if isinstance(inputs, dict):
+                    out = model.apply({"params": params}, **inputs)
+                else:
+                    out = model.apply({"params": params}, inputs, train=False)
                 if hasattr(out, "logits") and out.logits is not None:
                     return out.logits
                 if isinstance(out, (tuple, list)):
@@ -570,21 +575,74 @@ def _build_loader_xla(item: QueueItem):
 
         def loader():
             import jax.numpy as jnp
-            model = instance.load_model()
-            params = model.params if hasattr(model, "params") else {}
+
+            # Patch FlaxPreTrainedModel.from_pretrained to default _do_init=False.
+            # Without this the seed loaders' from_pretrained runs eager Flax init
+            # which hits SliceOp failures on TT hardware (XlaRuntimeError code 13).
+            # With _do_init=False, from_pretrained returns a (model, params) tuple
+            # instead of a model with .params — handle both shapes below.
+            _FPTM = None
+            _orig = None
+            try:
+                from transformers.modeling_flax_utils import FlaxPreTrainedModel as _FPTM
+                _orig = _FPTM.from_pretrained
+                _orig_func = _orig.__func__
+                @classmethod  # type: ignore[misc]
+                def _patched(cls, *args, **kw):
+                    kw.setdefault("_do_init", False)
+                    return _orig_func(cls, *args, **kw)
+                _FPTM.from_pretrained = _patched
+            except Exception:
+                pass
+
+            try:
+                result = instance.load_model()
+            finally:
+                if _FPTM is not None and _orig is not None:
+                    _FPTM.from_pretrained = _orig
+
+            if isinstance(result, tuple):
+                model, params = result
+            else:
+                model = result
+                params = getattr(model, "params", {})
+
+            # For custom Linen models (e.g. AlexNet) that initialize parameters
+            # with a random key instead of from_pretrained, params will be empty
+            # here. Fall back to load_parameters() which runs model.init().
+            if not params and hasattr(instance, "load_parameters"):
+                try:
+                    params = instance.load_parameters()
+                except Exception:
+                    pass
+
             tokenizer = instance._load_tokenizer() if hasattr(instance, "_load_tokenizer") else None
 
-            # Infer input type from loader config or task name.
-            task_lower = item.task.lower()
-            if "image" in task_lower or "vision" in task_lower or "classification" in task_lower:
-                def make_input(device):
-                    return {"pixel_values": jnp.zeros((1, 3, 224, 224), dtype=jnp.float32)}
-            elif "audio" in task_lower or "speech" in task_lower:
-                def make_input(device):
-                    return {"input_features": jnp.zeros((1, 80, 3000), dtype=jnp.float32)}
+            # Prefer the loader's own load_inputs() for sample data — custom Linen
+            # models (e.g. AlexNet) use positional raw arrays, not HF-style dicts.
+            # Fall back to task-name heuristics for loaders without load_inputs().
+            _sample_inputs = None
+            if hasattr(instance, "load_inputs"):
+                try:
+                    _sample_inputs = instance.load_inputs()
+                except Exception:
+                    pass
+
+            if _sample_inputs is not None:
+                def make_input(device, _si=_sample_inputs):
+                    return _si
             else:
-                def make_input(device):
-                    return {"input_ids": jnp.ones((1, 32), dtype=jnp.int32)}
+                # Fallback: infer from task name.
+                task_lower = item.task.lower()
+                if "image" in task_lower or "vision" in task_lower or "classification" in task_lower:
+                    def make_input(device):
+                        return {"pixel_values": jnp.zeros((1, 3, 224, 224), dtype=jnp.float32)}
+                elif "audio" in task_lower or "speech" in task_lower:
+                    def make_input(device):
+                        return {"input_features": jnp.zeros((1, 80, 3000), dtype=jnp.float32)}
+                else:
+                    def make_input(device):
+                        return {"input_ids": jnp.ones((1, 32), dtype=jnp.int32)}
 
             return model, params, tokenizer, make_input
 

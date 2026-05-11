@@ -318,6 +318,15 @@ def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = Fals
             if "onnx" in parts_lower:
                 continue
 
+            # Skip loaders that download from the Tenstorrent internal S3 bucket
+            # (tt-ci-models-private). These require the IRD_LF_CACHE server to be
+            # reachable and will always fail in external/dev environments.
+            try:
+                if "s3://tt-ci-models-private" in loader_py.read_text(encoding="utf-8", errors="ignore"):
+                    continue
+            except OSError:
+                pass
+
             # Framework filter: skip loaders that don't match the requested framework.
             # "pytorch" skips paths containing /jax/, "jax" skips paths without /jax/.
             if framework is not None:

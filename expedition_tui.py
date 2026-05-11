@@ -1026,7 +1026,7 @@ class RunScreen(Screen):
             visible = str(chip_id)
 
         if chip_be == "xla":
-            python_exe  = str(self._project_dir / "xla-venv" / "bin" / "python3")
+            python_exe  = str(Path.home() / "tt-xla" / "venv" / "bin" / "python3")
             worker_path = str(self._project_dir / "lib" / "expedition" / "expedition_worker_xla.py")
             env = {k: v for k, v in os.environ.items() if k != "TT_METAL_HOME"}
             env.update({
