@@ -927,6 +927,31 @@ class RunScreen(Screen):
         # Seed the dispatcher — each free chip gets its first model.
         self._dispatch_next()
 
+        # Watchdog: if the reactive dispatch misses the "all done" condition
+        # (e.g. a @work coroutine raised before calling _on_chip_free), a
+        # periodic timer detects when all status files say done=1 and fires
+        # _on_all_done directly.
+        self.set_interval(2.0, self._watchdog_check)
+
+    def _watchdog_check(self) -> None:
+        """Periodic fallback: if all chips report done but the dispatcher
+        never reached _on_all_done (e.g. due to a swallowed exception in
+        a @work coroutine), detect it here and fire the transition."""
+        if self._all_done:
+            return
+        # Only trigger once pool is drained and no mesh is assembling.
+        if self._model_pool or self._mesh_holding:
+            return
+        # Check that every chip's status file says done=1.
+        all_done = all(
+            _read_status(cid).get("done", "0") == "1"
+            for cid in range(self.num_chips)
+        )
+        if all_done:
+            # Forcefully free every chip so _on_all_done can proceed.
+            self._free_chips = set(range(self.num_chips))
+            self._on_all_done()
+
     def _get_decision(self, model: dict):
         """Compute a DispatchDecision for model, respecting self.backend override."""
         from lib.expedition.router import route_model, DispatchDecision
