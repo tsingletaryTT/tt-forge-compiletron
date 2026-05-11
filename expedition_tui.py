@@ -431,6 +431,7 @@ class SetupScreen(Screen):
         self._backend      = "auto"   # auto | forge | xla | mixed
         self._discovering  = False  # True while HF discovery / queue-build is running
         self._setup_done   = False  # True once queues are built (no re-run)
+        self._autostart_secs = 4   # Countdown seconds before auto-start (0 = disabled)
 
     def on_mount(self) -> None:
         app = self.app
@@ -450,6 +451,22 @@ class SetupScreen(Screen):
         self._staples              = app.staples
         self._backend              = getattr(app, "backend", "auto")
         self._refresh_config()
+        # Auto-start countdown: fires every second; starts expedition when it hits 0.
+        if self._autostart_secs > 0:
+            self._autostart_timer = self.set_interval(1.0, self._autostart_tick)
+
+    def _autostart_tick(self) -> None:
+        """Decrement the auto-start countdown and fire when it reaches zero."""
+        if self._discovering or self._setup_done:
+            self._autostart_secs = 0
+            return
+        self._autostart_secs -= 1
+        if self._autostart_secs <= 0:
+            self._autostart_secs = 0
+            self._autostart_timer.stop()
+            self.action_start()
+        else:
+            self._refresh_config()
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -490,11 +507,12 @@ class SetupScreen(Screen):
             "mixed": "[bold yellow]MIXED[/]",
         }.get(self._backend, self._backend)
 
-        status = (
-            "[bold yellow]● Ready — press ENTER[/]"
-            if not self._discovering else
-            "[bold cyan]⚙ Discovering…[/]"
-        )
+        if self._discovering:
+            status = "[bold cyan]⚙ Discovering…[/]"
+        elif self._autostart_secs > 0:
+            status = f"[bold yellow]● ENTER to start  [dim](auto in {self._autostart_secs}s)[/][/]"
+        else:
+            status = "[bold yellow]● Ready — press ENTER[/]"
 
         lines = [
             f"[bold cyan]⚡ EXPEDITION {rn}[/]",
@@ -567,6 +585,11 @@ class SetupScreen(Screen):
         if self._discovering or self._setup_done:
             return
         self._discovering = True
+        self._autostart_secs = 0
+        try:
+            self._autostart_timer.stop()
+        except Exception:
+            pass
         self._refresh_config()
         log = self.query_one("#setup-log", RichLog)
         log.write("[bold cyan]⚡ Starting expedition setup…[/]")
@@ -1445,7 +1468,7 @@ class SummaryScreen(Screen):
         # ── Compile-time histogram + success rate ─────────────────────────────
         if all_times:
             buckets = [
-                (" < 5s",  [t for t in all_times if t <  5]),
+                ("  < 5s", [t for t in all_times if t <  5]),
                 (" 5-15s", [t for t in all_times if  5 <= t < 15]),
                 ("15-30s", [t for t in all_times if 15 <= t < 30]),
                 (" > 30s", [t for t in all_times if t >= 30]),

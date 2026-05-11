@@ -2,34 +2,45 @@
 # scripts/record_demo.sh
 #
 # Record a live expedition demo with asciinema.
-# Uses tmux to automate the TUI keypress (Enter to start) so the
-# recording is hands-free after you run this script.
+#
+# The TUI SetupScreen auto-starts after 4 seconds if Enter isn't pressed,
+# so no tmux key injection is needed — just launch asciinema directly.
+# The recording ends when the user presses q on the SummaryScreen, or
+# when asciinema's command exits naturally.
 #
 # Requirements:
 #   - asciinema installed  (sudo apt install asciinema)
-#   - tmux installed       (sudo apt install tmux)
 #   - forge env activated  (source ~/tt-forge-fe/env/activate)
-#   - XLA venv exists      (~/tt-xla/venv)
 #   - 4 Tenstorrent chips connected
 #
-# Output: docs/demo.cast   (replaces the generated placeholder)
+# Output: docs/demo_raw.cast (compress separately with compress_cast.py)
 #
 # Usage:
 #   cd /path/to/tt-forge-compiletron
 #   source ~/tt-forge-fe/env/activate
-#   bash scripts/record_demo.sh
+#   bash scripts/record_demo.sh [--models N]   # default 4 per chip = 16 total
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-CAST="docs/demo.cast"
-SESSION="compiletron-demo-$$"
-COLS=180
+CAST="docs/demo_raw.cast"
+COLS=178
 ROWS=50
-MODELS_PER_CHIP=6   # 6 per chip = 24 total across 4 chips
+CHIPS=4
+MODELS_PER_CHIP=${MODELS_PER_CHIP:-4}
+
+# Allow --models N override
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --models) MODELS_PER_CHIP="$2"; shift 2 ;;
+        *) echo "Unknown arg: $1"; exit 1 ;;
+    esac
+done
+
+TOTAL=$(( CHIPS * MODELS_PER_CHIP ))
 
 # ── preflight ────────────────────────────────────────────────────────────────
-for dep in asciinema tmux python3; do
+for dep in asciinema python3; do
     command -v "$dep" >/dev/null || { echo "ERROR: $dep not found"; exit 1; }
 done
 
@@ -40,22 +51,17 @@ fi
 
 mkdir -p docs
 
-# Kill any leftover session from a previous aborted run.
-tmux kill-session -t "$SESSION" 2>/dev/null || true
-
 echo "╔══════════════════════════════════════════════════════════════"
 echo "║  TT-Forge Compiletron — Demo Recording"
 echo "║"
 echo "║  Terminal: ${COLS}×${ROWS}"
 echo "║  Output:   $CAST"
-echo "║  Run:      --seed-only --limit 24 --chips 4 --no-predownload"
-echo "║            (6 models per chip)"
+echo "║  Run:      --seed-only --limit ${TOTAL} --chips ${CHIPS} --no-predownload"
+echo "║            (${MODELS_PER_CHIP} models per chip)"
 echo "╚══════════════════════════════════════════════════════════════"
 echo ""
-echo "The TUI will launch automatically."
-echo "  • Setup screen appears   → waits 8 seconds → presses Enter"
-echo "  • Expedition runs        → 1 model per chip"
-echo "  • Summary screen appears → recording stops after 15 seconds"
+echo "The TUI auto-starts after 4 seconds (or press Enter immediately)."
+echo "Press q on the Summary screen to end the recording."
 echo ""
 echo "Press Ctrl-C to abort."
 echo ""
@@ -63,40 +69,19 @@ sleep 2
 
 # ── record ───────────────────────────────────────────────────────────────────
 asciinema rec "$CAST" \
+    --overwrite \
     --title "TT-Forge Compiletron — Expedition Demo" \
     --cols "$COLS" --rows "$ROWS" \
-    --command "bash -c '
-        # Create a detached tmux session at the right size.
-        tmux new-session -d -s '"$SESSION"' -x $((COLS - 2)) -y $((ROWS - 2))
-
-        # Launch the TUI in the session.
-        tmux send-keys -t '"$SESSION"' \
-            \"python3 expedition.py run --tui --seed-only --limit 24 --chips 4 --no-predownload\" \
-            Enter
-
-        # After 8 seconds the Setup screen will have rendered.
-        # Send Enter to start the expedition, then q after completion.
-        (
-            sleep 8
-            tmux send-keys -t '"$SESSION"' \"\" Enter
-            # Wait long enough for 4 models to compile (max ~90s for Allam).
-            sleep 120
-            # Press q to quit from the Summary screen.
-            tmux send-keys -t '"$SESSION"' \"q\" \"\"
-        ) &
-        HELPER_PID=\$!
-
-        # Attach so asciinema captures the TUI output.
-        tmux attach-session -t '"$SESSION"' || true
-
-        kill \$HELPER_PID 2>/dev/null || true
-    '"
+    --command "python3 expedition.py run --tui \
+        --seed-only \
+        --limit ${TOTAL} \
+        --chips ${CHIPS} \
+        --no-predownload"
 
 echo ""
-echo "Recording complete: $CAST"
+echo "Raw recording: $CAST"
 echo ""
-echo "Play back:   asciinema play $CAST"
-echo "Upload:      asciinema upload $CAST"
+echo "Post-process (smooth + compress):"
+echo "  python3 scripts/compress_cast.py $CAST docs/demo.cast --max-idle 1.2 --min-gap 0.02"
 echo ""
-echo "To regenerate the scripted placeholder instead:"
-echo "  python3 scripts/gen_demo_cast.py > docs/demo.cast"
+echo "Play back raw:  asciinema play $CAST"
