@@ -541,6 +541,18 @@ def build_queues(
                 canary = dict(canary)   # copy so we can annotate safely
                 seed_items = [canary]
 
+        # Prune seed models that have proven permanently broken even as seeds.
+        # forge_internal means forge segfaulted on this model; keep retrying
+        # transient failures but stop offering seeds that always crash the compiler.
+        _SEED_PERM_FAIL_CATS = {"forge_internal", "unsupported_arch", "loader_missing", "missing_dependency"}
+        seed_perm_fail = {
+            mid for mid, info in bestiary.failed.items()
+            if info.get("error_category") in _SEED_PERM_FAIL_CATS
+            and info.get("attempts", 0) >= 2
+        }
+        if seed_perm_fail:
+            seed_items = [it for it in seed_items if it["model_id"] not in seed_perm_fail]
+
         _section(f"FORGE MODELS  ({len(seed_items)} seed)")
         for item in seed_items:
             _model_row(item)

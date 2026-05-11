@@ -157,7 +157,9 @@ def _print_rarity_reveal(model_id: str, rarity: str, newness: str,
     if badges:
         print("  " + "  ".join(badges))
 
-    short_name = model_id.split("/")[-1]
+    _BACKENDS = {"pytorch", "jax", "onnx", "tensorflow", "flax", "paddle", "paddlepaddle"}
+    parts = model_id.split("/")
+    short_name = parts[0] if parts[-1].lower() in _BACKENDS else parts[-1]
     font = "small" if len(short_name) > 25 else "standard"
     try:
         import pyfiglet
@@ -738,7 +740,9 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
         hud.set_current(item.model_id, idx)
         hud.write_status()
         s = hud.state
-        short_name = item.model_id.split("/")[-1][:24]
+        _xla_parts = item.model_id.split("/")
+        _xla_be = {"pytorch","jax","onnx","tensorflow","flax","paddle","paddlepaddle"}
+        short_name = (_xla_parts[0] if _xla_parts[-1].lower() in _xla_be else _xla_parts[-1])[:24]
         _set_pane_title(
             f"C{chip_id}·XLA [{idx}/{s.total_models}] {short_name}"
             f"  ✓{s.successes} ✗{s.failures}  {s.pts}pts"

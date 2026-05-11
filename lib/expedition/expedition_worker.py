@@ -164,8 +164,15 @@ def _print_rarity_reveal(model_id: str, rarity: str, newness: str,
     if badges:
         print("  " + "  ".join(badges))
 
-    # Use the portion after the last "/" as the display name for the banner.
-    short_name = model_id.split("/")[-1]
+    # Seed model IDs use "name/task/backend" (e.g. "bge_1_5/embedding_generation/pytorch").
+    # split("/")[-1] would give "pytorch" for those.  Strip known backend suffixes and
+    # use the first path component, which is always the actual model name.
+    _BACKENDS = {"pytorch", "jax", "onnx", "tensorflow", "flax", "paddle", "paddlepaddle"}
+    parts = model_id.split("/")
+    if parts[-1].lower() in _BACKENDS:
+        short_name = parts[0]
+    else:
+        short_name = parts[-1]
     # Switch to "small" font for very long names to avoid terminal wrapping.
     font = "small" if len(short_name) > 25 else "standard"
     try:
@@ -654,7 +661,9 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
         hud.set_current(item.model_id, idx)
         hud.write_status()
         s = hud.state
-        short_name = item.model_id.split("/")[-1][:24]
+        _BACKENDS = {"pytorch", "jax", "onnx", "tensorflow", "flax", "paddle", "paddlepaddle"}
+        _parts = item.model_id.split("/")
+        short_name = (_parts[0] if _parts[-1].lower() in _BACKENDS else _parts[-1])[:24]
         _set_pane_title(
             f"C{chip_id} [{idx}/{s.total_models}] {short_name}"
             f"  ✓{s.successes} ✗{s.failures}  {s.pts}pts"
