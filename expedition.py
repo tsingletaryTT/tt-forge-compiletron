@@ -566,15 +566,19 @@ def build_queues(
                                        proven_authors=proven_authors)
 
         # Exclude models whose failure history shows they cannot succeed.
-        # Three buckets of permanent failure:
+        # Permanent-failure categories (skip immediately regardless of attempt count):
         #   unsupported_arch     — architecture not in installed Transformers; won't load
         #   loader_missing       — build_dynamic_loader() can't trace this pipeline type
-        #   missing_dependency   — required optional package (mamba-ssm etc.) not installed
+        #   missing_dependency   — required optional package (mamba-ssm, FlagEmbedding…)
+        #   xla_runtime_error    — XLA/PJRT crash (Error code 13 etc.) — persistent HW issue
         # Plus a catch-all: 3+ attempts of any error OTHER than tracer_output_type.
-        # tracer_output_type is exempted because the new _LogitsWrapper retry in
-        # _compile_model is designed to fix exactly that class of failure — models
-        # that previously racked up tracer errors deserve a fresh shot.
-        _PERM_FAIL_CATS = {"unsupported_arch", "loader_missing", "missing_dependency"}
+        # tracer_output_type is exempted because the _LogitsWrapper retry in
+        # _compile_model is designed to fix exactly that class — those models deserve
+        # a fresh shot.
+        _PERM_FAIL_CATS = {
+            "unsupported_arch", "loader_missing",
+            "missing_dependency", "xla_runtime_error",
+        }
         perm_fail_ids = {
             mid for mid, info in bestiary.failed.items()
             if info.get("error_category") in _PERM_FAIL_CATS

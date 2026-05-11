@@ -72,6 +72,23 @@ _ERROR_RULES: list[tuple[str, str, str, str]] = [
      "missing_dependency",
      "Missing optional dependency",
      "fix: pip install the required package or exclude these model types"),
+    # Raw ModuleNotFoundError / ImportError for packages that aren't in the venv
+    # (e.g. FlagEmbedding, flash-attn, apex).  Distinct from the above because
+    # these come from the model code itself, not from transformers' guards.
+    ("modulenot",
+     "missing_dependency",
+     "Missing optional dependency",
+     "fix: pip install the missing package or blacklist this model family"),
+    # XLA/JAX runtime crash — usually PJRT device init or compile failure.
+    # Error code 13 = INTERNAL, code 8 = RESOURCE_EXHAUSTED, etc.
+    ("xlaruntimeerror",
+     "xla_runtime_error",
+     "XLA runtime error",
+     "bug: check XLA/PJRT init; may need tt-xla venv rebuild or chip reset"),
+    ("jaxruntimeerror",
+     "xla_runtime_error",
+     "XLA runtime error",
+     "bug: check XLA/PJRT init; may need tt-xla venv rebuild or chip reset"),
     # Forge missing op — model uses a PyTorch operator forge hasn't implemented
     ("are not implemented",
      "forge_missing_op",
@@ -434,12 +451,25 @@ class Bestiary:
           - Missing file (first run): returns empty dicts.
           - Corrupt/truncated JSON: falls back to empty state rather than crashing.
           - OS read errors (permissions, etc.): same fallback.
+
+        Also re-runs classification on any failed entry that is still categorised
+        as "other" — this upgrades stale entries whenever a new _ERROR_RULES entry
+        is added without needing a separate migration script.
         """
         if self.path.exists():
             try:
                 data = json.loads(self.path.read_text(encoding="utf-8"))
                 for key in ("compiled", "failed", "chip_totals"):
                     data.setdefault(key, {})
+                # Re-classify stale "other" entries so new rules take effect.
+                reclassified = 0
+                for entry in data["failed"].values():
+                    if entry.get("error_category", "other") == "other":
+                        err = entry.get("last_error", "")
+                        new_cat = _classify_error(err)[0]
+                        if new_cat != "other":
+                            entry["error_category"] = new_cat
+                            reclassified += 1
                 return data
             except (json.JSONDecodeError, OSError):
                 pass

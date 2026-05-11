@@ -132,9 +132,14 @@ a:hover { color: var(--teal2); }
 }
 
 .hero-ascii {
-  font-family: var(--mono);
+  /* System monospace only — web fonts like JetBrains Mono may lack box-drawing
+     glyphs (█ ╗ ╔ ╚ ═) or render them at a different advance-width than ASCII,
+     causing 1-px staircasing across rows.  Courier New/Consolas/monospace always
+     render these characters at a consistent cell width. */
+  font-family: 'Courier New', Consolas, 'Lucida Console', monospace;
   font-size: clamp(0.45rem, 1.1vw, 0.75rem);
   line-height: 1.15;
+  letter-spacing: 0;
   color: var(--teal);
   text-shadow: 0 0 20px rgba(79,209,197,0.5);
   white-space: pre;

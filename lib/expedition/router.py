@@ -28,6 +28,13 @@ _FORGE_FATAL_CATEGORIES: frozenset[str] = frozenset({
     "forge_internal",
 })
 
+# The XLA runtime crashing is not the model's fault but it IS a persistent
+# environment failure for that model+chip combo.  Two or more xla_runtime_error
+# failures fall back to forge so we stop burning retries on a broken XLA path.
+_XLA_FATAL_CATEGORIES: frozenset[str] = frozenset({
+    "xla_runtime_error",
+})
+
 
 @dataclass
 class DispatchDecision:
@@ -48,6 +55,7 @@ def route_model(
     Priority order (first match wins):
       1. library == "jax" or "flax" → xla, confidence=0.92, reason="jax-native"
       2. ≥2 forge fatal failures in bestiary → xla, confidence=0.75, reason="forge-failure-history"
+      2b. ≥2 XLA fatal failures (xla_runtime_error) → forge, confidence=0.70, reason="xla-failure-history"
       3. model_type in _XLA_AFFINITY_TYPES → xla, confidence=0.68, reason="arch-xla-affinity"
       4. default → forge, confidence=0.60, reason="default"
 
@@ -86,6 +94,15 @@ def route_model(
         confidence = 0.75
         reason     = "forge-failure-history"
 
+    # Priority 2b: XLA has failed this model with a runtime crash — fall back to
+    # forge.  Overrides the arch-affinity XLA preference below so a model like
+    # gpt2 (arch-affinity → XLA) stops being routed to a broken XLA path after
+    # two confirmed XLA runtime failures.
+    elif _has_xla_fatal_history(model_id, bestiary):
+        backend    = "forge"
+        confidence = 0.70
+        reason     = "xla-failure-history"
+
     # Priority 3: Architecture is known to work well on XLA.
     elif model_type in _XLA_AFFINITY_TYPES:
         backend    = "xla"
@@ -113,5 +130,15 @@ def _has_forge_fatal_history(model_id: str, bestiary: Bestiary) -> bool:
     if not entry:
         return False
     if entry.get("error_category") not in _FORGE_FATAL_CATEGORIES:
+        return False
+    return int(entry.get("attempts", 0)) >= 2
+
+
+def _has_xla_fatal_history(model_id: str, bestiary: Bestiary) -> bool:
+    """Return True if this model has >=2 XLA-fatal failures (e.g. runtime crashes)."""
+    entry = bestiary.failed.get(model_id)
+    if not entry:
+        return False
+    if entry.get("error_category") not in _XLA_FATAL_CATEGORIES:
         return False
     return int(entry.get("attempts", 0)) >= 2
