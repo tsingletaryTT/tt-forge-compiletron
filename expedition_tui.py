@@ -866,7 +866,7 @@ class RunScreen(Screen):
     #rally-banner {
         display: none;
         width: 3fr;
-        height: 1fr;
+        height: 100%;
     }
     """
 

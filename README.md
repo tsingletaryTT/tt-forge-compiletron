@@ -240,7 +240,7 @@ bash scripts/record_demo.sh
 
 # Or manually
 asciinema rec docs/demo_raw.cast --overwrite \
-    --cols 178 --rows 50 \
+    --cols 220 --rows 58 \
     --command "python3 expedition.py run --tui \
         --seed-only --limit 16 --chips 4 --no-predownload"
 

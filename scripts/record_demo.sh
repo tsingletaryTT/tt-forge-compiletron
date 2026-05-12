@@ -24,8 +24,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 CAST="docs/demo_raw.cast"
-COLS=178
-ROWS=50
+COLS=220
+ROWS=58
 CHIPS=4
 MODELS_PER_CHIP=${MODELS_PER_CHIP:-4}
 
