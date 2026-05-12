@@ -201,7 +201,9 @@ class HardwareWidget(Static):
     DEFAULT_CSS = """
     HardwareWidget {
         height: 12;
-        border: solid $accent;
+        border-left: solid $accent;
+        border-top: solid $accent;
+        border-bottom: solid $accent;
     }
     """
 
@@ -247,7 +249,9 @@ class EventLog(RichLog):
     DEFAULT_CSS = """
     EventLog {
         height: 1fr;
-        border: solid $secondary;
+        border-left: solid $secondary;
+        border-top: solid $secondary;
+        border-bottom: solid $secondary;
     }
     """
 
