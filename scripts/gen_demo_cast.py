@@ -9,10 +9,10 @@ Ends with a 4-chip simultaneous finale.
 Usage:
     python3 scripts/gen_demo_cast.py > docs/demo.cast
 """
-import json, sys
+import json, sys, math
 
-COLS = 180
-ROWS = 50
+COLS = 220
+ROWS = 58
 
 # ── ANSI palette (matches expedition workers) ────────────────────────────────
 T   = "\033[38;5;87m"    # teal
@@ -150,6 +150,133 @@ def run_model(chip_id, backend, model_id, real_s, pts, streak, is_first,
     success_banner(model_id, real_s, pts, streak, is_first, artifact)
     if fv_text:
         first_voice(fv_text, fv_sample)
+
+# ════════════════════════════════════════════════════════════════════════════
+# WAVE FINALE RENDERER
+# Full-screen undulating waves, Mogwai Rave Tapes aesthetic.
+# Multiple horizontal sine waves at different vertical positions, colors, and
+# frequencies. Dark background; wave peaks rendered with block characters.
+# Animates via phase-shift across frames. Central achievement text fades in
+# after the first 4 frames.
+# ════════════════════════════════════════════════════════════════════════════
+
+def _render_wave_frame(t: float, frame_i: int) -> str:
+    """Return a complete ANSI screen string for one frame of the wave finale."""
+    RS_ = "\033[0m"
+    B_  = "\033[1m"
+
+    # Extended Tenstorrent dark palette — 256-colour ANSI
+    pal = {
+        'teal':    "\033[38;5;87m",
+        'cyan':    "\033[38;5;51m",
+        'lteal':   "\033[38;5;159m",
+        'blue':    "\033[38;5;75m",
+        'pink':    "\033[38;5;213m",
+        'lpurp':   "\033[38;5;183m",
+        'gold':    "\033[38;5;220m",
+        'lgold':   "\033[38;5;228m",
+        'green':   "\033[38;5;46m",
+        'lgreen':  "\033[38;5;120m",
+    }
+
+    # Wave definitions:
+    #   (base_y_frac, amp_frac, freq_cycles, time_speed, phase_offset, color_key)
+    # Mirrored top-bottom for symmetry; gold hairline at dead center.
+    WAVE_DEFS = [
+        (0.04, 0.030, 2.0,  0.9, 0.00, 'teal'),
+        (0.11, 0.040, 3.3,  1.4, 0.55, 'cyan'),
+        (0.19, 0.055, 2.6,  1.0, 1.10, 'lteal'),
+        (0.28, 0.045, 1.9,  1.7, 1.65, 'blue'),
+        (0.37, 0.060, 2.9,  1.2, 2.20, 'pink'),
+        (0.44, 0.035, 4.1,  1.8, 2.75, 'lpurp'),
+        (0.50, 0.020, 5.0,  2.5, 3.14, 'gold'),   # center hairline
+        (0.56, 0.035, 4.1,  1.8, 3.53, 'lpurp'),
+        (0.63, 0.060, 2.9,  1.2, 4.08, 'pink'),
+        (0.72, 0.045, 1.9,  1.7, 4.63, 'blue'),
+        (0.81, 0.055, 2.6,  1.0, 5.18, 'lteal'),
+        (0.89, 0.040, 3.3,  1.4, 5.73, 'cyan'),
+        (0.96, 0.030, 2.0,  0.9, 6.28, 'teal'),
+    ]
+
+    BMAP = {0: ' ', 1: '░', 2: '▒', 3: '▓', 4: '█'}
+
+    rows, cols = ROWS, COLS
+    cell_ch = [[' '] * cols for _ in range(rows)]
+    cell_cl = [['']  * cols for _ in range(rows)]
+    cell_br = [[0]   * cols for _ in range(rows)]
+
+    # Fade-in: waves build over first 5 frames
+    fade = min(1.0, frame_i / 4.0)
+
+    # Reserve a clear band in the vertical center for the achievement text
+    tc = rows // 2
+    TEXT_TOP = tc - 4
+    TEXT_BOT = tc + 4
+
+    TWO_PI = 2.0 * math.pi
+
+    for base_frac, amp_frac, freq, spd, phase, ckey in WAVE_DEFS:
+        base_y = base_frac * rows
+        amp    = amp_frac   * rows * fade
+        color  = pal[ckey]
+
+        for col in range(cols):
+            wave_y = base_y + amp * math.sin(
+                freq * col / cols * TWO_PI + t * spd + phase
+            )
+            iy = int(round(wave_y))
+
+            for dy in range(-3, 4):
+                y = iy + dy
+                if y < 0 or y >= rows:
+                    continue
+                if TEXT_TOP <= y <= TEXT_BOT:
+                    continue
+                dist = abs(dy) + abs(wave_y - iy) * 0.5
+                br   = max(0, 4 - int(dist * 1.8))
+                if br > cell_br[y][col]:
+                    cell_br[y][col] = br
+                    cell_ch[y][col] = BMAP[br]
+                    cell_cl[y][col] = color
+
+    # Centre achievement text — fades in from frame 4
+    TEXT_ROWS: dict[int, str] = {}
+    if frame_i >= 4:
+        def _ctext(s: str, color: str) -> str:
+            vis = len(s)
+            pad = max(0, (cols - vis) // 2)
+            return ' ' * pad + B_ + color + s + RS_
+
+        cr = tc
+        TEXT_ROWS = {
+            cr - 3: _ctext('━' * 56, pal['gold']),
+            cr - 2: _ctext('⚡   EXPEDITION  #007  COMPLETE   ⚡', pal['gold']),
+            cr - 1: _ctext('24 attempted  ·  23 compiled  ·  1 failed', pal['teal']),
+            cr:     _ctext('+24,850 PTS  ·  20 NEW TO BESTIARY', pal['gold']),
+            cr + 1: _ctext('🔥 STREAK ×6  ·  LEGENDARY FINALE  ★ ★ ★', pal['pink']),
+            cr + 2: _ctext('━' * 56, pal['gold']),
+        }
+
+    # Build output
+    out = "\033[2J\033[H"
+    for y in range(rows):
+        if y in TEXT_ROWS:
+            out += TEXT_ROWS[y] + '\r\n'
+        else:
+            parts: list[str] = []
+            cur_cl = None
+            for x in range(cols):
+                ch = cell_ch[y][x]
+                cl = cell_cl[y][x]
+                if cl != cur_cl:
+                    parts.append(cl if cl else RS_)
+                    cur_cl = cl
+                parts.append(ch)
+            if cur_cl:
+                parts.append(RS_)
+            out += ''.join(parts) + '\r\n'
+    return out
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # INTRO
@@ -487,6 +614,20 @@ for n in (3, 2, 1):
     line(f"{DIM}  → Results in {n}...{RS}", 0.04)
 thick_sep(GN, 0.05)
 pause(0.8)
+
+# ════════════════════════════════════════════════════════════════════════════
+# WAVE FINALE — full-screen takeover, Mogwai Rave Tapes aesthetic
+# 26 frames × 0.13s ≈ 3.4 s of animation before the summary screen.
+# Waves build in over the first 4 frames; achievement text fades in at frame 5.
+# ════════════════════════════════════════════════════════════════════════════
+
+emit("\033[2J\033[H")
+pause(0.15)
+
+for _fi in range(26):
+    emit(_render_wave_frame(_fi * 0.30, _fi), 0.13)
+
+pause(0.5)
 
 # ════════════════════════════════════════════════════════════════════════════
 # SUMMARY SCREEN
