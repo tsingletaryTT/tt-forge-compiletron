@@ -167,7 +167,7 @@ class ChipPanel(Widget):
     }
     ChipPanel.done   { border: solid $success; }
     ChipPanel.failed { border: solid $error; }
-    ChipPanel > RichLog { height: 1fr; width: 1fr; }
+    ChipPanel > RichLog { height: 1fr; width: 1fr; scrollbar-size: 0 0; }
     """
 
     def __init__(self, chip_id: int, title: str, **kwargs) -> None:
@@ -204,6 +204,7 @@ class HardwareWidget(Static):
         border-left: solid $accent;
         border-top: solid $accent;
         border-bottom: solid $accent;
+        padding-right: 1;
     }
     """
 
@@ -252,6 +253,8 @@ class EventLog(RichLog):
         border-left: solid $secondary;
         border-top: solid $secondary;
         border-bottom: solid $secondary;
+        padding-right: 1;
+        scrollbar-size: 0 0;
     }
     """
 
@@ -301,7 +304,9 @@ class RallyBanner(Static):
         display: none;
         width: 1fr;
         height: 1fr;
-        border: double gold;
+        border-left: double gold;
+        border-top: double gold;
+        border-bottom: double gold;
         padding: 1 2;
         color: $text;
     }
@@ -385,13 +390,18 @@ class SetupScreen(Screen):
     #config-pane {
         width: 40;
         height: 1fr;
-        border: solid $primary;
+        border-left: solid $primary;
+        border-top: solid $primary;
+        border-bottom: solid $primary;
         padding: 0 1;
     }
     #setup-log {
         width: 1fr;
         height: 1fr;
-        border: solid $secondary;
+        border-left: solid $secondary;
+        border-top: solid $secondary;
+        border-bottom: solid $secondary;
+        scrollbar-size: 0 0;
     }
     """
 
@@ -869,7 +879,7 @@ class RunScreen(Screen):
     }
     #rally-banner {
         display: none;
-        width: 1fr;
+        width: 3fr;
         height: 1fr;
     }
     """
@@ -926,7 +936,7 @@ class RunScreen(Screen):
                         yield ChipPanel(2, f"⚔ CHIP 2  {_chip_label(2, self.backend)}  {_ADVENTURER_TITLES[2]}", id="chip-2")
                         if self.num_chips >= 4:
                             yield ChipPanel(3, f"⚔ CHIP 3  {_chip_label(3, self.backend)}  {_ADVENTURER_TITLES[3]}", id="chip-3")
-                yield RallyBanner(id="rally-banner")
+            yield RallyBanner(id="rally-banner")
             with Vertical(id="sidebar"):
                 yield HardwareWidget(id="hw")
                 yield EventLog(id="event-log")
@@ -1185,10 +1195,8 @@ class RunScreen(Screen):
                 self._on_chip_free(cid)
             # Hide RALLY banner, restore chip grid (Task 9 adds these widgets).
             try:
-                self.query_one("#rally-banner").display    = False
-                self.query_one("#chip-row-top").display    = True
-                if self.num_chips >= 3:
-                    self.query_one("#chip-row-bottom").display = True
+                self.query_one("#chip-grid").display    = True
+                self.query_one("#rally-banner").display = False
             except Exception:
                 pass
         else:
@@ -1236,12 +1244,12 @@ class RunScreen(Screen):
 
         decision = mesh_model.get("decision")
 
-        # Show RALLY banner, hide chip grid.
+        # Show RALLY banner, hide chip grid as a whole so the sidebar
+        # never shifts — toggling individual rows inside chip-grid caused
+        # the fr layout to collapse chip-grid to 0 width momentarily.
         try:
-            self.query_one("#chip-row-top").display    = False
-            if self.num_chips >= 3:
-                self.query_one("#chip-row-bottom").display = False
             self.query_one("#rally-banner").display = True
+            self.query_one("#chip-grid").display    = False
             rally = self.query_one("#rally-banner", RallyBanner)
             rally.start(mesh_model, chip_ids, decision)
         except Exception:
@@ -1345,7 +1353,10 @@ class SummaryScreen(Screen):
     }
     #summary-log {
         height: 1fr;
-        border: solid $primary;
+        border-left: solid $primary;
+        border-top: solid $primary;
+        border-bottom: solid $primary;
+        scrollbar-size: 0 0;
     }
     """
 

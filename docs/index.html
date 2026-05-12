@@ -6,7 +6,6 @@
 <title>TT-Forge Compiletron — Expedition Mode</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/asciinema-player@3.7.0/dist/bundle/asciinema-player.css">
 <style>
 /* ── Root palette (Tenstorrent dark theme) ─────────────────────────────── */
 :root {
@@ -119,13 +118,14 @@ a:hover { color: var(--teal2); }
 
 /* ── Hero ──────────────────────────────────────────────────────────────── */
 #hero {
+  max-width: none;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   text-align: center;
-  padding: 4rem 2rem 2rem;
+  padding: 4rem 2rem 0;
   background:
     radial-gradient(ellipse 80% 50% at 50% -10%, rgba(79,209,197,0.12) 0%, transparent 60%),
     linear-gradient(180deg, var(--bg0) 0%, var(--bg1) 100%);
@@ -274,12 +274,13 @@ a:hover { color: var(--teal2); }
 
 /* ── Demo player ───────────────────────────────────────────────────────── */
 #demo {
-  background: var(--bg0);
-  padding: 4rem 2rem;
+  max-width: none;
+  width: 100%;
+  padding: 0;
+  margin: 2.5rem 0 0;
 }
-#demo h2 { max-width: 1000px; margin: 0 auto 1.5rem; }
 .player-wrap {
-  max-width: 1100px;
+  max-width: 1440px;
   margin: 0 auto;
   border-radius: 10px;
   overflow: hidden;
@@ -303,10 +304,11 @@ a:hover { color: var(--teal2); }
   color: var(--muted);
   margin-left: 0.5rem;
 }
-#demo-player .ap-player { border-radius: 0; }
+.demo-gif { display: block; width: 100%; }
 .demo-hint {
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 1rem auto 0;
+  padding: 0 2rem 2rem;
   font-family: var(--mono);
   font-size: 0.78rem;
   color: var(--muted);
@@ -510,8 +512,8 @@ footer a { color: var(--teal); text-decoration: none; }
     <a class="btn btn-primary" href="#quickstart">Quick Start</a>
     <a class="btn btn-secondary" href="https://github.com/tsingletaryTT/tt-forge-compiletron" target="_blank">GitHub ↗</a>
   </div>
-
-  <section id="demo" class="wide" style="padding-left:0;padding-right:0">
+  <br/>
+  <div id="demo">
     <div class="player-wrap">
       <div class="player-bar">
         <div class="dot dot-r"></div>
@@ -519,14 +521,16 @@ footer a { color: var(--teal); text-decoration: none; }
         <div class="dot dot-g"></div>
         <span class="player-title">expedition #023 — 4 chips — seed-only — forge</span>
       </div>
-      <div id="demo-player"></div>
+      <video class="demo-gif" autoplay loop muted playsinline>
+        <source src="./demo.mp4" type="video/mp4">
+      </video>
     </div>
     <p class="demo-hint">
       Live recording · 145 seconds · 4 chips · 6 compiles (albert × 4, alexnet × 2) · 5 failures · SummaryScreen leaderboard ·
       idle clamped to ≤ 1.2s · regenerate with
       <code style="font-family:var(--mono);font-size:0.78rem;color:var(--teal2)">bash scripts/record_demo.sh</code>
     </p>
-  </section>
+  </div>
 
 </section>
 
@@ -885,21 +889,5 @@ footer a { color: var(--teal); text-decoration: none; }
   </p>
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/asciinema-player@3.7.0/dist/bundle/asciinema-player.min.js"></script>
-<script>
-  AsciinemaPlayer.create('./demo.cast', document.getElementById('demo-player'), {
-    cols: 220,
-    rows: 58,
-    speed: 2,
-    theme: 'solarized-dark',
-    autoPlay: true,
-    loop: true,
-    fit: 'width',
-    controls: true,
-    terminalLineHeight: 1.3,
-    terminalFontFamily: "'JetBrains Mono', 'Courier New', monospace",
-    terminalFontSize: '13px',
-  });
-</script>
 </body>
 </html>

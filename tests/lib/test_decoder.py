@@ -59,16 +59,21 @@ class TestDecodeObjectDetection:
 
 class TestDecodeTextGeneration:
     def test_uses_tokenizer_when_available(self):
+        import torch
         info = FrontierModelInfo(name="gpt2", task="text-generation")
-        output = _make_tensor((1, 50, 50257))
+        # Real tensor required — decoder calls torch.topk on last-position logits.
+        output = torch.zeros(1, 10, 50257)
+        output[0, -1, 7] = 10.0   # make token 7 the clear top prediction
         tokenizer = MagicMock()
-        tokenizer.decode.return_value = "Hello world from GPT-2"
+        tokenizer.decode.return_value = "silicon"
         result = decode(output, info, tokenizer=tokenizer)
-        assert "Hello world" in result
+        assert "→" in result
+        assert "silicon" in result
 
     def test_falls_back_without_tokenizer(self):
+        import torch
         info = FrontierModelInfo(name="gpt2", task="text-generation")
-        output = _make_tensor((1, 50, 50257))
+        output = torch.zeros(1, 10, 50257)
         result = decode(output, info, tokenizer=None)
         assert isinstance(result, str)
 

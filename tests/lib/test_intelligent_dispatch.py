@@ -1,16 +1,9 @@
-# tests/expedition/test_intelligent_dispatch.py
+# tests/lib/test_intelligent_dispatch.py
 """Tests for intelligent dispatch: bestiary backend tracking, scorer mesh_mult,
 router decisions, and worker single-model mode."""
-import sys
-from pathlib import Path
-
-# Ensure project root is in sys.path when pytest runs from tests/ subdir
-_root = str(Path(__file__).resolve().parent.parent.parent)
-if _root not in sys.path:
-    sys.path.insert(0, _root)
-
 import json
 import tempfile
+from pathlib import Path
 import pytest
 from lib.expedition.bestiary import Bestiary
 

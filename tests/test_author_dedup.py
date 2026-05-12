@@ -1,8 +1,5 @@
 # tests/test_author_dedup.py
 """Unit tests for author/family deduplication in build_queues."""
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 from expedition import _family_key, _dedup_by_author_family
 
 
@@ -26,15 +23,16 @@ class TestFamilyKey:
     def test_strips_version_prefix_v(self):
         assert _family_key("Mistral-7B-v0.1") == "mistral-7b"
 
-    def test_no_numeric_suffix_unchanged(self):
-        assert _family_key("bert-base-uncased") == "bert-base-uncased"
+    def test_word_qualifiers_stripped(self):
+        # -base, -uncased etc. are now stripped iteratively
+        assert _family_key("bert-base-uncased") == "bert"
 
-    def test_lowercase_applied(self):
-        assert _family_key("BERT-Base") == "bert-base"
+    def test_lowercase_and_word_suffix_stripped(self):
+        assert _family_key("BERT-Base") == "bert"
 
-    def test_param_count_in_middle_not_stripped(self):
-        # "7B" isn't at the end as a pure number token
-        assert _family_key("llama-7b-instruct") == "llama-7b-instruct"
+    def test_instruct_suffix_stripped(self):
+        # -instruct is stripped; mixed alphanumeric -7b is not (not pure digits)
+        assert _family_key("llama-7b-instruct") == "llama-7b"
 
     def test_underscore_separator(self):
         assert _family_key("model_sparsity_0.9") == "model_sparsity"

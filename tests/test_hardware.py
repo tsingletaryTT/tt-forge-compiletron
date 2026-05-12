@@ -9,10 +9,6 @@ import json
 import pytest
 from unittest.mock import patch, MagicMock
 from pathlib import Path
-import sys
-
-# Add parent directory to path so we can import lib modules
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from lib.hardware import (
     detect_hardware,

@@ -39,6 +39,9 @@ discovery_results/
 # Logs
 *.log
 
+# Raw/intermediate demo recordings (only the processed demo.cast is tracked)
+docs/demo_raw.cast
+
 # OS
 .DS_Store
 Thumbs.db

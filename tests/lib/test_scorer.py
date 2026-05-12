@@ -83,16 +83,18 @@ class TestComputeScore:
         result = compute_score(success=True, is_first_ever=False,
                                rarity=Rarity.FAMILIAR, newness=Newness.ESTABLISHED, streak=100)
         assert result.pts == 100  # 50 * 2.0 capped
-    def test_mesh_bonus_4chip(self):
+    def test_mesh_mult_4chip(self):
+        # mesh_mult = 1.0 + (4-1)*0.5 = 2.5; pts = 50 * 2.5 = 125
         result = compute_score(success=True, is_first_ever=False,
                                rarity=Rarity.FAMILIAR, newness=Newness.ESTABLISHED,
                                streak=0, mesh_chips=4)
-        assert result.pts == 100  # 50 + 50 mesh bonus
-    def test_mesh_bonus_galaxy(self):
+        assert result.pts == 125
+    def test_mesh_mult_galaxy(self):
+        # mesh_mult = 1.0 + (32-1)*0.5 = 16.5; pts = 50 * 16.5 = 825
         result = compute_score(success=True, is_first_ever=False,
                                rarity=Rarity.FAMILIAR, newness=Newness.ESTABLISHED,
                                streak=0, mesh_chips=32)
-        assert result.pts == 250  # 50 + 200 galaxy bonus
+        assert result.pts == 825
     def test_score_result_has_breakdown(self):
         result = compute_score(success=True, is_first_ever=True,
                                rarity=Rarity.RARE, newness=Newness.HOT, streak=3)
@@ -101,4 +103,4 @@ class TestComputeScore:
         assert "rarity_mult" in result.breakdown
         assert "newness_mult" in result.breakdown
         assert "streak_mult" in result.breakdown
-        assert "mesh_bonus" in result.breakdown
+        assert "mesh_mult" in result.breakdown
