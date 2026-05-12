@@ -467,6 +467,130 @@ footer a { color: var(--teal); text-decoration: none; }
   height: 1px;
   background: linear-gradient(to right, transparent, var(--dim), transparent);
 }
+
+/* ── Bestiary showcase ─────────────────────────────────────────────────────── */
+.bestiary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+@media (max-width: 900px) { .bestiary-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 580px) { .bestiary-grid { grid-template-columns: 1fr; } }
+.bcard {
+  background: var(--bg2);
+  border: 1px solid var(--dim);
+  border-top: 3px solid var(--dim);
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.bcard.r-legendary { border-top-color: var(--gold); }
+.bcard.r-epic      { border-top-color: var(--pink); }
+.bcard.r-familiar  { border-top-color: var(--blue); }
+.bcard.r-common    { border-top-color: var(--muted); }
+.bcard.r-failed    { border-top-color: var(--red); opacity: 0.7; }
+.bcard-rarity {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.bcard.r-legendary .bcard-rarity { color: var(--gold); }
+.bcard.r-epic      .bcard-rarity { color: var(--pink); }
+.bcard.r-familiar  .bcard-rarity { color: var(--blue); }
+.bcard.r-common    .bcard-rarity { color: var(--muted); }
+.bcard.r-failed    .bcard-rarity { color: var(--red); }
+.bcard-model {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--teal2);
+  word-break: break-all;
+  line-height: 1.4;
+}
+.bcard-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.btag {
+  font-family: var(--mono);
+  font-size: 0.67rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+  background: var(--bg3);
+  color: var(--muted);
+}
+.btag.t-forge { color: var(--teal); }
+.btag.t-xla   { color: var(--pink); }
+.btag.t-fail  { color: var(--red); }
+.btag.t-seed  { color: var(--blue); }
+.bcard-time {
+  font-family: var(--mono);
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+}
+.bcard-time span {
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 0.25rem;
+}
+.bcard-dl {
+  font-family: var(--mono);
+  font-size: 0.73rem;
+  color: var(--muted);
+}
+.bcard-voice {
+  font-family: var(--mono);
+  font-size: 0.73rem;
+  color: var(--teal);
+  border-top: 1px solid var(--dim);
+  padding-top: 0.5rem;
+  margin-top: auto;
+  line-height: 1.5;
+}
+.bcard-voice::before { content: '\1F5E3 '; }
+.bcard-fail-reason {
+  font-family: var(--mono);
+  font-size: 0.73rem;
+  color: var(--red);
+  margin-top: auto;
+  border-top: 1px solid var(--dim);
+  padding-top: 0.5rem;
+}
+.chip-lb {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.chip-row {
+  display: grid;
+  grid-template-columns: 3rem 1fr 4.5rem 8rem;
+  align-items: center;
+  gap: 1rem;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+}
+.chip-label { color: var(--teal2); font-weight: 700; }
+.chip-bar-wrap {
+  height: 7px;
+  background: var(--bg3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.chip-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(to right, var(--teal), var(--teal2));
+}
+.chip-pts { color: var(--gold); text-align: right; }
+.chip-meta { color: var(--muted); font-size: 0.72rem; }
 </style>
 </head>
 <body>
@@ -478,6 +602,7 @@ footer a { color: var(--teal); text-decoration: none; }
   <a href="#demo">Demo</a>
   <a href="#backends">Backends</a>
   <a href="#roguelike">Roguelike</a>
+  <a href="#bestiary">Bestiary</a>
   <a href="#quickstart">Quick Start</a>
   <div class="spacer"></div>
   <a class="gh-link" href="https://github.com/tsingletaryTT/tt-forge-compiletron" target="_blank">GitHub ↗</a>
@@ -771,6 +896,152 @@ footer a { color: var(--teal); text-decoration: none; }
     with prose summaries of every First Voice result — a field log of what the
     hardware has spoken.
   </p>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ── Bestiary ──────────────────────────────────────────────────────────── -->
+<section id="bestiary" class="wide">
+  <h2>Bestiary &#8212; From the Field</h2>
+
+  <p>
+    Real results from actual expeditions on Tenstorrent Blackhole hardware.
+    Every entry was compiled live &#8212; weights fetched, graph lowered through tt-forge,
+    binary uploaded to the chip. <strong>First Voice</strong> output is the model's real
+    inference on a themed prompt, decoded from the raw logit tensor by
+    <code>decoder.py</code>.
+  </p>
+
+  <div class="bestiary-grid">
+
+    <div class="bcard r-legendary">
+      <div class="bcard-rarity">&#9733;&#9733;&#9733; Legendary</div>
+      <div class="bcard-model">openai-community/gpt2</div>
+      <div class="bcard-tags">
+        <span class="btag t-forge">forge</span>
+        <span class="btag">text-generation</span>
+      </div>
+      <div class="bcard-time">1.065<span>s compile</span></div>
+      <div class="bcard-dl">14.2M downloads</div>
+      <div class="bcard-voice">&#8594; The (10%) | A (3%) | &#8220; (3%)</div>
+    </div>
+
+    <div class="bcard r-common">
+      <div class="bcard-rarity">&#183; Common</div>
+      <div class="bcard-model">ULTR0N/SentienceTrial1</div>
+      <div class="bcard-tags">
+        <span class="btag t-forge">forge</span>
+        <span class="btag">text-generation</span>
+      </div>
+      <div class="bcard-time">11.85<span>s compile</span></div>
+      <div class="bcard-dl">477 downloads</div>
+      <div class="bcard-voice">&#8594; impact (17%) | hav (8%) | aftermath (7%)</div>
+    </div>
+
+    <div class="bcard r-familiar">
+      <div class="bcard-rarity">&#9674; Familiar</div>
+      <div class="bcard-model">alexnet/pytorch</div>
+      <div class="bcard-tags">
+        <span class="btag t-seed">seed</span>
+        <span class="btag t-forge">forge</span>
+        <span class="btag">cv_image_cls</span>
+      </div>
+      <div class="bcard-time">2.791<span>s compile</span></div>
+      <div class="bcard-dl">tt-forge-models seed</div>
+    </div>
+
+    <div class="bcard r-familiar">
+      <div class="bcard-rarity">&#9674; Familiar</div>
+      <div class="bcard-model">albert/question_answering/pytorch</div>
+      <div class="bcard-tags">
+        <span class="btag t-seed">seed</span>
+        <span class="btag t-forge">forge</span>
+        <span class="btag">qa</span>
+      </div>
+      <div class="bcard-time">9.697<span>s compile</span></div>
+      <div class="bcard-dl">tt-forge-models seed &middot; 2 runs</div>
+    </div>
+
+    <div class="bcard r-familiar">
+      <div class="bcard-rarity">&#9674; Familiar</div>
+      <div class="bcard-model">bloom/pytorch</div>
+      <div class="bcard-tags">
+        <span class="btag t-seed">seed</span>
+        <span class="btag t-forge">forge</span>
+        <span class="btag">text-generation</span>
+      </div>
+      <div class="bcard-time">27.25<span>s compile</span></div>
+      <div class="bcard-dl">tt-forge-models seed</div>
+    </div>
+
+    <div class="bcard r-familiar">
+      <div class="bcard-rarity">&#9674; Familiar</div>
+      <div class="bcard-model">allam/causal_lm/pytorch</div>
+      <div class="bcard-tags">
+        <span class="btag t-seed">seed</span>
+        <span class="btag t-forge">forge</span>
+        <span class="btag">causal_lm</span>
+      </div>
+      <div class="bcard-time">55.80<span>s compile</span></div>
+      <div class="bcard-dl">tt-forge-models seed</div>
+    </div>
+
+  </div>
+
+  <h3 style="margin-top:2.5rem;color:var(--teal2)">Chip Leaderboard &#8212; All Time</h3>
+  <div class="chip-lb">
+    <div class="chip-row">
+      <span class="chip-label">&#x1F947; C0</span>
+      <div class="chip-bar-wrap"><div class="chip-bar-fill" style="width:100%"></div></div>
+      <span class="chip-pts">+2,650</span>
+      <span class="chip-meta">5 first-ever &middot; &#x1F525;&#xD7;4</span>
+    </div>
+    <div class="chip-row">
+      <span class="chip-label">&#x1F948; C2</span>
+      <div class="chip-bar-wrap"><div class="chip-bar-fill" style="width:85%"></div></div>
+      <span class="chip-pts">+2,250</span>
+      <span class="chip-meta">4 first-ever &middot; &#x1F525;&#xD7;3</span>
+    </div>
+    <div class="chip-row">
+      <span class="chip-label">&#x1F949; C3</span>
+      <div class="chip-bar-wrap"><div class="chip-bar-fill" style="width:60%"></div></div>
+      <span class="chip-pts">+1,600</span>
+      <span class="chip-meta">3 first-ever &middot; &#x1F525;&#xD7;2</span>
+    </div>
+    <div class="chip-row">
+      <span class="chip-label">&nbsp;&nbsp;&nbsp;C1</span>
+      <div class="chip-bar-wrap"><div class="chip-bar-fill" style="width:6%"></div></div>
+      <span class="chip-pts">+150</span>
+      <span class="chip-meta">1 first-ever &middot; &#x1F525;&#xD7;1</span>
+    </div>
+  </div>
+
+  <h3 style="margin-top:2.5rem">Still Hunting</h3>
+  <p>Some models fought back. These are the ones that escaped.</p>
+  <div class="bestiary-grid" style="grid-template-columns:repeat(2,1fr);margin-top:0.75rem">
+
+    <div class="bcard r-failed">
+      <div class="bcard-rarity">&#x2717; Failed</div>
+      <div class="bcard-model">Yosua69/blt-moe-distilled</div>
+      <div class="bcard-tags">
+        <span class="btag t-fail">unsupported_arch</span>
+        <span class="btag">5 attempts</span>
+      </div>
+      <div class="bcard-fail-reason">forge: unsupported architecture in MoE routing layer</div>
+    </div>
+
+    <div class="bcard r-failed">
+      <div class="bcard-rarity">&#x2717; Failed</div>
+      <div class="bcard-model">bi_lstm_crf/pytorch</div>
+      <div class="bcard-tags">
+        <span class="btag t-seed">seed</span>
+        <span class="btag t-fail">forge_internal</span>
+        <span class="btag">2 attempts</span>
+      </div>
+      <div class="bcard-fail-reason">forge: graph lowering assertion failed</div>
+    </div>
+
+  </div>
 </section>
 
 <div class="section-divider"></div>
