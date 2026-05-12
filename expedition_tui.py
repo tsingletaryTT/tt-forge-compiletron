@@ -865,8 +865,8 @@ class RunScreen(Screen):
     }
     #rally-banner {
         display: none;
-        width: 3fr;
-        height: 100%;
+        width: 1fr;
+        height: 1fr;
     }
     """
 
@@ -922,7 +922,7 @@ class RunScreen(Screen):
                         yield ChipPanel(2, f"⚔ CHIP 2  {_chip_label(2, self.backend)}  {_ADVENTURER_TITLES[2]}", id="chip-2")
                         if self.num_chips >= 4:
                             yield ChipPanel(3, f"⚔ CHIP 3  {_chip_label(3, self.backend)}  {_ADVENTURER_TITLES[3]}", id="chip-3")
-            yield RallyBanner(id="rally-banner")
+                yield RallyBanner(id="rally-banner")
             with Vertical(id="sidebar"):
                 yield HardwareWidget(id="hw")
                 yield EventLog(id="event-log")
@@ -1181,8 +1181,10 @@ class RunScreen(Screen):
                 self._on_chip_free(cid)
             # Hide RALLY banner, restore chip grid (Task 9 adds these widgets).
             try:
-                self.query_one("#rally-banner").display = False
-                self.query_one("#chip-grid").display    = True
+                self.query_one("#rally-banner").display    = False
+                self.query_one("#chip-row-top").display    = True
+                if self.num_chips >= 3:
+                    self.query_one("#chip-row-bottom").display = True
             except Exception:
                 pass
         else:
@@ -1232,7 +1234,9 @@ class RunScreen(Screen):
 
         # Show RALLY banner, hide chip grid.
         try:
-            self.query_one("#chip-grid").display    = False
+            self.query_one("#chip-row-top").display    = False
+            if self.num_chips >= 3:
+                self.query_one("#chip-row-bottom").display = False
             self.query_one("#rally-banner").display = True
             rally = self.query_one("#rally-banner", RallyBanner)
             rally.start(mesh_model, chip_ids, decision)
