@@ -313,11 +313,6 @@ def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = Fals
 
             parts_lower = [p.lower() for p in rel.parts]
 
-            # Skip ONNX loaders — they require an onnx_tmp_path argument that
-            # the generic worker cannot supply.
-            if "onnx" in parts_lower:
-                continue
-
             # Skip loaders that download from the Tenstorrent internal S3 bucket
             # (tt-ci-models-private). These require the IRD_LF_CACHE server to be
             # reachable and will always fail in external/dev environments.
@@ -481,6 +476,116 @@ def _scan_frontier(
     ]
 
 
+def _build_curated_queue(num_chips: int) -> list[list[dict]]:
+    """Return a hand-curated 5-model queue designed for the showcase demo.
+
+    Chip assignments:
+      C0: roberta/sequence_classification/onnx  (forge + ONNX export)
+      C1: openai-community/gpt2                 (XLA via JAX library flag)
+      C2: microsoft/resnet-50                   (forge, frontier CV)
+      C3: attention_denseunet/pytorch           (forge, expected FAIL)
+    Finale (all 4 chips): albert/masked_lm/pytorch  (forge, NLP masked LM)
+
+    The first four items are assigned one-per-chip in order.  The finale uses
+    mesh_chips=4 so the TUI holds it until all chips are free simultaneously.
+    """
+    _FORGEMS = "_forgems"
+
+    items: list[dict] = [
+        # C0: ONNX roberta — tests ONNX export path
+        {
+            "model_id": "roberta/sequence_classification/onnx",
+            "display_name": "Roberta Sentiment ONNX",
+            "task": "text-classification",
+            "source": "tt-forge-models",
+            "rarity": "familiar",
+            "hf_downloads": None,
+            "hf_created_at": None,
+            "mesh_chips": 1,
+            "library": "pytorch",
+            "model_type": "",
+            "loader_module": f"{_FORGEMS}.roberta.sequence_classification.onnx.loader",
+            "loader_class": "ModelLoader",
+            "is_frontier": False,
+        },
+        # C1: GPT-2 via forge — large download count, iconic text model
+        {
+            "model_id": "openai-community/gpt2",
+            "display_name": "GPT-2",
+            "task": "text-generation",
+            "source": "huggingface",
+            "rarity": "legendary",
+            "hf_downloads": 30_000_000,
+            "hf_created_at": "2023-01-01T00:00:00Z",
+            "mesh_chips": 1,
+            "library": "pytorch",
+            "model_type": "gpt2",
+            "loader_module": None,
+            "loader_class": None,
+            "is_frontier": True,
+        },
+        # C2: ResNet-50 frontier — canonical CV image classification
+        {
+            "model_id": "microsoft/resnet-50",
+            "display_name": "ResNet-50",
+            "task": "image-classification",
+            "source": "huggingface",
+            "rarity": "rare",
+            "hf_downloads": 12_000_000,
+            "hf_created_at": "2023-01-01T00:00:00Z",
+            "mesh_chips": 1,
+            "library": "pytorch",
+            "model_type": "resnet",
+            "loader_module": None,
+            "loader_class": None,
+            "is_frontier": True,
+        },
+        # C3: DenseUNet — deliberate FAIL (shape_mismatch in bestiary)
+        {
+            "model_id": "attention_denseunet/pytorch",
+            "display_name": "Attention DenseUNet",
+            "task": "cv-object-detection",
+            "source": "tt-forge-models",
+            "rarity": "legendary",
+            "hf_downloads": None,
+            "hf_created_at": None,
+            "mesh_chips": 1,
+            "library": "pytorch",
+            "model_type": "",
+            "loader_module": f"{_FORGEMS}.attention_denseunet.pytorch.loader",
+            "loader_class": "ModelLoader",
+            "is_frontier": False,
+        },
+        # Finale: AlexNet on all 4 chips simultaneously — simple single-output
+        # CV model with no tuple/dict return, ideal for mesh compilation.
+        {
+            "model_id": "alexnet/pytorch",
+            "display_name": "AlexNet",
+            "task": "image-classification",
+            "source": "tt-forge-models",
+            "rarity": "uncommon",
+            "hf_downloads": None,
+            "hf_created_at": None,
+            "mesh_chips": num_chips,
+            "library": "pytorch",
+            "model_type": "",
+            "loader_module": f"{_FORGEMS}.alexnet.pytorch.loader",
+            "loader_class": "ModelLoader",
+            "is_frontier": False,
+        },
+    ]
+
+    # First four items go one-per-chip; finale goes on chip 0 and the worker
+    # holds it until all chips are free (mesh_chips == num_chips).
+    chip_queues: list[list[dict]] = [[] for _ in range(num_chips)]
+    for i, item in enumerate(items[:-1]):
+        chip_queues[i % num_chips].append(item)
+    # Finale appended to chip 0 — RunScreen._dispatch_next will hold it in
+    # _mesh_holding until all chips finish their individual models.
+    chip_queues[0].append(items[-1])
+    return chip_queues
+
+
 def build_queues(
     num_chips: int,
     seed_only: bool = False,
@@ -545,7 +650,7 @@ def build_queues(
         # Seed model IDs have the form  name/task/backend  (e.g. alexnet/pytorch,
         # albert/question_answering/pytorch).  paddle/paddlepaddle and ONNX models
         # can hang indefinitely on import; exclude them up-front to keep runs clean.
-        _UNSUPPORTED_SEED_BACKENDS = {"paddlepaddle", "paddle", "onnx"}
+        _UNSUPPORTED_SEED_BACKENDS = {"paddlepaddle", "paddle"}
         seed_items = [
             it for it in seed_items
             if it.get("model_id", "").split("/")[-1].lower() not in _UNSUPPORTED_SEED_BACKENDS
@@ -1365,6 +1470,8 @@ def main():
     run_p.add_argument("--frontier-only",    action="store_true")
     run_p.add_argument("--staples",          action="store_true",
                        help="Include tt-forge-models seed models even if already compiled (regression test mode)")
+    run_p.add_argument("--curated",          action="store_true",
+                       help="Use the hand-curated showcase demo queue (5 models: ONNX, XLA, CV, fail, 4-chip finale)")
     run_p.add_argument("--backend",          choices=["auto", "forge", "xla", "mixed"], default="auto",
                        help="Compilation backend: auto (default, per-model routing), forge, xla (JAX/PJRT), or mixed (even chips=forge, odd chips=xla)")
     run_p.add_argument("--no-predownload",   action="store_true",
@@ -1400,6 +1507,9 @@ def main():
     run_p.add_argument("--tui",                  action="store_true",
                        help="Use the Textual TUI instead of the tmux session "
                             "(equal-sized chip panels, live combat log, roguelike scoring)")
+    run_p.add_argument("--auto-quit",            type=int, default=0, metavar="SECS",
+                       help="Auto-quit SECS seconds after the summary screen appears "
+                            "(useful for unattended recording; 0=disabled)")
 
     sub.add_parser("summary", help="Print bestiary summary")
 
@@ -1417,7 +1527,9 @@ def main():
         args.seed_only = False
         args.frontier_only = False
         args.staples = False
+        args.curated = False
         args.backend = "auto"
+        args.auto_quit = 0
         args.no_predownload = False
         args.monitor = False
         args.tui = False
@@ -1460,7 +1572,9 @@ def main():
             seed_only=args.seed_only,
             frontier_only=args.frontier_only,
             staples=args.staples,
+            curated=getattr(args, "curated", False),
             backend=args.backend,
+            auto_quit_secs=getattr(args, "auto_quit", 0),
             # TUI workers download models on-demand; pre-downloading 40+ models
             # during setup would silently block for 30+ minutes with no progress
             # visible to the user.  Pass-through only if explicitly requested.
@@ -1481,18 +1595,21 @@ def main():
     _banner(run_number, num_chips, get_hardware_summary(hw))
 
     # ── Queue building ────────────────────────────────────────────────────────
-    chip_queues = build_queues(
-        num_chips=num_chips,
-        seed_only=args.seed_only,
-        frontier_only=args.frontier_only,
-        limit=args.limit,
-        min_downloads=args.min_downloads,
-        min_likes=args.min_likes,
-        max_dl_like_ratio=args.max_dl_like_ratio,
-        max_params_b=args.max_model_params,
-        skip_gated=not args.allow_gated,
-        staples=args.staples,
-    )
+    if getattr(args, "curated", False):
+        chip_queues = _build_curated_queue(num_chips)
+    else:
+        chip_queues = build_queues(
+            num_chips=num_chips,
+            seed_only=args.seed_only,
+            frontier_only=args.frontier_only,
+            limit=args.limit,
+            min_downloads=args.min_downloads,
+            min_likes=args.min_likes,
+            max_dl_like_ratio=args.max_dl_like_ratio,
+            max_params_b=args.max_model_params,
+            skip_gated=not args.allow_gated,
+            staples=args.staples,
+        )
 
     # ── Queue assignment summary ──────────────────────────────────────────────
     # Print a compact per-chip breakdown so the user can verify distribution

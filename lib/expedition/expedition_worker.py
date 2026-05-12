@@ -291,7 +291,16 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
 
     try:
         model = model_loader()
-        model.eval()
+
+        # onnx.ModelProto objects don't have .eval() — only call it for
+        # torch.nn.Module instances.
+        try:
+            import onnx as _onnx_mod
+            _is_onnx = isinstance(model, _onnx_mod.ModelProto)
+        except ImportError:
+            _is_onnx = False
+        if not _is_onnx:
+            model.eval()
 
         # Determine the input shape from the loader's optional _input_type hint.
         if hasattr(model_loader, "_input_type"):
@@ -314,22 +323,33 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
         compile_start = time.time()
         _print_progress_step(2, 3, "Compiling for TT hardware...")
 
-        # Two-stage compile: raw model first, then wrapped on tracer failure.
+        # ONNX models are compiled directly; PyTorch models go through the
+        # two-stage wrapper retry to handle tuple/ModelOutput return types.
         compiled = None
         compile_error = None
-        for attempt, target in enumerate([model, _LogitsWrapper(model)]):
+        if _is_onnx:
+            # forge.compile() accepts onnx.ModelProto directly.
+            # ONNX models have fixed input shapes — use a 1×3×224×224 dummy
+            # that matches the export shape used by most vision ONNX exporters.
             try:
-                compiled = forge.compile(target, sample_inputs=[sample_input])
-                compile_error = None
-                break
+                compiled = forge.compile(model, sample_inputs=[sample_input])
             except Exception as exc:
                 compile_error = exc
-                if attempt == 0 and "Tracer cannot infer type" in str(exc):
-                    _print_live_info(
-                        "Output is tuple — retrying with logits wrapper…", ok=False
-                    )
-                    continue
-                break  # non-tracer error: no point retrying
+        else:
+            # Two-stage compile: raw model first, then wrapped on tracer failure.
+            for attempt, target in enumerate([model, _LogitsWrapper(model)]):
+                try:
+                    compiled = forge.compile(target, sample_inputs=[sample_input])
+                    compile_error = None
+                    break
+                except Exception as exc:
+                    compile_error = exc
+                    if attempt == 0 and "Tracer cannot infer type" in str(exc):
+                        _print_live_info(
+                            "Output is tuple — retrying with logits wrapper…", ok=False
+                        )
+                        continue
+                    break  # non-tracer error: no point retrying
 
         compile_time = time.time() - compile_start
 
@@ -579,8 +599,15 @@ def _build_loader(item: QueueItem):
         mod = importlib.import_module(item.loader_module)
         cls = getattr(mod, item.loader_class)
         instance = cls()
-        def loader():
-            return instance.load_model()
+        import inspect as _inspect, tempfile as _tempfile
+        _sig = _inspect.signature(instance.load_model)
+        if 'onnx_tmp_path' in _sig.parameters:
+            _onnx_dir = _tempfile.mkdtemp(prefix='forge_onnx_')
+            def loader(_p=_onnx_dir, _i=instance):
+                return _i.load_model(onnx_tmp_path=_p)
+        else:
+            def loader(_i=instance):
+                return _i.load_model()
         # Derive input type from task string first; fall back to the loader's
         # own _input_type hint, then to "image" for unlabelled vision models.
         # This prevents NLP models from receiving an image-shaped dummy tensor.

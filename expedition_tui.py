@@ -428,6 +428,7 @@ class SetupScreen(Screen):
         self._session_download_max = 0.0
         self._parallel_downloads   = 4
         self._staples      = False  # True → include already-compiled seed models
+        self._curated      = False  # True → use hand-curated showcase demo queue
         self._backend      = "auto"   # auto | forge | xla | mixed
         self._discovering  = False  # True while HF discovery / queue-build is running
         self._setup_done   = False  # True once queues are built (no re-run)
@@ -449,6 +450,7 @@ class SetupScreen(Screen):
         self._session_download_max = app.session_download_max
         self._parallel_downloads   = app.parallel_downloads
         self._staples              = app.staples
+        self._curated              = getattr(app, "curated", False)
         self._backend              = getattr(app, "backend", "auto")
         self._refresh_config()
         # Auto-start countdown: fires every second; starts expedition when it hits 0.
@@ -640,9 +642,26 @@ class SetupScreen(Screen):
             _dedup_by_author_family,
             _interleave,
             _predownload_queues,
+            _build_curated_queue,
             BESTIARY_PATH,
         )
         from lib.expedition.bestiary import Bestiary
+
+        # ── Curated showcase queue ────────────────────────────────────────────
+        if self._curated:
+            _log("[bold cyan]⚡ Curated demo queue — 5 hand-picked models[/]")
+            chip_queues = _build_curated_queue(self._chips)
+            for ci, q in enumerate(chip_queues):
+                for item in q:
+                    mid   = item.get("model_id", "?")
+                    task  = item.get("task", "")
+                    mesh  = item.get("mesh_chips", 1)
+                    chips_str = f"  [yellow]×{mesh} chips[/]" if mesh > 1 else ""
+                    _log(f"  [dim]C{ci}[/] [bold]{mid}[/]  [dim]{task}[/]{chips_str}")
+            total = sum(len(q) for q in chip_queues)
+            _log(f"[bold green]✓ {total} model(s) → {self._chips} chip(s)[/]")
+            app.call_from_thread(self._advance_to_run, chip_queues)
+            return
 
         bestiary     = Bestiary(path=str(BESTIARY_PATH))
         compiled_ids = set(bestiary.compiled.keys())
@@ -1195,7 +1214,11 @@ class RunScreen(Screen):
             el.write(f"[bold green]{'═'*34}[/]")
         except Exception:
             await asyncio.sleep(2.4)
-        self.app.push_screen(SummaryScreen(self.num_chips, self.run_number))
+        self.app.push_screen(SummaryScreen(
+            self.num_chips,
+            self.run_number,
+            auto_quit_secs=getattr(self.app, "auto_quit_secs", 0),
+        ))
 
     @work
     async def _fire_rally(self, mesh_model: dict, chip_ids: list[int]) -> None:
@@ -1328,10 +1351,11 @@ class SummaryScreen(Screen):
         Binding("pagedown","scroll_page_down","",          show=False),
     ]
 
-    def __init__(self, num_chips: int, run_number: int, **kwargs) -> None:
+    def __init__(self, num_chips: int, run_number: int, auto_quit_secs: int = 0, **kwargs) -> None:
         super().__init__(**kwargs)
-        self.num_chips   = num_chips
-        self.run_number  = run_number
+        self.num_chips       = num_chips
+        self.run_number      = run_number
+        self._auto_quit_secs = auto_quit_secs
 
     def compose(self) -> ComposeResult:
         self.app.title     = f"EXPEDITION #{self.run_number:03d}  COMPLETE"
@@ -1342,6 +1366,8 @@ class SummaryScreen(Screen):
 
     def on_mount(self) -> None:
         self._populate()
+        if self._auto_quit_secs > 0:
+            self.set_timer(self._auto_quit_secs, self.app.exit)
 
     def action_rerun(self) -> None:
         self.app.switch_screen(SetupScreen())
@@ -1630,7 +1656,9 @@ class ExpeditionTUI(App[None]):
         session_download_max:   float = 0.0,
         parallel_downloads:     int   = 4,
         staples:                bool  = False,
+        curated:                bool  = False,
         backend:                str   = "auto",
+        auto_quit_secs:         int   = 0,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -1652,7 +1680,9 @@ class ExpeditionTUI(App[None]):
         self.session_download_max = session_download_max
         self.parallel_downloads   = parallel_downloads
         self.staples              = staples
+        self.curated              = curated
         self.backend              = backend
+        self.auto_quit_secs       = auto_quit_secs
 
     def on_mount(self) -> None:
         rn = f"Run #{self.run_number:03d}"
