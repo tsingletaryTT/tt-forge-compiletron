@@ -1,38 +1,63 @@
 {
-  "_note": "Example run summary — actual run files are created by expedition.py and named run_001.json, run_002.json, etc.",
-  "run": 1,
-  "timestamp": "2026-04-01T10:30:00.000000",
+  "_note": "Example run summary — actual run files are named run_001.json, run_002.json, etc. and contain just the run metadata. Full results accumulate in data/bestiary.json; narrative highlights land in data/expeditions/.",
+  "run": 6,
+  "timestamp": "2026-04-28T21:00:00.000000",
   "chips": 4,
+  "tui": true,
   "chip_results": [
     {
       "chip_id": 0,
-      "pts": 1640,
+      "backend": "forge",
+      "pts": 1750,
       "successes": 3,
       "failures": 1,
-      "first_evers": 2
+      "first_evers": 2,
+      "best_streak": 2
     },
     {
       "chip_id": 1,
-      "pts": 1200,
-      "successes": 2,
-      "failures": 2,
-      "first_evers": 2
+      "backend": "forge",
+      "pts": 500,
+      "successes": 1,
+      "failures": 3,
+      "first_evers": 1,
+      "best_streak": 1
     },
     {
       "chip_id": 2,
-      "pts": 440,
-      "successes": 1,
-      "failures": 3,
-      "first_evers": 0
+      "backend": "forge",
+      "pts": 1200,
+      "successes": 2,
+      "failures": 2,
+      "first_evers": 2,
+      "best_streak": 2
     },
     {
       "chip_id": 3,
-      "pts": -20,
-      "successes": 0,
-      "failures": 2,
-      "first_evers": 0
+      "backend": "forge",
+      "pts": 750,
+      "successes": 1,
+      "failures": 1,
+      "first_evers": 1,
+      "best_streak": 1
     }
   ],
-  "new_bestiary_entries": 4,
-  "total_failures": 8
+  "new_bestiary_entries": 6,
+  "total_successes": 7,
+  "total_failures": 7,
+  "models_attempted": [
+    "Xerv-AI/Ada",
+    "ULTR0N/SentienceTrial1",
+    "snehangshu511/gpt2-medium-instruct",
+    "itstechuse/akeno-mergedv8",
+    "abubakaraabi786/tinyllama-peft-merged",
+    "OvercastLab/Quark-50m-Instruct",
+    "Ethangou/attention-residuals-0.6B-baseline",
+    "Yosua69/blt-moe-distilled",
+    "LiamCarter/icl-pruning-wanda-sparsity-0.5",
+    "gyaudhw/gptbert-extra-baseline-2026-strictsmall",
+    "Supbatomic/moss-tts-nano-100m-model",
+    "allam/causal_lm/pytorch",
+    "albert/question_answering/pytorch"
+  ]
 }

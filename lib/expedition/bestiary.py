@@ -107,6 +107,44 @@ _ERROR_RULES: list[tuple[str, str, str, str]] = [
      "forge_internal",
      "Forge internal error",
      "bug: report to Tenstorrent with the model ID"),
+    # ONNX loader bug in our code — onnx_tmp_path argument missing
+    ("onnx_tmp_path",
+     "loader_missing",
+     "No loader available",
+     "fix: repair onnx loader in build_dynamic_loader()"),
+    # Tensor shape/dimension mismatches inside model forward pass — model-specific
+    ("shapes cannot be multiplied",
+     "shape_mismatch",
+     "Tensor shape mismatch",
+     "bug: model uses non-standard tensor layout; report with model ID"),
+    ("incorrect shape",
+     "shape_mismatch",
+     "Tensor shape mismatch",
+     "bug: model uses non-standard tensor layout; report with model ID"),
+    ("size mismatch",
+     "shape_mismatch",
+     "Tensor shape mismatch",
+     "bug: model uses non-standard tensor layout; report with model ID"),
+    # JAX/Flax model called with PyTorch-style keyword arguments (pixel_values, etc.)
+    # — framework API mismatch in our XLA worker argument construction
+    ("unexpected keyword argument",
+     "api_mismatch",
+     "API keyword argument mismatch",
+     "fix: check XLA worker forward() call for this model type"),
+    # Custom model class missing expected method/attribute — model-specific bug
+    ("has no attribute '_initialize_weights'",
+     "model_bug",
+     "Custom model class bug",
+     "filter: model has broken custom code; exclude this model"),
+    # Backend mismatch — paddlepaddle/paddle models not supported
+    ("paddlepaddle",
+     "unsupported_backend",
+     "Unsupported backend",
+     "filter: exclude paddle models from discovery"),
+    ("requires `pixel_values` arguments",
+     "unsupported_backend",
+     "Unsupported backend",
+     "filter: paddle forward() signature differs from PyTorch; skip paddle models"),
     # Model gone, private, or inaccessible on HuggingFace
     ("Can't load the model",
      "model_access",
@@ -470,6 +508,16 @@ class Bestiary:
                         if new_cat != "other":
                             entry["error_category"] = new_cat
                             reclassified += 1
+                # Persist re-classifications immediately so JSON stays in sync
+                # with _ERROR_RULES. Write-back is best-effort; failures are silent.
+                if reclassified > 0:
+                    try:
+                        self.path.write_text(
+                            json.dumps(data, indent=2, default=str),
+                            encoding="utf-8",
+                        )
+                    except OSError:
+                        pass
                 return data
             except (json.JSONDecodeError, OSError):
                 pass

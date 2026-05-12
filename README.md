@@ -6,7 +6,8 @@ chips in parallel, scores results by rarity and novelty, and maintains a bestiar
 of everything that has ever compiled.
 
 Supports two compilation backends — **tt-forge** (PyTorch via forge) and **tt-xla**
-(JAX/Flax via PJRT plugin) — selectable per-chip or in mixed mode.
+(JAX/Flax via PJRT plugin) — selectable per-chip or in mixed mode, with automatic
+per-model backend routing.
 
 <img width="3840" height="2002" alt="tt-forge-compiletron TUI" src="https://github.com/user-attachments/assets/3e93d7d6-8e02-49f6-92cb-e2d93c6caec2" />
 
@@ -24,7 +25,7 @@ pip install -r requirements.txt
 # Activate tt-forge backend
 source ~/tt-forge-fe/env/activate
 
-# Launch TUI (recommended)
+# Launch TUI (recommended) — auto-starts after 4 seconds
 python3 expedition.py run --tui
 
 # Or CLI, 4-chip forge run, 20 models
@@ -37,7 +38,8 @@ python3 expedition.py run --chips 4 --limit 20
 # One-time setup
 python3 -m venv xla-venv
 xla-venv/bin/pip install pjrt-plugin-tt jax==0.7.1 jaxlib==0.7.1 \
-    flax==0.8.5 "transformers<5.0" torch --index-url https://pypi.tenstorrent.com/simple/
+    flax==0.8.5 "transformers<5.0" torch pyfiglet \
+    --index-url https://pypi.tenstorrent.com/simple/
 
 # Run with XLA backend
 python3 expedition.py run --tui --backend xla
@@ -50,25 +52,27 @@ python3 expedition.py run --tui --backend xla
 `expedition.py run --tui` opens a 3-screen Textual app:
 
 ```
-╔══════════════════════════════════════════
-║  EXPEDITION #007 SETUP
+╔══════════════════════════════════════════════════════════════
+║  EXPEDITION #008 SETUP
 
   Seeds: tt-forge-models + HuggingFace frontier
   Backend: forge  [cycle with 5]
   Chips:   4      Limit: 20
 
   [Enter] Start   [Q] Quit
-╚══════════════════════════════════════════
+  ● ENTER to start  (auto in 3s)
+╚══════════════════════════════════════════════════════════════
 ```
 
 **Setup screen** — configure chips, limit, backend (forge / xla / mixed),
-and source filters. Press Enter to start.
+and source filters. Press Enter to start immediately, or wait 4 seconds for
+auto-start. Useful for unattended recording (`asciinema rec --command "..."`).
 
-**Run screen** — one panel per chip, live event log, scrolling compilation
-banners, real-time scores, and First Voice inference output.
+**Run screen** — one panel per chip, live event log, scrolling pyfiglet ASCII
+banners of each model name, real-time scores, and First Voice inference output.
 
-**Summary screen** — points leaderboard by chip, compile-time histogram,
-failure details, all-time bestiary stats.
+**Summary screen** — points leaderboard by chip with progress bars, compile-time
+histogram (< 5s / 5–15s / 15–30s / > 30s), failure details, all-time bestiary stats.
 
 ---
 
@@ -76,13 +80,13 @@ failure details, all-time bestiary stats.
 
 ```bash
 # Run modes
-python3 expedition.py run --tui                    # interactive TUI
+python3 expedition.py run --tui                    # interactive TUI, 4s auto-start
 python3 expedition.py run --chips 4 --limit 20     # CLI, 4 chips, 20 models
 python3 expedition.py run --backend xla            # JAX/PJRT backend
 python3 expedition.py run --backend mixed          # even chips=forge, odd=xla
 python3 expedition.py run --seed-only              # tt-forge-models zoo only
 python3 expedition.py run --frontier-only          # HuggingFace frontier only
-python3 expedition.py run --staples                # re-run proven seed models
+python3 expedition.py run --staples                # re-run proven seed models (skip perm-fail gate)
 
 # Discovery filters
 python3 expedition.py run --min-downloads 1000     # skip obscure models
@@ -121,11 +125,23 @@ lib/expedition/
 **Queue building** — each run scans the tt-forge-models JAX/PyTorch zoo and
 the HuggingFace Hub for recently-created models. One model per author/family
 per run. Seed models already in the bestiary are skipped (use `--staples` to
-force-include them).
+force-include them for regression testing after forge updates). Models that have
+permanently failed (forge segfaults, unsupported arch, missing deps) after 2+
+attempts are pruned from the seed queue automatically.
 
 **Compilation** — forge backend calls `forge.compile()`; XLA backend JIT-traces
 via `jax.jit` on the PJRT TT plugin. Each chip runs its worker as a subprocess;
-results are streamed back via a CSV file.
+results are streamed back via a CSV file. A watchdog timer detects when all chips
+finish even if a worker subprocess exits silently.
+
+**Backend routing** — in `--backend auto` mode, `router.py` selects forge or xla
+per model using a priority chain:
+
+1. JAX/Flax-native models → xla
+2. Models with forge crash history (SIGSEGV, forge_internal) → xla
+3. Models with XLA runtime error history → forge
+4. Architecture XLA affinity (gpt2, bert, albert, etc.) → xla if available
+5. Default → forge
 
 **Scoring** — points are awarded on compile success:
 - Base: +200 pts
@@ -137,12 +153,14 @@ results are streamed back via a CSV file.
 
 **Bestiary** (`data/bestiary.json`) — persistent database. Tracks every
 model ever compiled: artifact shape, task, compile time, chip, run number,
-first-voice text, and all-time chip leaderboard.
+first-voice text, and all-time chip leaderboard. Error entries are
+automatically re-classified on load when new error-pattern rules are added,
+so stale `other` entries get upgraded to precise categories over time.
 
 **First Voice** — after a successful compile, each worker runs a themed
 inference pass using a curated sample from `lib/expedition/sampler.py`
 (stories, images, questions). Decoders in `lib/expedition/decoder.py`
-turn raw logits into readable predictions, e.g.:
+turn raw logits into readable predictions using last-position top-k sampling:
 ```
 🗣 First Voice  [At the Westinghouse pavilion, a time capsule was buried...]
 → The (10%) | A (3%) | " (3%)
@@ -155,8 +173,10 @@ turn raw logits into readable predictions, e.g.:
 ### auto (default — intelligent dispatch)
 
 Automatically selects the best backend per model. JAX/Flax models are
-routed to xla; PyTorch models go to forge. Falls back to forge when
-affinity is ambiguous. Requires both backends to be available.
+routed to xla; PyTorch models go to forge. Forge-fatal and XLA-fatal
+history in the bestiary feeds back into routing decisions, so models
+that repeatedly crash one backend get redirected to the other. Requires
+both backends to be available.
 
 ### forge
 
@@ -182,6 +202,30 @@ side-by-side comparison of the two compilation stacks.
 
 ---
 
+## Recording demos
+
+The TUI auto-starts after 4 seconds, so no tmux key injection is needed:
+
+```bash
+# Record a 16-model demo (4 models × 4 chips, no download wait)
+bash scripts/record_demo.sh
+
+# Or manually
+asciinema rec docs/demo_raw.cast --overwrite \
+    --cols 178 --rows 50 \
+    --command "python3 expedition.py run --tui \
+        --seed-only --limit 16 --chips 4 --no-predownload"
+
+# Post-process: smooth and compress
+python3 scripts/compress_cast.py docs/demo_raw.cast docs/demo.cast \
+    --max-idle 1.2 --min-gap 0.02
+```
+
+The `--min-gap` flag floors inter-event gaps to 20 ms, spreading Textual's
+async-batched writes into smooth animation rather than single-frame bursts.
+
+---
+
 ## Project layout
 
 ```
@@ -189,8 +233,8 @@ expedition.py               main CLI + TUI launcher
 expedition_tui.py           Textual TUI (3 screens)
 lib/
   expedition/               expedition subsystems
-    bestiary.py             model history database
-    decoder.py              logit → text decoder (First Voice)
+    bestiary.py             model history database + error re-classification
+    decoder.py              logit → text decoder (last-position top-k)
     expedition_worker.py    forge per-chip worker
     expedition_worker_xla.py XLA per-chip worker
     hf_discover.py          HuggingFace frontier scanner
@@ -202,10 +246,18 @@ lib/
   discovery.py              seed model scanner (tt-forge-models)
   hardware.py               tt-smi hardware detection
 data/
-  bestiary.json             compiled-model database
-  expeditions/              per-run journals
-  artifacts/                first-voice output archives
-  runs/                     per-chip result CSVs
+  bestiary.json             compiled-model database (gitignored)
+  bestiary.example.json     starter bestiary with real-world entries
+  expeditions/              per-run journals (.md)
+  artifacts/                first-voice output archives (.txt)
+  runs/                     per-run metadata + example
+  samples/                  inference input samples (images, text, audio)
+docs/
+  demo.cast                 compressed asciinema demo (plays in index.html)
+  index.html                demo landing page with asciinema player
+scripts/
+  compress_cast.py          cast post-processor (max-idle + min-gap smoothing)
+  record_demo.sh            one-command demo recorder (no tmux required)
 xla-venv/                   separate venv for JAX/PJRT dependencies
 requirements.txt            forge-mode dependencies
 ```
@@ -217,11 +269,13 @@ requirements.txt            forge-mode dependencies
 ```
 data/bestiary.json          all-time compiled model records + chip scores
 data/expeditions/run_NNN.md per-run journal with first-voice highlights
+data/artifacts/             saved first-voice text from notable compiles
 ```
 
 The bestiary persists across runs and is never overwritten — new compiles
 accumulate. It is the canonical record of what the hardware has proven it
-can compile.
+can compile. See `data/bestiary.example.json` for the real-world structure
+including all fields populated by actual runs.
 
 ---
 
@@ -230,4 +284,4 @@ can compile.
 The original `compiletron.py` / `lib/worker.py` / `lib/models.py` stack
 (static 101-model list, tmux 4-pane display) still works but is no longer
 the primary interface. `expedition.py` supersedes it with live model
-discovery, dynamic queuing, scoring, and dual backends.
+discovery, dynamic queuing, scoring, dual backends, and automatic routing.

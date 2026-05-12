@@ -1,74 +1,181 @@
 {
-  "_note": "Example bestiary — copy to bestiary.json to start fresh with seed data, or let expedition.py create one on first run.",
+  "_note": "Example bestiary — reflects real compiled models from early expedition runs. Copy to bestiary.json to bootstrap, or let expedition.py create one on first run.",
   "compiled": {
     "openai-community/gpt2": {
-      "first_compiled": "2026-04-01T10:15:33.000000+00:00",
+      "first_compiled": "2026-04-29T03:19:36.163216+00:00",
       "first_chip": 0,
       "run": 1,
-      "best_time_s": 8.312,
+      "best_time_s": 1.065,
       "successes": 3,
       "source": "huggingface",
       "task": "text-generation",
       "rarity": "legendary",
-      "hf_downloads": 12500000,
+      "hf_downloads": 14200000,
       "hf_created_at": "2019-02-14T00:00:00+00:00",
       "artifact": "shape=(1, 32, 50257) dtype=torch.float32 range=[-56.02, -1.71]",
+      "first_voice": "→ The (10%) | A (3%) | \" (3%)",
       "backend": "forge",
       "backends_succeeded": ["forge"]
     },
-    "google-bert/bert-base-uncased": {
-      "first_compiled": "2026-04-01T10:28:47.000000+00:00",
-      "first_chip": 1,
+    "nsega/distilbert-base-uncased-finetuned-squad-d5716d28": {
+      "first_compiled": "2026-04-27T20:10:58.837359+00:00",
+      "first_chip": 0,
       "run": 1,
-      "best_time_s": 4.891,
-      "successes": 2,
-      "source": "huggingface",
-      "task": "fill-mask",
-      "rarity": "legendary",
-      "hf_downloads": 45200000,
-      "hf_created_at": "2019-05-01T00:00:00+00:00",
-      "artifact": "shape=(1, 32, 30522) dtype=torch.float32 range=[-8.43, 9.12]",
-      "backend": "forge",
-      "backends_succeeded": ["forge"]
-    },
-    "distilbert/distilbert-base-uncased": {
-      "first_compiled": "2026-04-02T14:05:11.000000+00:00",
-      "first_chip": 2,
-      "run": 2,
-      "best_time_s": 3.227,
+      "best_time_s": 5.656,
       "successes": 1,
       "source": "huggingface",
       "task": "fill-mask",
-      "rarity": "legendary",
-      "hf_downloads": 28900000,
-      "hf_created_at": "2019-09-01T00:00:00+00:00",
+      "rarity": "common",
+      "hf_downloads": 48,
+      "hf_created_at": "2026-04-26T16:33:06+00:00",
       "artifact": "shape=(1, 32, 30522) dtype=torch.float32 range=[-6.59, 3.97]",
       "backend": "forge",
       "backends_succeeded": ["forge"]
     },
-    "acme-lab/tiny-llm-42m": {
-      "first_compiled": "2026-04-03T09:41:08.000000+00:00",
+    "lumasik/quark-1-248m-base": {
+      "first_compiled": "2026-04-27T20:22:22.880015+00:00",
       "first_chip": 0,
-      "run": 3,
-      "best_time_s": 18.744,
+      "run": 1,
+      "best_time_s": 13.462,
       "successes": 1,
       "source": "huggingface",
       "task": "text-generation",
       "rarity": "common",
-      "hf_downloads": 312,
-      "hf_created_at": "2026-03-29T07:14:22+00:00",
-      "artifact": "shape=(1, 32, 32000) dtype=torch.float32 range=[-14.22, 8.61]",
-      "backend": "xla",
-      "backends_succeeded": ["xla"]
+      "hf_downloads": 380,
+      "hf_created_at": "2026-04-25T22:01:31+00:00",
+      "artifact": "shape=(1, 32, 32000) dtype=torch.float32 range=[-26.88, 11.49]",
+      "backend": "forge",
+      "backends_succeeded": ["forge"]
     },
-    "ResNet": {
-      "first_compiled": "2026-04-01T10:08:02.000000+00:00",
+    "ULTR0N/SentienceTrial1": {
+      "first_compiled": "2026-04-28T21:50:00.311940+00:00",
       "first_chip": 3,
-      "run": 1,
-      "best_time_s": 2.104,
-      "successes": 4,
-      "source": "PyTorchModelHubMixin",
-      "task": "image-classification",
+      "run": 6,
+      "best_time_s": 11.850,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "text-generation",
+      "rarity": "common",
+      "hf_downloads": 477,
+      "hf_created_at": "2026-04-25T01:54:26+00:00",
+      "artifact": "shape=(1, 32, 32000) dtype=torch.float32 range=[-4.11, 8.22]",
+      "first_voice": "→ impact (17%) | hav (8%) | aftermath (7%)",
+      "backend": "forge",
+      "backends_succeeded": ["forge"]
+    },
+    "OvercastLab/Quark-50m-Instruct": {
+      "first_compiled": "2026-04-28T23:08:31.227991+00:00",
+      "first_chip": 2,
+      "run": 6,
+      "best_time_s": 39.875,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "text-generation",
+      "rarity": "common",
+      "hf_downloads": 212,
+      "hf_created_at": "2026-04-26T08:13:44+00:00",
+      "artifact": "shape=(1, 32, 32000) dtype=torch.float32 range=[-19.41, 7.33]",
+      "backend": "forge",
+      "backends_succeeded": ["forge"]
+    },
+    "albert/question_answering/pytorch": {
+      "first_compiled": "2026-05-07T23:40:43.691972+00:00",
+      "first_chip": 2,
+      "run": 4,
+      "best_time_s": 9.697,
+      "successes": 2,
+      "source": "forge_internal",
+      "task": "nlp_qa",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32) dtype=torch.float32 range=[0.00, 1.00]",
+      "backend": "forge",
+      "backends_succeeded": ["forge"]
+    },
+    "albert/sequence_classification/pytorch": {
+      "first_compiled": "2026-05-11T18:05:33.339948+00:00",
+      "first_chip": 3,
+      "run": 5,
+      "best_time_s": 9.414,
+      "successes": 1,
+      "source": "forge_internal",
+      "task": "nlp_text_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 2) dtype=torch.float32 range=[-2.14, 3.87]",
+      "backend": "forge",
+      "backends_succeeded": ["forge"]
+    },
+    "albert/token_classification/pytorch": {
+      "first_compiled": "2026-05-11T21:50:15.461686+00:00",
+      "first_chip": 2,
+      "run": 6,
+      "best_time_s": 10.500,
+      "successes": 1,
+      "source": "forge_internal",
+      "task": "nlp_token_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 9) dtype=torch.float32 range=[-4.22, 6.11]",
+      "backend": "forge",
+      "backends_succeeded": ["forge"]
+    },
+    "allam/causal_lm/pytorch": {
+      "first_compiled": "2026-05-11T18:27:23.602651+00:00",
+      "first_chip": 1,
+      "run": 5,
+      "best_time_s": 55.803,
+      "successes": 1,
+      "source": "forge_internal",
+      "task": "nlp_causal_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 32000) dtype=torch.float32 range=[-8.14, 9.43]",
+      "backend": "forge",
+      "backends_succeeded": ["forge"]
+    },
+    "bloom/pytorch": {
+      "first_compiled": "2026-05-11T22:01:23.135275+00:00",
+      "first_chip": 0,
+      "run": 7,
+      "best_time_s": 27.253,
+      "successes": 1,
+      "source": "forge_internal",
+      "task": "nlp_causal_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 250880) dtype=torch.float32 range=[-11.22, 8.76]",
+      "backend": "forge",
+      "backends_succeeded": ["forge"]
+    },
+    "alexnet/pytorch": {
+      "first_compiled": "2026-05-11T22:12:08.672757+00:00",
+      "first_chip": 0,
+      "run": 7,
+      "best_time_s": 2.791,
+      "successes": 2,
+      "source": "forge_internal",
+      "task": "cv_image_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-3.12, 5.44]",
+      "backend": "forge",
+      "backends_succeeded": ["forge"]
+    },
+    "beit/pytorch": {
+      "first_compiled": "2026-05-11T22:12:53.777160+00:00",
+      "first_chip": 2,
+      "run": 7,
+      "best_time_s": 23.714,
+      "successes": 1,
+      "source": "forge_internal",
+      "task": "cv_image_cls",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
@@ -76,68 +183,92 @@
       "backend": "forge",
       "backends_succeeded": ["forge"]
     },
-    "AlexNet": {
-      "first_compiled": "2026-04-01T10:09:55.000000+00:00",
-      "first_chip": 0,
-      "run": 1,
-      "best_time_s": 1.873,
-      "successes": 4,
-      "source": "PyTorchModelHubMixin",
-      "task": "image-classification",
+    "bge_1_5/embedding_generation/pytorch": {
+      "first_compiled": "2026-05-11T22:29:16.734555+00:00",
+      "first_chip": 3,
+      "run": 8,
+      "best_time_s": 19.957,
+      "successes": 1,
+      "source": "forge_internal",
+      "task": "nlp_embed_gen",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-3.12, 5.44]",
+      "artifact": "shape=(1, 512, 1024) dtype=torch.float32 range=[-4.33, 5.81]",
       "backend": "forge",
-      "backends_succeeded": ["forge", "xla"]
+      "backends_succeeded": ["forge"]
     }
   },
   "failed": {
-    "some-user/huge-moe-70b": {
-      "run_first_failed": 1,
-      "attempts": 2,
-      "last_error": "RuntimeError: Tracer cannot infer type of (tensor([[[-3.93, -4.59, -3.40, ..., 0.12, -1.30, -0.35]]])). Only tensors and (possibly nested) tuples of tensors, lists, or dicts are supported as inputs or outputs of traced functions.",
+    "Ethangou/attention-residuals-0.6B-baseline": {
+      "run_first_failed": 3,
+      "attempts": 4,
+      "last_error": "RuntimeError: Tracer cannot infer type of (tensor([[[ 3.2961,  3.6585, -0.4105, ...]]])). Only tensors and (possibly nested) tuples/lists/dicts supported.",
       "error_category": "tracer_output_type"
     },
-    "mystery-ai/unknown-arch-v0.1": {
+    "Yosua69/blt-moe-distilled": {
       "run_first_failed": 2,
-      "attempts": 1,
-      "last_error": "ValueError: The checkpoint you are trying to load has model type `unknown_arch` but Transformers does not recognize this architecture.",
+      "attempts": 5,
+      "last_error": "ValueError: The checkpoint you are trying to load has model type `BLT-MoE` but Transformers does not recognize this architecture.",
       "error_category": "unsupported_arch"
     },
-    "nobody/no-loader-model": {
-      "run_first_failed": 3,
+    "Supbatomic/moss-tts-nano-100m-model": {
+      "run_first_failed": 4,
       "attempts": 1,
-      "last_error": "Cannot build dynamic loader for nobody/no-loader-model",
+      "last_error": "Cannot build dynamic loader for Supbatomic/moss-tts-nano-100m-model",
       "error_category": "loader_missing"
     },
-    "flaky-org/sometimes-fails": {
+    "bi_lstm_crf/pytorch": {
+      "run_first_failed": 1,
+      "attempts": 2,
+      "last_error": "IndexError: index out of range in self",
+      "error_category": "forge_internal"
+    },
+    "bart/pytorch": {
+      "run_first_failed": 1,
+      "attempts": 1,
+      "last_error": "IndexError: index -1 is out of bounds for dimension 1 with size 0",
+      "error_category": "forge_internal"
+    },
+    "openai-community/gpt2": {
       "run_first_failed": 2,
-      "attempts": 3,
+      "attempts": 5,
       "last_error": "XlaRuntimeError: INTERNAL: Error code: 13",
+      "error_category": "xla_runtime_error"
+    },
+    "hirundo-io/NVIDIA-Nemotron-3-Nano-4B-BF16": {
+      "run_first_failed": 5,
+      "attempts": 1,
+      "last_error": "ImportError: mamba-ssm is required by the Mamba model but cannot be imported",
+      "error_category": "missing_dependency"
+    },
+    "attention_denseunet/pytorch": {
+      "run_first_failed": 3,
+      "attempts": 2,
+      "last_error": "AssertionError: Setting a tensor value of incorrect shape: (1, 1024, 56, 28) vs (1, 1, 28, 56)",
       "error_category": "other"
     }
   },
   "chip_totals": {
     "0": {
-      "pts": 3240,
-      "first_evers": 3,
-      "best_streak": 3
+      "pts": 2650,
+      "first_evers": 5,
+      "best_streak": 4
     },
     "1": {
-      "pts": 2160,
-      "first_evers": 2,
-      "best_streak": 2
+      "pts": 150,
+      "first_evers": 1,
+      "best_streak": 1
     },
     "2": {
-      "pts": 1440,
-      "first_evers": 1,
-      "best_streak": 1
+      "pts": 2250,
+      "first_evers": 4,
+      "best_streak": 3
     },
     "3": {
-      "pts": 1200,
-      "first_evers": 1,
-      "best_streak": 1
+      "pts": 1600,
+      "first_evers": 3,
+      "best_streak": 2
     }
   }
 }

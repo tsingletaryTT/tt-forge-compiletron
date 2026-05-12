@@ -541,14 +541,40 @@ def build_queues(
                 canary = dict(canary)   # copy so we can annotate safely
                 seed_items = [canary]
 
+        # Filter out seed models whose backend segment is not supported.
+        # Seed model IDs have the form  name/task/backend  (e.g. alexnet/pytorch,
+        # albert/question_answering/pytorch).  paddle/paddlepaddle and ONNX models
+        # can hang indefinitely on import; exclude them up-front to keep runs clean.
+        _UNSUPPORTED_SEED_BACKENDS = {"paddlepaddle", "paddle", "onnx"}
+        seed_items = [
+            it for it in seed_items
+            if it.get("model_id", "").split("/")[-1].lower() not in _UNSUPPORTED_SEED_BACKENDS
+        ]
+
         # Prune seed models that have proven permanently broken even as seeds.
-        # forge_internal means forge segfaulted on this model; keep retrying
-        # transient failures but stop offering seeds that always crash the compiler.
-        _SEED_PERM_FAIL_CATS = {"forge_internal", "unsupported_arch", "loader_missing", "missing_dependency"}
+        # forge_internal (SIGSEGV inside forge.compile) is fatal on first attempt —
+        # it kills the entire worker subprocess, so even 1 recorded failure is enough
+        # to stop retrying.  Other perm-fail categories need 2+ attempts to rule out
+        # transient install / env issues.
+        _SEED_PERM_FAIL_CATS = {
+            "forge_internal",       # SIGSEGV / crash — kills entire worker subprocess
+            "unsupported_arch",     # architecture unknown to transformers
+            "loader_missing",       # no loader implementation available
+            "missing_dependency",   # optional package not installed (mamba-ssm, etc.)
+            "unsupported_backend",  # paddle/ONNX/other backend we don't support
+            "api_mismatch",         # JAX/Flax API incompatibility in our worker
+            "shape_mismatch",       # tensor shape incompatibility in model forward pass
+        }
+        # forge_internal is fatal on first attempt (kills the worker process);
+        # all other categories need 2+ attempts to rule out transient env issues.
+        _SEED_PERM_FAIL_FIRST_ATTEMPT = {"forge_internal"}
         seed_perm_fail = {
             mid for mid, info in bestiary.failed.items()
             if info.get("error_category") in _SEED_PERM_FAIL_CATS
-            and info.get("attempts", 0) >= 2
+            and (
+                info.get("error_category") in _SEED_PERM_FAIL_FIRST_ATTEMPT
+                or info.get("attempts", 0) >= 2
+            )
         }
         if seed_perm_fail:
             seed_items = [it for it in seed_items if it["model_id"] not in seed_perm_fail]
