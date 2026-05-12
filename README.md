@@ -1,15 +1,18 @@
-# TT-Forge Compiletron
+# TT-Forge Compiletron: the expedition
 
-A competitive model-compilation game for Tenstorrent hardware. Discovers models
-from HuggingFace and the tt-forge-models zoo, compiles them across all available
-chips in parallel, scores results by rarity and novelty, and maintains a bestiary
-of everything that has ever compiled.
+> *Every run is a hunt. The HuggingFace frontier is vast. The silicon does not forgive.*
 
-Supports two compilation backends — **tt-forge** (PyTorch via forge) and **tt-xla**
+Compiletron is a **roguelike model-compilation game** for Tenstorrent hardware.
+Each expedition discovers AI models from the wild, throws them at every available
+chip in parallel, and scores the results by rarity and novelty. Victories are
+immortalized in a persistent **bestiary**. Failures are catalogued, classified,
+and eventually avenged when the forge grows stronger.
+
+Two compilation backends: **tt-forge** (PyTorch via forge) and **tt-xla**
 (JAX/Flax via PJRT plugin) — selectable per-chip or in mixed mode, with automatic
-per-model backend routing.
+per-model routing that learns from your bestiary's crash history.
 
-<img width="3840" height="2002" alt="tt-forge-compiletron TUI" src="https://github.com/user-attachments/assets/3e93d7d6-8e02-49f6-92cb-e2d93c6caec2" />
+![TT-Forge Compiletron — live expedition demo](docs/demo.gif)
 
 **Tested on:** 4× P300C Blackhole chips
 
@@ -28,7 +31,7 @@ source ~/tt-forge-fe/env/activate
 # Launch TUI (recommended) — auto-starts after 4 seconds
 python3 expedition.py run --tui
 
-# Or CLI, 4-chip forge run, 20 models
+# Or CLI, 4 chips, 20 models
 python3 expedition.py run --chips 4 --limit 20
 ```
 
@@ -143,19 +146,25 @@ per model using a priority chain:
 4. Architecture XLA affinity (gpt2, bert, albert, etc.) → xla if available
 5. Default → forge
 
-**Scoring** — points are awarded on compile success:
-- Base: +200 pts
-- First-ever compiled: ×5 bonus (1000 pts)
-- Rarity tiers: legendary (×2), rare (×1.5), uncommon (×1.2)
-- Newness: zero-day (+300), hot (+100), fresh (+50)
-- Streak: 🔥 bonus for consecutive successes on same chip
-- First Voice: +100 pts if inference produces meaningful output
+---
 
-**Bestiary** (`data/bestiary.json`) — persistent database. Tracks every
-model ever compiled: artifact shape, task, compile time, chip, run number,
-first-voice text, and all-time chip leaderboard. Error entries are
-automatically re-classified on load when new error-pattern rules are added,
-so stale `other` entries get upgraded to precise categories over time.
+## Scoring
+
+Points are awarded on compile success. A first compile of a model never before
+seen on any Tenstorrent chip is worth more than a thousand words.
+
+| Event | Points |
+|---|---|
+| Successful compile | +200 base |
+| First ever compiled (new to bestiary) | ×5 multiplier → **+1000** |
+| Legendary rarity | ×2 |
+| Rare | ×1.5 |
+| Uncommon | ×1.2 |
+| Zero-day model (< 24h old on HF) | +300 |
+| Hot (< 1 week) | +100 |
+| Fresh (< 1 month) | +50 |
+| Consecutive-success streak on same chip | bonus per step |
+| First Voice inference produces meaningful output | +100 |
 
 **First Voice** — after a successful compile, each worker runs a themed
 inference pass using a curated sample from `lib/expedition/sampler.py`
@@ -165,6 +174,25 @@ turn raw logits into readable predictions using last-position top-k sampling:
 🗣 First Voice  [At the Westinghouse pavilion, a time capsule was buried...]
 → The (10%) | A (3%) | " (3%)
 ```
+
+---
+
+## The Bestiary
+
+`data/bestiary.json` is the persistent record of everything the hardware has
+ever learned to compile. Every successful run adds to it; nothing is ever
+overwritten. It tracks:
+
+- artifact shape, task, compile time, chip, run number
+- first-voice text (the model's first words on Tenstorrent silicon)
+- all-time chip leaderboard
+
+Error entries are automatically **re-classified on load** when new error-pattern
+rules are added, so stale `other` entries get upgraded to precise categories
+over time. The bestiary grows smarter as the project does.
+
+See `data/bestiary.example.json` for the real-world structure with all fields
+populated by actual runs.
 
 ---
 
@@ -274,8 +302,7 @@ data/artifacts/             saved first-voice text from notable compiles
 
 The bestiary persists across runs and is never overwritten — new compiles
 accumulate. It is the canonical record of what the hardware has proven it
-can compile. See `data/bestiary.example.json` for the real-world structure
-including all fields populated by actual runs.
+can compile.
 
 ---
 

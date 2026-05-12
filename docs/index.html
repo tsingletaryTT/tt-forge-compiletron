@@ -140,6 +140,7 @@ a:hover { color: var(--teal2); }
   font-size: clamp(0.45rem, 1.1vw, 0.75rem);
   line-height: 1.15;
   letter-spacing: 0;
+  text-align: left;   /* override inherited center so shorter rows don't shift right */
   color: var(--teal);
   text-shadow: 0 0 20px rgba(79,209,197,0.5);
   white-space: pre;
@@ -149,6 +150,10 @@ a:hover { color: var(--teal2); }
 @keyframes glow {
   from { text-shadow: 0 0 10px rgba(79,209,197,0.3); }
   to   { text-shadow: 0 0 30px rgba(79,209,197,0.7); }
+}
+.ascii-caption {
+  color: var(--muted);
+  letter-spacing: 0.05em;
 }
 
 .hero-sub {
@@ -483,9 +488,10 @@ footer a { color: var(--teal); text-decoration: none; }
     ██║      ██║         █████╗  ██║   ██║██████╔╝██║  ███╗█████╗
     ██║      ██║         ██╔══╝  ██║   ██║██╔══██╗██║   ██║██╔══╝
     ██║      ██║         ██║     ╚██████╔╝██║  ██║╚██████╔╝███████╗
-    ╚═╝      ╚═╝         ╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝</pre>
+    ╚═╝      ╚═╝         ╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝
+<span class="ascii-caption">
+    COMPILETRON: the expedition</span></pre>
 
-  <div class="hero-sub">C &nbsp; O &nbsp; M &nbsp; P &nbsp; I &nbsp; L &nbsp; E &nbsp; T &nbsp; R &nbsp; O &nbsp; N</div>
   <p class="hero-tagline">
     A roguelike model-compilation game for Tenstorrent Blackhole hardware.
     Discovers AI models from the wild, compiles them, scores by rarity,
@@ -502,14 +508,26 @@ footer a { color: var(--teal); text-decoration: none; }
 
   <div class="cta-row">
     <a class="btn btn-primary" href="#quickstart">Quick Start</a>
-    <a class="btn btn-secondary" href="#demo">Watch Demo</a>
     <a class="btn btn-secondary" href="https://github.com/tsingletaryTT/tt-forge-compiletron" target="_blank">GitHub ↗</a>
   </div>
 
-  <img class="hero-screenshot"
-       src="https://github.com/user-attachments/assets/3e93d7d6-8e02-49f6-92cb-e2d93c6caec2"
-       alt="TT-Forge Compiletron TUI — four chip panels, expedition log, and live scoring"
-       onerror="this.style.display='none'">
+  <section id="demo" class="wide" style="padding-left:0;padding-right:0">
+    <div class="player-wrap">
+      <div class="player-bar">
+        <div class="dot dot-r"></div>
+        <div class="dot dot-y"></div>
+        <div class="dot dot-g"></div>
+        <span class="player-title">expedition #023 — 4 chips — seed-only — forge</span>
+      </div>
+      <div id="demo-player"></div>
+    </div>
+    <p class="demo-hint">
+      Live recording · 145 seconds · 4 chips · 6 compiles (albert × 4, alexnet × 2) · 5 failures · SummaryScreen leaderboard ·
+      idle clamped to ≤ 1.2s · regenerate with
+      <code style="font-family:var(--mono);font-size:0.78rem;color:var(--teal2)">bash scripts/record_demo.sh</code>
+    </p>
+  </section>
+
 </section>
 
 <!-- ── Story ──────────────────────────────────────────────────────────── -->
@@ -583,27 +601,6 @@ footer a { color: var(--teal); text-decoration: none; }
     </div>
 
   </div>
-</section>
-
-<div class="section-divider"></div>
-
-<!-- ── Demo ───────────────────────────────────────────────────────────── -->
-<section id="demo" class="wide" style="padding-left:0;padding-right:0">
-  <h2 style="padding:0 2rem;max-width:1200px;margin-left:auto;margin-right:auto">Live Demo</h2>
-  <div class="player-wrap">
-    <div class="player-bar">
-      <div class="dot dot-r"></div>
-      <div class="dot dot-y"></div>
-      <div class="dot dot-g"></div>
-      <span class="player-title">expedition #023 — 4 chips — seed-only — forge</span>
-    </div>
-    <div id="demo-player"></div>
-  </div>
-  <p class="demo-hint">
-    Live recording · 145 seconds · 4 chips · 6 compiles (albert × 4, alexnet × 2) · 5 failures · SummaryScreen leaderboard ·
-    idle clamped to ≤ 1.2s · regenerate with
-    <code style="font-family:var(--mono);font-size:0.78rem;color:var(--teal2)">bash scripts/record_demo.sh</code>
-  </p>
 </section>
 
 <div class="section-divider"></div>
@@ -895,7 +892,7 @@ footer a { color: var(--teal); text-decoration: none; }
     rows: 50,
     speed: 2,
     theme: 'solarized-dark',
-    autoPlay: false,
+    autoPlay: true,
     loop: true,
     fit: 'width',
     controls: true,
