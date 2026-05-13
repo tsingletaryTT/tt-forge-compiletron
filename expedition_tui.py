@@ -48,6 +48,8 @@ from textual.widgets import Footer, Header, RichLog, Static
 
 PROJECT_DIR = Path(__file__).parent
 
+from lib.expedition.run_state import ModelResult, RunState
+
 # ── Roguelike identity tables ────────────────────────────────────────────────
 
 _ADVENTURER_TITLES = [
@@ -138,6 +140,33 @@ def _read_status(chip_id: int, status_dir: str | None = None) -> dict[str, str]:
     except FileNotFoundError:
         pass
     return out
+
+
+def _absorb_csv_row(run_state: RunState, chip_id: int,
+                    results_path: str, is_sq: bool) -> None:
+    """Read the last CSV row written by a completed worker and store in RunState.
+
+    Called after proc.wait() — by then the worker has written its CSV row and
+    exited.  Silently does nothing on any I/O or parse error.
+
+    Args:
+        run_state:    The RunState for this expedition run.
+        chip_id:      The chip whose worker just exited.
+        results_path: Path to the per-chip CSV file the worker wrote.
+        is_sq:        True if this was a side quest model.
+    """
+    try:
+        rows = list(csv.DictReader(open(results_path, newline="")))
+        if not rows:
+            return
+        row    = rows[-1]
+        c      = run_state.chip(chip_id)
+        result = ModelResult.from_csv_row(
+            row, chip_id, rarity=c.rarity, streak=c.streak, is_sq=is_sq
+        )
+        run_state.add_result(result)
+    except Exception:
+        pass
 
 
 def _render_score_row(chip_id: int) -> Text:
@@ -935,9 +964,7 @@ class RunScreen(Screen):
         self.arch         = arch
         self._project_dir = project_dir
         self.backend      = backend   # auto | forge | xla | mixed
-        self._chip_rarity: list[str] = ["common"] * 4
-        self._chip_streak: list[int] = [0] * 4
-        self._chip_best:   list[int] = [0] * 4
+        self._run_state   = RunState(num_chips, run_number)
         self._done_count  = 0
         # ── Per-model dispatcher state ────────────────────────────────────────
         # Flatten chip_queues round-robin into a single ordered pool.
@@ -1252,6 +1279,10 @@ class RunScreen(Screen):
         except Exception:
             pass
 
+        # Tell RunState which model is about to compile so _parse_for_events
+        # can get the model name without reading the status file.
+        self._run_state.set_current(chip_id, model.get("model_id", ""))
+
         proc = await asyncio.create_subprocess_exec(
             python_exe,
             worker_path,
@@ -1281,11 +1312,13 @@ class RunScreen(Screen):
         if panel:
             panel.mark_done(proc.returncode == 0)
 
-        status = _read_status(chip_id)
-        pts    = int(status.get("pts", 0))
+        # Absorb the CSV row the worker just wrote into RunState so that
+        # WaveFinaleScreen and SummaryScreen never need to read CSV files.
+        _absorb_csv_row(self._run_state, chip_id, results_path, is_sq=False)
+        c = self._run_state.chip(chip_id)
         try:
             el = self.query_one("#event-log", EventLog)
-            el.log_chip_done(chip_id, pts, self._chip_best[chip_id])
+            el.log_chip_done(chip_id, c.pts, c.best_streak)
         except Exception:
             pass
 
@@ -1349,6 +1382,9 @@ class RunScreen(Screen):
             "PYTHONUNBUFFERED":          "1",
         }
 
+        # Tell RunState which side quest model is about to compile.
+        self._run_state.set_current(chip_id, model.get("model_id", ""))
+
         proc = await asyncio.create_subprocess_exec(
             python_exe, worker_path,
             "--chip",       str(chip_id),
@@ -1379,8 +1415,9 @@ class RunScreen(Screen):
         if panel:
             panel.mark_done(proc.returncode == 0)
 
-        sq_status = _read_status(chip_id, status_dir=sq_status_dir)
-        sq_pts    = int(sq_status.get("pts", 0))
+        # Absorb the side quest CSV row into RunState (is_sq=True).
+        _absorb_csv_row(self._run_state, chip_id, results_path, is_sq=True)
+        sq_pts = sum(r.pts for r in self._run_state.chip(chip_id).results if r.is_sq)
 
         if proc.returncode == 0:
             if   elapsed < 10: speed_label = f"⚡ {elapsed:.1f}s — BLAZING"
@@ -1428,6 +1465,7 @@ class RunScreen(Screen):
         self.app.push_screen(WaveFinaleScreen(
             self.num_chips,
             self.run_number,
+            self._run_state,
             auto_quit_secs=getattr(self.app, "auto_quit_secs", 0),
         ))
 
@@ -1474,17 +1512,16 @@ class RunScreen(Screen):
 
     def _parse_for_events(self, chip_id: int, line: str,
                           status_dir: str | None = None) -> None:
+        # Rarity label arrives before SUCCESS/FAILED — store it in RunState so
+        # the event-log call below can read it without a status-file read.
         rm = _RE_RARITY.search(line)
         if rm:
-            raw = rm.group(1).upper()
-            if "LEGENDARY" in raw:
-                self._chip_rarity[chip_id] = "legendary"
-            elif "RARE" in raw:
-                self._chip_rarity[chip_id] = "rare"
-            elif "UNCOMMON" in raw:
-                self._chip_rarity[chip_id] = "uncommon"
-            else:
-                self._chip_rarity[chip_id] = "common"
+            raw    = rm.group(1).upper()
+            rarity = ("legendary" if "LEGENDARY" in raw
+                      else "rare"      if "RARE"      in raw
+                      else "uncommon"  if "UNCOMMON"  in raw
+                      else "common")
+            self._run_state.set_rarity(chip_id, rarity)
 
         try:
             combat = self.query_one("#event-log", EventLog)
@@ -1497,18 +1534,17 @@ class RunScreen(Screen):
             str_m  = _RE_STREAK.search(line)
             streak = int(str_m.group(1)) if str_m else 0
             first  = bool(_RE_FIRST.search(line))
-            self._chip_streak[chip_id] = streak
-            self._chip_best[chip_id]   = max(self._chip_best[chip_id], streak)
-            model  = _read_status(chip_id, status_dir=status_dir).get("model", "")
-            combat.log_success(chip_id, model, self._chip_rarity[chip_id],
-                               pts, first, streak)
-            self._chip_rarity[chip_id] = "common"
+            c      = self._run_state.chip(chip_id)
+            model  = c.current_model   # set by _launch_model before subprocess starts
+            rarity = c.rarity
+            combat.log_success(chip_id, model, rarity, pts, first, streak)
+            self._run_state.set_rarity(chip_id, "common")
 
         elif _RE_FAILURE.search(line):
-            self._chip_streak[chip_id] = 0
-            model = _read_status(chip_id, status_dir=status_dir).get("model", "")
+            c     = self._run_state.chip(chip_id)
+            model = c.current_model
             combat.log_failure(chip_id, model)
-            self._chip_rarity[chip_id] = "common"
+            self._run_state.set_rarity(chip_id, "common")
 
     def action_show_toplike(self) -> None:
         if not shutil.which("tt-toplike"):
@@ -1708,11 +1744,12 @@ class WaveFinaleScreen(Screen):
     TOTAL_FRAMES   = 26
     _PLAY_FRAMES   = 8
 
-    def __init__(self, num_chips: int, run_number: int,
+    def __init__(self, num_chips: int, run_number: int, run_state: RunState,
                  auto_quit_secs: int = 0, **kwargs) -> None:
         super().__init__(**kwargs)
         self.num_chips       = num_chips
         self.run_number      = run_number
+        self._run_state      = run_state
         self._auto_quit_secs = auto_quit_secs
         self._stats: dict    = {}
         self._finished       = False
@@ -1744,45 +1781,8 @@ class WaveFinaleScreen(Screen):
         self._timer = self.set_interval(0.13, self._tick)
 
     def _load_stats(self) -> None:
-        """Read per-chip CSV results (main + side quests) to populate the achievement banner."""
-        total_s = total_f = total_pts = max_streak = new_models = 0
-        best_rank = 0
-        rarity_rank = {"legendary": 3, "rare": 2, "uncommon": 1, "common": 0}
-        best_rarity = "COMPLETE"
-        # Main quest results
-        for chip_id in range(self.num_chips):
-            for suffix in ("", "_sq"):
-                path = Path(f"/tmp/expedition_results_chip{chip_id}{suffix}.csv")
-                if not path.exists():
-                    continue
-                try:
-                    for row in csv.DictReader(path.open()):
-                        pts = int(row.get("pts") or 0)
-                        total_pts += pts
-                        if row.get("status") == "success":
-                            total_s += 1
-                            if row.get("first_ever") == "True":
-                                new_models += 1
-                            sk = int(row.get("streak") or 0)
-                            max_streak = max(max_streak, sk)
-                            rar = row.get("rarity", "common").lower()
-                            rank = rarity_rank.get(rar, 0)
-                            if rank > best_rank:
-                                best_rank = rank
-                                best_rarity = rar.upper() + " FINALE"
-                        elif row.get("status") == "failed":
-                            total_f += 1
-                except Exception:
-                    pass
-        self._stats = {
-            "attempted":  total_s + total_f,
-            "compiled":   total_s,
-            "failed":     total_f,
-            "points":     total_pts,
-            "new_models": new_models,
-            "streak":     max_streak,
-            "rarity":     best_rarity,
-        }
+        """Populate the achievement banner stats from RunState (no file I/O)."""
+        self._stats = self._run_state.get_stats()
 
     async def _tick(self) -> None:
         if self._finished:
@@ -1809,6 +1809,7 @@ class WaveFinaleScreen(Screen):
         self.app.push_screen(SummaryScreen(
             self.num_chips,
             self.run_number,
+            self._run_state,
             auto_quit_secs=self._auto_quit_secs,
         ))
 
@@ -1847,10 +1848,12 @@ class SummaryScreen(Screen):
         Binding("pagedown","scroll_page_down","",          show=False),
     ]
 
-    def __init__(self, num_chips: int, run_number: int, auto_quit_secs: int = 0, **kwargs) -> None:
+    def __init__(self, num_chips: int, run_number: int, run_state: RunState,
+                 auto_quit_secs: int = 0, **kwargs) -> None:
         super().__init__(**kwargs)
         self.num_chips       = num_chips
         self.run_number      = run_number
+        self._run_state      = run_state
         self._auto_quit_secs = auto_quit_secs
 
     def compose(self) -> ComposeResult:
@@ -1877,49 +1880,9 @@ class SummaryScreen(Screen):
         log = self.query_one("#summary-log", RichLog)
         rn  = self.run_number
 
-        # ── Load main quest results ───────────────────────────────────────────
-        chip_results: list[dict] = []
-        for chip_id in range(self.num_chips):
-            path = Path(f"/tmp/expedition_results_chip{chip_id}.csv")
-            if not path.exists():
-                continue
-            try:
-                rows = list(csv.DictReader(path.open()))
-            except Exception:
-                continue
-            successes   = [r for r in rows if r.get("status") == "success"]
-            failures    = [r for r in rows if r.get("status") == "failed"]
-            total_pts   = sum(int(r.get("pts") or 0) for r in rows)
-            first_evers = [r for r in successes if r.get("first_ever") == "True"]
-            first_voice = [r for r in successes if r.get("first_voice") == "True"]
-            times = [float(r["compile_time"]) for r in successes if r.get("compile_time")]
-            chip_results.append({
-                "chip_id":    chip_id,
-                "pts":        total_pts,
-                "successes":  successes,
-                "failures":   failures,
-                "first_evers":first_evers,
-                "first_voice":first_voice,
-                "times":      times,
-            })
-
-        # ── Load side quest results per chip ──────────────────────────────────
-        sq_by_chip: dict[int, dict] = {}
-        for chip_id in range(self.num_chips):
-            path = Path(f"/tmp/expedition_results_chip{chip_id}_sq.csv")
-            if not path.exists():
-                continue
-            try:
-                rows = list(csv.DictReader(path.open()))
-            except Exception:
-                continue
-            sq_by_chip[chip_id] = {
-                "pts":       sum(int(r.get("pts") or 0) for r in rows),
-                "successes": [r for r in rows if r.get("status") == "success"],
-                "failures":  [r for r in rows if r.get("status") == "failed"],
-            }
-
-        chip_results.sort(key=lambda x: -x["pts"])
+        # ── Load results from RunState (no file I/O) ─────────────────────────
+        chip_results = self._run_state.get_chip_results()   # sorted by -pts
+        sq_by_chip   = self._run_state.get_sq_results()
 
         if not chip_results:
             log.write(

@@ -278,6 +278,27 @@ def _print_failure(model_id: str, error: str, elapsed: float) -> None:
     print(f"\n  {BOLD}{RED}✗ FAILED{RESET}  {DIM}{error[:80]}{RESET}  ({elapsed:.1f}s  −10pts)")
 
 
+def _normalise_inputs(inputs: list) -> list:
+    """Ensure tensors are contiguous float32 before forge sees them.
+
+    Two problems forge is sensitive to:
+    1. Non-contiguous tensors: PIL→numpy→.permute(2,0,1) produces strides like
+       (3, 1, 672, 3) instead of the expected NCHW layout.  .contiguous() fixes this.
+    2. Half-precision: models loaded with default_dtype=float16 or bfloat16 can fail
+       forge's tracer with dtype-mismatch errors.  Casting to float32 before compile
+       avoids this without changing the model itself.
+    """
+    import torch
+    out = []
+    for t in inputs:
+        if isinstance(t, torch.Tensor):
+            if t.dtype in (torch.float16, torch.bfloat16):
+                t = t.to(torch.float32)
+            t = t.contiguous()
+        out.append(t)
+    return out
+
+
 def _try_install_missing(error_str: str) -> str | None:
     """If error_str is a ModuleNotFoundError, try to pip-install the package.
 
@@ -412,11 +433,8 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
 
         # PIL→numpy→permute preprocessing can produce non-contiguous tensors whose
         # strides confuse the forge tracer (stride mismatch error on compile or inference).
-        # Normalise every input to a contiguous copy before forge sees them.
-        sample_inputs = [
-            t.contiguous() if isinstance(t, torch.Tensor) else t
-            for t in sample_inputs
-        ]
+        # Also cast float16/bfloat16 to float32 — forge requires float32 inputs.
+        sample_inputs = _normalise_inputs(sample_inputs)
 
         _print_live_info(f"Architecture: {type(model).__name__}")
 
@@ -462,10 +480,7 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
         signal.signal(signal.SIGALRM, _timeout_handler)
         signal.alarm(timeout)
         try:
-            infer_inputs = [
-                t.contiguous() if isinstance(t, torch.Tensor) else t
-                for t in sample_inputs
-            ]
+            infer_inputs = _normalise_inputs(sample_inputs)
             output = compiled(*infer_inputs)
             signal.alarm(0)  # cancel the alarm on clean completion
         except TimeoutException:
