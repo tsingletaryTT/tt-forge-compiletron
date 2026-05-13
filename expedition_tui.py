@@ -664,7 +664,7 @@ class SetupScreen(Screen):
         # ── Curated showcase queue ────────────────────────────────────────────
         if self._curated:
             _log("[bold cyan]⚡ Curated demo queue — 5 hand-picked models[/]")
-            chip_queues = _build_curated_queue(self._chips)
+            chip_queues, side_quest_pool = _build_curated_queue(self._chips)
             for ci, q in enumerate(chip_queues):
                 for item in q:
                     mid   = item.get("model_id", "?")
@@ -674,7 +674,7 @@ class SetupScreen(Screen):
                     _log(f"  [dim]C{ci}[/] [bold]{mid}[/]  [dim]{task}[/]{chips_str}")
             total = sum(len(q) for q in chip_queues)
             _log(f"[bold green]✓ {total} model(s) → {self._chips} chip(s)[/]")
-            app.call_from_thread(self._advance_to_run, chip_queues)
+            app.call_from_thread(self._advance_to_run, chip_queues, side_quest_pool)
             return
 
         bestiary     = Bestiary(path=str(BESTIARY_PATH))
@@ -812,7 +812,8 @@ class SetupScreen(Screen):
         _log(f"\n[bold green]✓ Ready — launching {self._chips} chip(s)...[/]")
         app.call_from_thread(self._advance_to_run, chip_queues)
 
-    def _advance_to_run(self, chip_queues: list[list[dict]]) -> None:
+    def _advance_to_run(self, chip_queues: list[list[dict]],
+                        side_quest_pool: list[dict] | None = None) -> None:
         """Called on the event loop thread when setup completes.
 
         push_screen is synchronous in Textual 7.x (returns AwaitMount, not a
@@ -823,12 +824,13 @@ class SetupScreen(Screen):
         self._setup_done  = True
         self.app.push_screen(
             RunScreen(
-                chip_queues  = chip_queues,
-                num_chips    = self._chips,
-                run_number   = self.app.run_number,
-                arch         = self.app.arch,
-                project_dir  = self.app._project_dir,
-                backend      = self._backend,
+                chip_queues      = chip_queues,
+                num_chips        = self._chips,
+                run_number       = self.app.run_number,
+                arch             = self.app.arch,
+                project_dir      = self.app._project_dir,
+                backend          = self._backend,
+                side_quest_pool  = side_quest_pool or [],
             )
         )
 
@@ -892,7 +894,9 @@ class RunScreen(Screen):
 
     def __init__(self, chip_queues: list[list[dict]], num_chips: int,
                  run_number: int, arch: str, project_dir: Path,
-                 backend: str = "forge", **kwargs) -> None:
+                 backend: str = "forge",
+                 side_quest_pool: list[dict] | None = None,
+                 **kwargs) -> None:
         super().__init__(**kwargs)
         self.chip_queues  = chip_queues
         self.num_chips    = num_chips
@@ -917,6 +921,11 @@ class RunScreen(Screen):
         self._chip_first_dispatch: set[int] = set()
         self._bestiary = None
         self._all_done: bool = False
+        # Side quest state — chips juggle bonus models while waiting for RALLY.
+        self._side_quest_pool:      list[dict]                                 = list(side_quest_pool or [])
+        self._side_quest_chips:     set[int]                                   = set()
+        self._side_quest_procs:     dict[int, asyncio.subprocess.Process]      = {}
+        self._rally_interrupt_flag: bool                                        = False
 
     def compose(self) -> ComposeResult:
         rn = f"Run #{self.run_number:03d}"
@@ -1507,8 +1516,6 @@ class WaveFinaleScreen(Screen):
         self.num_chips       = num_chips
         self.run_number      = run_number
         self._auto_quit_secs = auto_quit_secs
-        self._frame          = 0
-        self._t              = 0.0
         self._stats: dict    = {}
         self._finished       = False
 
@@ -1517,6 +1524,25 @@ class WaveFinaleScreen(Screen):
 
     def on_mount(self) -> None:
         self._load_stats()
+        self._frames: list = []
+        self._frame_idx    = 0
+        self._finished     = False
+        self.run_worker(self._precompute, exclusive=False)
+
+    async def _precompute(self) -> None:
+        """Compute all TOTAL_FRAMES wave frames in parallel, then start playback."""
+        await asyncio.sleep(0)          # yield once so layout settles and size is known
+        cols = self.size.width  or 220
+        rows = self.size.height or 50
+        loop = asyncio.get_event_loop()
+        frames = await asyncio.gather(*[
+            loop.run_in_executor(
+                None, _wave_frame_tui,
+                (i + 1) * 0.30, i + 1, cols, rows, self.run_number, self._stats,
+            )
+            for i in range(self.TOTAL_FRAMES)
+        ])
+        self._frames = list(frames)
         self._timer = self.set_interval(0.13, self._tick)
 
     def _load_stats(self) -> None:
@@ -1561,22 +1587,13 @@ class WaveFinaleScreen(Screen):
     async def _tick(self) -> None:
         if self._finished:
             return
-        self._frame += 1
-        self._t     += 0.30
-        cols = self.size.width  or 220
-        rows = self.size.height or 58
-        # Offload heavy computation (sin loops + Text.from_ansi) to a thread
-        # so the event loop stays free and Textual can render other widgets.
-        loop = asyncio.get_event_loop()
-        text = await loop.run_in_executor(
-            None, _wave_frame_tui,
-            self._t, self._frame, cols, rows, self.run_number, self._stats,
-        )
-        try:
-            self.query_one(WaveCanvas).set_frame(text)
-        except Exception:
-            pass
-        if self._frame >= self.TOTAL_FRAMES:
+        if self._frame_idx < len(self._frames):
+            try:
+                self.query_one(WaveCanvas).set_frame(self._frames[self._frame_idx])
+            except Exception:
+                pass
+        self._frame_idx += 1
+        if self._frame_idx >= self.TOTAL_FRAMES:
             self._advance()
 
     def _advance(self) -> None:
@@ -1596,7 +1613,7 @@ class WaveFinaleScreen(Screen):
     def on_key(self, _event: object) -> None:
         """Keypress skips the animation — but only after a few frames so
         queued keypresses from RunScreen's countdown don't kill it instantly."""
-        if self._frame >= 3:
+        if self._frame_idx >= 3:
             self._advance()
 
 
