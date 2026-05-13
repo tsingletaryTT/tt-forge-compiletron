@@ -181,6 +181,47 @@ turn raw logits into readable predictions using last-position top-k sampling:
 
 ---
 
+## Side Quests
+
+When a multi-chip model (like BLOOM JAX, which needs all 4 chips simultaneously)
+enters the queue, the other chips idle while waiting for the full mesh to
+assemble. Instead of wasting that time, Compiletron automatically launches
+**side quest** runs — fast, curated image-classification models that keep every
+free chip productive until the RALLY quorum is reached.
+
+![Side Quest in action — idle chip picks up a bonus model](docs/demo_side_quest.gif)
+
+**How it works:**
+
+1. A mesh model (e.g. BLOOM JAX requiring 4 chips) is spotted in the queue and
+   held as `MESH ASSEMBLING`.
+2. Any chip that finishes its main-queue model and would otherwise sit idle is
+   instead dispatched a side quest from a curated fast pool.
+3. When enough chips free up to form the RALLY quorum, a `_rally_interrupt_flag`
+   fires — no new side quests are launched, but in-flight ones run to completion
+   before the RALLY begins.
+4. Side quest results are tracked separately (`is_sq=True` in RunState) so they
+   don't inflate or pollute main-queue metrics. They appear as a compact **⚡ BONUS
+   HAUL** line in the Field Report summary.
+
+**Side quest pool** (curated fast models, all single-chip forge):
+
+| Model | Task | Rarity |
+|---|---|---|
+| MobileNetV2 | image-classification | common |
+| GhostNet | image-classification | uncommon |
+| GoogLeNet | image-classification | common |
+| EfficientNet-Lite | image-classification | uncommon |
+| DenseNet-121 | image-classification | uncommon |
+| ResNet | image-classification | common |
+| SqueezeBERT | text-classification | rare |
+| DeiT | image-classification | uncommon |
+
+Side quests are **automatically deduped** — a model already running or completed
+on any chip is skipped, so every side quest result is unique within a run.
+
+---
+
 ## The Bestiary
 
 `data/bestiary.json` is the persistent record of everything the hardware has

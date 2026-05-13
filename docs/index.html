@@ -629,6 +629,7 @@ footer a { color: var(--teal); text-decoration: none; }
   <a href="#demo">Demo</a>
   <a href="#backends">Backends</a>
   <a href="#roguelike">Roguelike</a>
+  <a href="#side-quests">Side Quests</a>
   <a href="#bestiary">Bestiary</a>
   <a href="#quickstart">Quick Start</a>
   <div class="spacer"></div>
@@ -955,6 +956,90 @@ footer a { color: var(--teal); text-decoration: none; }
     with prose summaries of every First Voice result — a field log of what the
     hardware has spoken.
   </p>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ── Side Quests ───────────────────────────────────────────────────────── -->
+<section id="side-quests">
+  <h2>Side Quests &#8212; Chips Never Idle</h2>
+
+  <p>
+    Some models require the entire mesh — all four Blackhole chips running in
+    lock-step. While the TUI holds those chips in reserve and waits for quorum,
+    every other free chip would otherwise sit silent. <strong>Side quests</strong>
+    eliminate that dead time.
+  </p>
+
+  <div class="card-grid">
+    <div class="card">
+      <h3>&#9889; How They Trigger</h3>
+      <p>
+        When a multi-chip model enters the queue (<code>MESH ASSEMBLING</code>),
+        any chip that finishes its main-queue work is immediately dispatched a
+        side quest — a fast, curated seed model that compiles in under 20 seconds.
+        No chip idles while the RALLY assembles.
+      </p>
+    </div>
+    <div class="card">
+      <h3>&#9997; Tracked Separately</h3>
+      <p>
+        Side quest results carry <code>is_sq=True</code> in RunState. They earn
+        real points and appear as a <strong>&#9889; BONUS HAUL</strong> line in
+        the Field Report — distinguished from main-queue results so leaderboard
+        scores reflect only the primary expedition.
+      </p>
+    </div>
+    <div class="card">
+      <h3>&#10003; Automatic Dedup</h3>
+      <p>
+        Before each side quest dispatch, the controller scans every chip's
+        in-flight and completed model list. Any model already run or currently
+        compiling on any chip is skipped, so every side quest result within a
+        run is unique.
+      </p>
+    </div>
+    <div class="card">
+      <h3>&#9654; RALLY Interrupt</h3>
+      <p>
+        When enough chips free up to form the RALLY quorum, a
+        <code>_rally_interrupt_flag</code> fires. No new side quests are
+        launched, but in-flight ones run to natural completion before the
+        multi-chip compile begins.
+      </p>
+    </div>
+  </div>
+
+  <h3 style="margin-top:2.5rem">Side Quest Pool</h3>
+  <p>
+    The pool is a hand-curated set of fast, reliable forge models — all
+    single-chip, all proven to compile in under 30 seconds. They are dispatched
+    in order, skipping any model already seen this run.
+  </p>
+  <table class="score-table">
+    <thead>
+      <tr><th>Model</th><th>Task</th><th>Rarity</th><th>Typical compile</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="event-name">MobileNetV2</td><td>image-classification</td><td>common</td><td>~10 s</td></tr>
+      <tr><td class="event-name">GhostNet</td><td>image-classification</td><td>uncommon</td><td>~20 s</td></tr>
+      <tr><td class="event-name">GoogLeNet</td><td>image-classification</td><td>common</td><td>~10 s</td></tr>
+      <tr><td class="event-name">EfficientNet-Lite</td><td>image-classification</td><td>uncommon</td><td>~12 s</td></tr>
+      <tr><td class="event-name">DenseNet-121</td><td>image-classification</td><td>uncommon</td><td>~15 s</td></tr>
+      <tr><td class="event-name">ResNet</td><td>image-classification</td><td>common</td><td>~12 s</td></tr>
+      <tr><td class="event-name">SqueezeBERT</td><td>text-classification</td><td>rare</td><td>~18 s</td></tr>
+      <tr><td class="event-name">DeiT</td><td>image-classification</td><td>uncommon</td><td>~10 s</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="margin-top:2.5rem">In the Field Report</h3>
+  <p>
+    After the run, side quest results appear as a compact bonus summary in the
+    summary screen, separate from the main OPERATIVE STATUS leaderboard:
+  </p>
+  <pre style="background:var(--bg2);padding:1rem 1.25rem;border-radius:6px;font-size:0.82rem;color:var(--fg);overflow-x:auto;border-left:3px solid var(--teal)">&#9889; BONUS HAUL  ·  3 bonus models  ·  2 compiled  ·  +450 pts
+  [SQ] ghostnet/pytorch      INTERCEPT:  class_980 7.16 | class_1 5.05
+  [SQ] googlenet/pytorch     ARTIFACT:   class_642 7.83 | class_401 7.66</pre>
 </section>
 
 <div class="section-divider"></div>
