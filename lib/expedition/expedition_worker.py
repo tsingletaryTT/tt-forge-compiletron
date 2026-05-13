@@ -38,6 +38,43 @@ os.environ.setdefault("TT_METAL_LOGGER_LEVEL", "FATAL")
 import warnings
 warnings.filterwarnings("ignore")
 
+# ── Forge / TT Metal pre-load ─────────────────────────────────────────────────
+# Tell forge's module.py and tvm_utils.py to skip TensorFlow / JAX / Paddle
+# imports.  Those frameworks ship with their own LLVM builds; when loaded in
+# the same process as libTTMLIRCompiler.so (which exports ALL LLVM symbols via
+# --whole-archive), TF's global C++ constructors call into our CommandLineParser
+# singleton in an incompatible state, triggering a SmallPtrSet assertion and
+# SIGSEGV.  Skipping those imports fixes the crash with no functional loss for
+# the PyTorch-only compilation pipeline used here.
+os.environ["FORGE_PYTORCH_ONLY"] = "1"
+
+# forge._C (the PyTorch extension) must be loaded BEFORE TensorFlow or any
+# other GPU library, because TF's global C++ constructors allocate GPU memory
+# that interferes with TT Metal's device init when they share the same process.
+# Pre-loading the MLIR/Metal shared objects via ctypes first ensures they win
+# the dlopen init race, then importing forge locks in the correct state.
+# This must happen at module level — deferring it to _compile_model() is too
+# late because model loader imports (torch → TF) fire during _build_loader().
+try:
+    import ctypes as _ctypes, os as _os
+    _install_lib = _os.path.join(
+        _os.path.expanduser("~/tt-forge-fe"),
+        "third_party/tt-mlir/build/install/lib",
+    )
+    for _lib in [
+        "libdevice.so", "libtt_metal.so",
+        "libTTMLIRRuntime.so", "libTTMLIRCompiler.so", "libTTNNCompileSo.so",
+    ]:
+        _p = _os.path.join(_install_lib, _lib)
+        if _os.path.exists(_p):
+            _ctypes.CDLL(_p)
+    import sys as _sys2
+    _sys2.path.insert(0, _os.path.expanduser("~/tt-forge-fe"))
+    import forge as _forge_preload  # noqa: F401  — side-effect: initialises TT Metal
+    del _sys2, _ctypes, _os, _forge_preload
+except Exception:
+    pass  # non-forge runs (XLA, ONNX) don't need forge loaded at startup
+
 
 # ── ANSI colors (Tenstorrent palette) ────────────────────────────────────────
 
@@ -295,27 +332,6 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
     import torch
 
     sys.path.insert(0, os.path.expanduser("~/tt-forge-fe"))
-
-    # Pre-load TT MLIR/Metal shared libs before importing forge._C to avoid
-    # a segfault in the global C++ constructor chain when dlopen resolves them
-    # in a different order.  Using ctypes forces them into the process address
-    # space first; the subsequent import forge then finds them already mapped.
-    import ctypes, glob as _glob
-    _install_lib = os.path.join(
-        os.path.expanduser("~/tt-forge-fe"),
-        "third_party/tt-mlir/build/install/lib",
-    )
-    for _lib in [
-        "libdevice.so", "libtt_metal.so",
-        "libTTMLIRRuntime.so", "libTTMLIRCompiler.so", "libTTNNCompileSo.so",
-    ]:
-        _p = os.path.join(_install_lib, _lib)
-        if os.path.exists(_p):
-            try:
-                ctypes.CDLL(_p)
-            except Exception:
-                pass
-
     import forge
 
     # Wraps a model whose forward() returns a tuple/ModelOutput so the forge
