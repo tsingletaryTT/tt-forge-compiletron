@@ -1943,59 +1943,51 @@ class SummaryScreen(Screen):
         now_str = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M")
 
         # ── Header ────────────────────────────────────────────────────────────
-        log.write(f"[bold cyan]╔{'═' * 58}[/]")
+        log.write(f"[bold cyan]╔{'═' * 54}[/]")
         log.write(f"[bold cyan]║  ⚡ EXPEDITION #{rn:03d} COMPLETE   {now_str}[/]")
-        log.write(f"[bold cyan]╚{'═' * 58}[/]\n")
+        log.write(f"[bold cyan]╚{'═' * 54}[/]\n")
 
-        # ── MAIN QUEST panel ──────────────────────────────────────────────────
-        pts_col   = "gold1" if total_pts > 0 else ("red" if total_pts < 0 else "dim")
-        rate_w    = round(rate * 44)
-        rate_bar  = f"[green]{'█' * rate_w}[/][dim]{'░' * (44 - rate_w)}[/]"
-        fe_note   = f"  [bold gold1]★ {len(all_first)} new[/]" if all_first else ""
-        fv_note   = f"  [bold magenta]🗣 {len(all_fv)} voiced[/]" if all_fv else ""
-        log.write(Panel(
-            Text.from_markup(
-                f"[bold]{total_attempted}[/] attempted  "
-                f"[green]{total_ns}[/] compiled  "
-                f"[red]{total_nf}[/] failed  "
-                f"[cyan]{rate:.0%}[/]  "
-                f"[{pts_col}]{total_pts:+,}[/] pts"
-                f"{fe_note}{fv_note}\n"
-                f"{rate_bar}  [bold]{rate:.0%}[/]"
-            ),
-            title="[bold cyan]MAIN QUEST[/]",
-            border_style="cyan",
-        ))
+        # ── MAIN QUEST block (left-border only — no right-side clip) ──────────
+        pts_col  = "gold1" if total_pts > 0 else ("red" if total_pts < 0 else "dim")
+        rate_w   = round(rate * 30)
+        rate_bar = f"[green]{'█' * rate_w}[/][dim]{'░' * (30 - rate_w)}[/]"
+        fe_note  = f"  [bold gold1]★{len(all_first)} new[/]" if all_first else ""
+        fv_note  = f"  [bold magenta]🗣{len(all_fv)}[/]" if all_fv else ""
+        log.write(f"[bold cyan]╔══ MAIN QUEST {'═' * 40}[/]")
+        log.write(
+            f"[bold cyan]║[/]  [bold]{total_attempted}[/] attempted  "
+            f"[green]{total_ns}[/] compiled  [red]{total_nf}[/] failed  "
+            f"[cyan]{rate:.0%}[/]  [{pts_col}]{total_pts:+,}[/] pts"
+            f"{fe_note}{fv_note}"
+        )
+        log.write(f"[bold cyan]║[/]  {rate_bar}  [bold]{rate:.0%}[/]")
+        log.write(f"[bold cyan]╚{'═' * 54}[/]")
 
-        # ── SIDE QUESTS panel (only if any ran) ───────────────────────────────
+        # ── SIDE QUESTS block (only if any ran) ───────────────────────────────
         if has_sq:
             sq_attempted = len(all_sq_s) + len(all_sq_f)
             sq_rate      = len(all_sq_s) / max(sq_attempted, 1)
             sq_pts_col   = "gold1" if total_sq_pts > 0 else "dim"
-            log.write(Panel(
-                Text.from_markup(
-                    f"[bold]{sq_attempted}[/] bonus models  "
-                    f"[green]{len(all_sq_s)}[/] compiled  "
-                    f"[red]{len(all_sq_f)}[/] failed  "
-                    f"[cyan]{sq_rate:.0%}[/]  "
-                    f"[{sq_pts_col}]{total_sq_pts:+,}[/] bonus pts"
-                ),
-                title="[bold yellow]⚡ SIDE QUESTS[/]",
-                border_style="yellow",
-            ))
+            log.write(f"[bold yellow]╔══ ⚡ SIDE QUESTS {'═' * 36}[/]")
+            log.write(
+                f"[bold yellow]║[/]  [bold]{sq_attempted}[/] bonus models  "
+                f"[green]{len(all_sq_s)}[/] compiled  [red]{len(all_sq_f)}[/] failed  "
+                f"[cyan]{sq_rate:.0%}[/]  [{sq_pts_col}]{total_sq_pts:+,}[/] bonus pts"
+            )
+            log.write(f"[bold yellow]╚{'═' * 54}[/]")
 
         log.write("")
 
         # ── Chip leaderboard ─────────────────────────────────────────────────
+        # Bar=12, compact columns — fits 80 cols with 4 chips.
         log.write("[bold cyan]  CHIP LEADERBOARD[/]")
         medals   = ["🥇", "🥈", "🥉", "  "]
         lb_table = Table(show_header=False, box=None, padding=(0, 1))
-        lb_table.add_column("Medal",  no_wrap=True)
-        lb_table.add_column("Bar",    no_wrap=True)
-        lb_table.add_column("Pts",    justify="right", no_wrap=True)
-        lb_table.add_column("W/L",    no_wrap=True)
-        lb_table.add_column("SQ",     no_wrap=True)
-        lb_table.add_column("Extra",  no_wrap=True)
+        lb_table.add_column("Medal", no_wrap=True)
+        lb_table.add_column("Bar",   no_wrap=True)
+        lb_table.add_column("Pts",   justify="right", no_wrap=True)
+        lb_table.add_column("W/L",   no_wrap=True)
+        lb_table.add_column("Extra", no_wrap=True)
         for i, c in enumerate(chip_results):
             medal    = medals[min(i, 3)]
             ns       = len(c["successes"])
@@ -2008,27 +2000,25 @@ class SummaryScreen(Screen):
             sq_nf    = len(sq.get("failures", []))
             sq_pts_c = sq.get("pts", 0)
             ratio    = ns / max(ns + nf, 1)
-            filled   = round(ratio * 20)
-            bar      = "█" * filled + "░" * (20 - filled)
+            filled   = round(ratio * 12)
+            bar      = "█" * filled + "░" * (12 - filled)
             bc       = "green" if ratio > 0.6 else ("yellow" if ratio > 0.3 else "red")
             pc       = "gold1" if pts > 0 else ("red" if pts < 0 else "dim")
-            avg_t    = f"{sum(times)/len(times):.0f}s avg" if times else "—"
+            avg_t    = f"{sum(times)/len(times):.0f}s" if times else "—"
             fe_s     = f"[bold gold1]★{fe}[/]" if fe else ""
-            if sq_ns and sq_nf:
-                sq_cell = f"[yellow]SQ✓{sq_ns}[/][dim]✗{sq_nf}[/]"
-            elif sq_ns:
-                sq_cell = f"[yellow]SQ✓{sq_ns}[/]"
-            elif sq_nf:
-                sq_cell = f"[dim]SQ✗{sq_nf}[/]"
-            else:
-                sq_cell = ""
-            sq_pts_tag = f" [yellow]{sq_pts_c:+,}[/]" if sq_pts_c else ""
+            # Fold SQ info into W/L column to keep row width bounded
+            sq_part  = ""
+            if sq_ns or sq_nf:
+                sq_part = f" [yellow]SQ✓{sq_ns}[/]" if sq_ns else ""
+                if sq_nf:
+                    sq_part += f"[dim]✗{sq_nf}[/]"
+                if sq_pts_c:
+                    sq_part += f"[yellow]{sq_pts_c:+,}[/]"
             lb_table.add_row(
                 f"{medal} [yellow]C{c['chip_id']}[/]",
                 f"[{bc}]{bar}[/]",
                 f"[{pc}]{pts:>+,}[/]",
-                f"[green]✓{ns}[/] [red]✗{nf}[/] {fe_s}",
-                f"{sq_cell}{sq_pts_tag}".strip() or "[dim]—[/]",
+                f"[green]✓{ns}[/] [red]✗{nf}[/] {fe_s}{sq_part}",
                 f"[dim]{avg_t}[/]",
             )
         log.write(lb_table)
