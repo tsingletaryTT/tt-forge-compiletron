@@ -1158,10 +1158,28 @@ class RunScreen(Screen):
                 and self._free_chips
                 and self._side_quest_pool
                 and not self._rally_interrupt_flag):
+            # Collect model IDs already completed or currently in-flight on any chip
+            # so we never dispatch a duplicate (same model run twice across chips).
+            seen_ids: set[str] = set()
+            for _cid in range(self.num_chips):
+                _c = self._run_state.chip(_cid)
+                if _c.current_model:
+                    seen_ids.add(_c.current_model)
+                for _r in _c.results:
+                    seen_ids.add(_r.model_id)
+
+            # Find first pool model that hasn't been run yet.
+            sq_idx = next(
+                (i for i, m in enumerate(self._side_quest_pool)
+                 if m.get("model_id", "") not in seen_ids),
+                None,
+            )
+            if sq_idx is None:
+                return  # every remaining side quest model already ran
             chip_id = min(self._free_chips)
             self._free_chips.discard(chip_id)
             self._side_quest_chips.add(chip_id)
-            model = self._side_quest_pool.pop(0)
+            model = self._side_quest_pool.pop(sq_idx)
             self._launch_side_quest(chip_id, model)
             # Keep scanning — multiple chips may be free simultaneously.
             self._dispatch_next()
