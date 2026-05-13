@@ -61,13 +61,14 @@ if ! python3 -c "import forge" &>/dev/null; then
 fi
 
 # ── shm cleanup ──────────────────────────────────────────────────────────────
-# Forge compile leaves behind sm_segment.* files in /dev/shm after each run.
-# Stale segments from a previous (possibly crashed) run will cause the next
-# forge.compile() call to hang indefinitely.  Always purge them before recording.
-SHM_COUNT=$(find /dev/shm -maxdepth 1 -name 'sm_segment.tt-quietbox.*.0' 2>/dev/null | wc -l)
+# Forge compile leaves behind sm_segment.* and tt_device_*_memory files in
+# /dev/shm after each run.  Stale segments from a previous (possibly crashed)
+# run will cause the next forge.compile() call to hang indefinitely.
+SHM_COUNT=$(find /dev/shm -maxdepth 1 \( -name 'sm_segment.tt-quietbox.*.0' -o -name 'tt_device_*_memory' \) 2>/dev/null | wc -l)
 if [[ "$SHM_COUNT" -gt 0 ]]; then
-    echo "⚠  Clearing $SHM_COUNT stale /dev/shm segment(s) from previous run..."
+    echo "⚠  Clearing $SHM_COUNT stale /dev/shm file(s) from previous run..."
     find /dev/shm -maxdepth 1 -name 'sm_segment.tt-quietbox.*.0' -delete
+    find /dev/shm -maxdepth 1 -name 'tt_device_*_memory' -delete
 fi
 
 mkdir -p docs

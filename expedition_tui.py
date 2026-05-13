@@ -2206,6 +2206,21 @@ class ExpeditionTUI(App[None]):
         self.confirm              = confirm
 
     def on_mount(self) -> None:
+        # Purge stale forge shared-memory segments and TT device handles from any
+        # previous killed run — stale sm_segment.* files cause forge.compile() to
+        # hang indefinitely on the next AlexNet (or any forge model) compile.
+        import glob as _glob
+        for _f in _glob.glob("/dev/shm/sm_segment.tt-quietbox.*.0"):
+            try:
+                import os as _os; _os.unlink(_f)
+            except OSError:
+                pass
+        for _f in _glob.glob("/dev/shm/tt_device_*_memory"):
+            try:
+                import os as _os; _os.unlink(_f)
+            except OSError:
+                pass
+
         rn = f"Run #{self.run_number:03d}"
         self.title     = f"EXPEDITION  {rn}"
         self.sub_title = f"{self.num_chips} chip(s) · {self.arch.upper()}"
