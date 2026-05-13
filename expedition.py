@@ -481,8 +481,8 @@ def _build_curated_queue(num_chips: int) -> tuple[list[list[dict]], list[dict]]:
 
     Chip assignments (2 models each, then BLOOM finale on all chips):
       C0: AlexNet → MobileNetV2 → [BLOOM rally]
-      C1: GPT-2 → MusicGen Small (text-to-music, audio generative model)
-      C2: BEiT → YOLOS-Small (first object detection in the bestiary)
+      C1: GPT-2 → SqueezeBERT  (the "text chip": LLM then classifier)
+      C2: BEiT → DeiT           (the "vision transformer chip")
       C3: Attention DenseUNet FAIL → ResNet (recovery win)
     Finale (all 4 chips): bloom/causal_lm/jax (XLA, BLOOM 4-chip data-parallel — genuine)
 
@@ -587,30 +587,13 @@ def _build_curated_queue(num_chips: int) -> tuple[list[list[dict]], list[dict]]:
             "loader_class": "ModelLoader",
             "is_frontier": False,
         },
-        # C1: MusicGen Small — audio generative model (text-to-music); nothing
-        # like it exists in the bestiary.  Pairs nicely with C1's GPT-2: both
-        # generate sequences, one in token space, one in continuous audio space.
+        # C1: SqueezeBERT — compact BERT-variant for text classification; pairs
+        # with C1's GPT-2 to make C1 the "text chip" of the run.
+        # (MusicGen Small was replaced: TypeError in forge tracer on encoder-decoder.)
         {
-            "model_id": "musicgen_small/pytorch",
-            "display_name": "MusicGen Small",
-            "task": "text-to-audio",
-            "source": "tt-forge-models",
-            "rarity": "legendary",
-            "hf_downloads": None,
-            "hf_created_at": None,
-            "mesh_chips": 1,
-            "library": "pytorch",
-            "model_type": "",
-            "loader_module": f"{_FORGEMS}.musicgen_small.pytorch.loader",
-            "loader_class": "ModelLoader",
-            "is_frontier": False,
-        },
-        # C2: YOLOS-Small — first object detection model in the bestiary;
-        # uses a pure ViT backbone with no region proposals (novel architecture).
-        {
-            "model_id": "yolos_small/pytorch",
-            "display_name": "YOLOS-Small",
-            "task": "object-detection",
+            "model_id": "squeezebert/pytorch",
+            "display_name": "SqueezeBERT",
+            "task": "text-classification",
             "source": "tt-forge-models",
             "rarity": "rare",
             "hf_downloads": None,
@@ -618,7 +601,25 @@ def _build_curated_queue(num_chips: int) -> tuple[list[list[dict]], list[dict]]:
             "mesh_chips": 1,
             "library": "pytorch",
             "model_type": "",
-            "loader_module": f"{_FORGEMS}.yolos_small.pytorch.loader",
+            "loader_module": f"{_FORGEMS}.squeezebert.pytorch.loader",
+            "loader_class": "ModelLoader",
+            "is_frontier": False,
+        },
+        # C2: DeiT — Data-Efficient Image Transformer; pairs with BEiT to make
+        # C2 the "vision transformer chip".
+        # (YOLOS-Small was replaced: AssertionError Resize2d nearest/bilinear only.)
+        {
+            "model_id": "deit/pytorch",
+            "display_name": "DeiT",
+            "task": "image-classification",
+            "source": "tt-forge-models",
+            "rarity": "uncommon",
+            "hf_downloads": None,
+            "hf_created_at": None,
+            "mesh_chips": 1,
+            "library": "pytorch",
+            "model_type": "",
+            "loader_module": f"{_FORGEMS}.deit.pytorch.loader",
             "loader_class": "ModelLoader",
             "is_frontier": False,
         },

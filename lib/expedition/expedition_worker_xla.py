@@ -341,7 +341,10 @@ def _compile_model_xla(
             replicated = NamedSharding(mesh, PartitionSpec())
             batched    = NamedSharding(mesh, PartitionSpec("batch",))
 
-            _print_live_info(f"{n}-chip data-parallel mesh: {[str(d) for d in all_devices[:n]]}")
+            _print_live_info(
+                f"★ {n}-CHIP MESH ACTIVE: {[str(d) for d in all_devices[:n]]} "
+                f"(batch={n}, one example per chip)"
+            )
 
             sharded_params = jax.device_put(flax_params, replicated)
 

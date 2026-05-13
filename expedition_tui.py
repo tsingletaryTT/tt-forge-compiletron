@@ -1180,14 +1180,19 @@ class RunScreen(Screen):
         if chip_be == "xla":
             python_exe  = str(Path.home() / "tt-xla" / "venv" / "bin" / "python3")
             worker_path = str(self._project_dir / "lib" / "expedition" / "expedition_worker_xla.py")
-            env = {k: v for k, v in os.environ.items() if k != "TT_METAL_HOME"}
+            # Start from parent env minus forge-specific TT-Metal vars.
+            # TT_MESH_GRAPH_DESC_PATH must NOT be inherited — it holds the forge
+            # single-chip p100 descriptor which overrides TT_VISIBLE_DEVICES and
+            # limits JAX to 1 device even when 4 are requested (verified: the p100
+            # textproto declares dims:[1,1]).  JAX enumerates devices from
+            # TT_VISIBLE_DEVICES on its own without needing a mesh descriptor file.
+            env = {
+                k: v for k, v in os.environ.items()
+                if k not in ("TT_METAL_HOME", "TT_MESH_GRAPH_DESC_PATH")
+            }
             env.update({
                 "TT_VISIBLE_DEVICES":      visible,
                 "TT_METAL_LOGGER_LEVEL":   "FATAL",
-                "TT_MESH_GRAPH_DESC_PATH": str(
-                    self._project_dir / "mesh_graph_descriptors"
-                    / "p100_mesh_graph_descriptor.textproto"
-                ),
                 "JAX_PLATFORMS":           "tt",
                 "PYTHONUNBUFFERED":        "1",
             })
@@ -1362,7 +1367,7 @@ class RunScreen(Screen):
             line = raw.decode("utf-8", errors="replace")
             if panel:
                 panel.write_line(line)
-            self._parse_for_events(chip_id, line)
+            self._parse_for_events(chip_id, line, status_dir=sq_status_dir)
 
         await proc.wait()
         elapsed = _time.time() - start_t
@@ -1467,7 +1472,8 @@ class RunScreen(Screen):
         lead = chip_ids[0]
         self._launch_model(lead, mesh_model, decision, mesh_chip_ids=chip_ids)
 
-    def _parse_for_events(self, chip_id: int, line: str) -> None:
+    def _parse_for_events(self, chip_id: int, line: str,
+                          status_dir: str | None = None) -> None:
         rm = _RE_RARITY.search(line)
         if rm:
             raw = rm.group(1).upper()
@@ -1493,14 +1499,14 @@ class RunScreen(Screen):
             first  = bool(_RE_FIRST.search(line))
             self._chip_streak[chip_id] = streak
             self._chip_best[chip_id]   = max(self._chip_best[chip_id], streak)
-            model  = _read_status(chip_id).get("model", "")
+            model  = _read_status(chip_id, status_dir=status_dir).get("model", "")
             combat.log_success(chip_id, model, self._chip_rarity[chip_id],
                                pts, first, streak)
             self._chip_rarity[chip_id] = "common"
 
         elif _RE_FAILURE.search(line):
             self._chip_streak[chip_id] = 0
-            model = _read_status(chip_id).get("model", "")
+            model = _read_status(chip_id, status_dir=status_dir).get("model", "")
             combat.log_failure(chip_id, model)
             self._chip_rarity[chip_id] = "common"
 

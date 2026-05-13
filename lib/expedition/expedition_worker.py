@@ -410,6 +410,14 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
                 # Standard ImageNet-style input: batch=1, RGB, 224×224
                 sample_inputs = [torch.randn(1, 3, 224, 224)]
 
+        # PIL→numpy→permute preprocessing can produce non-contiguous tensors whose
+        # strides confuse the forge tracer (stride mismatch error on compile or inference).
+        # Normalise every input to a contiguous copy before forge sees them.
+        sample_inputs = [
+            t.contiguous() if isinstance(t, torch.Tensor) else t
+            for t in sample_inputs
+        ]
+
         _print_live_info(f"Architecture: {type(model).__name__}")
 
         compile_start = time.time()
@@ -454,7 +462,11 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
         signal.signal(signal.SIGALRM, _timeout_handler)
         signal.alarm(timeout)
         try:
-            output = compiled(*sample_inputs)
+            infer_inputs = [
+                t.contiguous() if isinstance(t, torch.Tensor) else t
+                for t in sample_inputs
+            ]
+            output = compiled(*infer_inputs)
             signal.alarm(0)  # cancel the alarm on clean completion
         except TimeoutException:
             signal.alarm(0)
