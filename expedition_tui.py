@@ -1690,7 +1690,8 @@ class WaveFinaleScreen(Screen):
     """
 
     # 26 frames × 0.13s ≈ 3.4 s of animation before auto-advancing
-    TOTAL_FRAMES = 26
+    TOTAL_FRAMES   = 26
+    _PLAY_FRAMES   = 22   # stop playback early — last few frames stutter on _advance() push
 
     def __init__(self, num_chips: int, run_number: int,
                  auto_quit_secs: int = 0, **kwargs) -> None:
@@ -1775,7 +1776,7 @@ class WaveFinaleScreen(Screen):
             except Exception:
                 pass
         self._frame_idx += 1
-        if self._frame_idx >= self.TOTAL_FRAMES:
+        if self._frame_idx >= self._PLAY_FRAMES:
             self._advance()
 
     def _advance(self) -> None:
@@ -2007,6 +2008,40 @@ class SummaryScreen(Screen):
                 log.write(f"[bold magenta]🗣[/] [cyan]{r['model']}[/]")
                 if artifact:
                     log.write(f"    [italic]{artifact[:120]}[/]")
+            log.write("")
+
+        # ── All compiled — artifacts ─────────────────────────────────────────
+        # Show every successful model's artifact.  First-voice text predictions
+        # get a bold highlight; image class predictions show dimmed.
+        shown_already = {r["model"] for r in all_first} | {r["model"] for r in all_fv}
+        other_hits = [r for r in all_successes
+                      if (r.get("artifact") or "").strip()
+                      and r["model"] not in shown_already]
+        if other_hits or all_fv or all_first:
+            log.write(f"[bold cyan]{'─' * 60}[/]")
+            log.write("[bold cyan]  ARTIFACTS[/]")
+            log.write(f"[bold cyan]{'─' * 60}[/]")
+            # First voice entries get the brightest treatment
+            for r in all_fv:
+                artifact = (r.get("artifact") or "").strip()
+                backend  = r.get("backend", "")
+                be_tag   = f" [dim]\\[{backend}][/]" if backend else ""
+                log.write(f"[bold magenta]🗣[/] [bold]{r['model']}[/]{be_tag}")
+                if artifact:
+                    log.write(f"    [bold magenta]{artifact}[/]")
+            # New-to-bestiary entries (non-first-voice) get gold
+            for r in all_first:
+                if r.get("first_voice") == "True":
+                    continue  # already shown above
+                artifact = (r.get("artifact") or "").strip()
+                log.write(f"[gold1]★[/] [bold]{r['model']}[/]")
+                if artifact:
+                    log.write(f"    [gold1]{artifact[:120]}[/]")
+            # Remaining successes with artifacts
+            for r in other_hits:
+                artifact = (r.get("artifact") or "").strip()
+                log.write(f"  [cyan]{r['model']}[/]")
+                log.write(f"    [dim]{artifact[:120]}[/]")
             log.write("")
 
         # ── Failures ─────────────────────────────────────────────────────────
