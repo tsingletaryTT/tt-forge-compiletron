@@ -1281,7 +1281,7 @@ class RunScreen(Screen):
             if not self._all_done:
                 self._all_done = True
                 self.app.push_screen(WaveFinaleScreen(
-                    self.num_chips, self.run_number,
+                    self.num_chips, self.run_number, self._run_state,
                     auto_quit_secs=getattr(self.app, "auto_quit_secs", 0),
                 ))
             return
