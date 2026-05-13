@@ -1247,6 +1247,106 @@ class RunScreen(Screen):
         self._dispatch_next()
 
     @work
+    async def _launch_side_quest(self, chip_id: int, model: dict) -> None:
+        """Run a bonus model on an idle chip while waiting for RALLY quorum.
+
+        Uses the same forge worker subprocess infrastructure as _launch_model.
+        Exits cleanly without touching chip state if _rally_interrupt_flag is
+        set — _fire_rally owns the chip at that point.
+        """
+        import time as _time
+        start_t = _time.time()
+        display = model.get("display_name", model.get("model_id", "?").split("/")[-1])
+
+        try:
+            el = self.query_one("#event-log", EventLog)
+            el.write(f"[cyan]⚡ C{chip_id} SIDE QUEST — {display}[/]")
+        except Exception:
+            pass
+
+        try:
+            panel = self.query_one(f"#chip-{chip_id}", ChipPanel)
+            panel.write_line(f"\033[36m⚡ SIDE QUEST: {display}\033[0m\n")
+        except Exception:
+            panel = None
+
+        # Write model JSON to a separate temp file (avoids clobbering main worker files).
+        model_for_worker = {k: v for k, v in model.items() if k not in _WORKER_SKIP_KEYS}
+        model_json_path  = f"/tmp/expedition_model_chip{chip_id}_sq.json"
+        results_path     = f"/tmp/expedition_results_chip{chip_id}.csv"
+        Path(model_json_path).write_text(json.dumps(model_for_worker))
+
+        python_exe  = sys.executable
+        worker_path = str(self._project_dir / "lib" / "expedition" / "expedition_worker.py")
+        env = {
+            **os.environ,
+            "TT_VISIBLE_DEVICES":      str(chip_id),
+            "TT_METAL_ARCH_NAME":      self.arch,
+            "TT_METAL_LOGGER_LEVEL":   "FATAL",
+            "TT_MESH_GRAPH_DESC_PATH": str(
+                self._project_dir / "mesh_graph_descriptors"
+                / "p100_mesh_graph_descriptor.textproto"
+            ),
+            "PYTHONUNBUFFERED": "1",
+        }
+
+        proc = await asyncio.create_subprocess_exec(
+            python_exe, worker_path,
+            "--chip",       str(chip_id),
+            "--run",        str(self.run_number),
+            "--bestiary",   str(self._project_dir / "data" / "bestiary.json"),
+            "--model-json", model_json_path,
+            "--results",    results_path,
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            stdin=asyncio.subprocess.DEVNULL,
+        )
+        self._side_quest_procs[chip_id] = proc
+
+        async for raw in proc.stdout:
+            if self._rally_interrupt_flag:
+                break
+            line = raw.decode("utf-8", errors="replace")
+            if panel:
+                panel.write_line(line)
+            self._parse_for_events(chip_id, line)
+
+        if self._rally_interrupt_flag:
+            # _fire_rally owns this chip — don't free it or call _dispatch_next.
+            return
+
+        await proc.wait()
+        elapsed = _time.time() - start_t
+
+        # Clean up side quest tracking before freeing the chip.
+        self._side_quest_procs.pop(chip_id, None)
+        self._side_quest_chips.discard(chip_id)
+
+        if panel:
+            panel.mark_done(proc.returncode == 0)
+
+        if proc.returncode == 0:
+            if   elapsed < 10: speed_label = f"⚡ {elapsed:.1f}s — BLAZING"
+            elif elapsed < 20: speed_label = f"⚡ {elapsed:.1f}s — fast"
+            else:               speed_label = f"{elapsed:.1f}s"
+            try:
+                el = self.query_one("#event-log", EventLog)
+                el.write(f"[bold cyan]⚡ C{chip_id} BONUS ★ {display} — {speed_label}[/]")
+            except Exception:
+                pass
+        else:
+            try:
+                el = self.query_one("#event-log", EventLog)
+                el.write(f"[dim]⚡ C{chip_id} SIDE QUEST FAIL — {display}[/]")
+            except Exception:
+                pass
+
+        # Free chip — may trigger another side quest or RALLY quorum check.
+        self._free_chips.add(chip_id)
+        self._dispatch_next()
+
+    @work
     async def _on_all_done(self) -> None:
         """Animate the completion banner then push to SummaryScreen.
 
