@@ -1304,7 +1304,7 @@ class RunScreen(Screen):
         """
         import time as _time
         start_t = _time.time()
-        display = model.get("display_name", model.get("model_id", "?").split("/")[-1])
+        display = model.get("display_name") or _model_short(model.get("model_id", "?"))
 
         try:
             el = self.query_one("#event-log", EventLog)
@@ -2033,7 +2033,7 @@ class SummaryScreen(Screen):
         shown = {r["model"] for r in all_first}
         other = [r for r in all_successes if r["model"] not in shown]
         if other:
-            names = "  ·  ".join(r["model"].split("/")[-1] for r in other)
+            names = "  ·  ".join(_model_short(r["model"]) for r in other)
             log.write(f"[dim]  CATALOGUED ({len(other)})[/]")
             log.write(f"  [dim]{names}[/]")
             log.write("")
