@@ -1037,8 +1037,10 @@ class RunScreen(Screen):
         # Check if a waiting mesh model now has quorum.
         if self._mesh_holding:
             chips_needed: int = self._mesh_holding["chips_needed"]
-            if len(self._free_chips) >= chips_needed:
-                chip_ids = sorted(self._free_chips)[:chips_needed]
+            # Count idle + interruptible side-quest chips toward quorum.
+            all_available = self._free_chips | self._side_quest_chips
+            if len(all_available) >= chips_needed:
+                chip_ids = sorted(all_available)[:chips_needed]
                 self._fire_rally(self._mesh_holding, chip_ids)
                 return
 
@@ -1077,6 +1079,22 @@ class RunScreen(Screen):
                     self._dispatch_next()
                     return
                 continue
+
+        # Juggle while waiting for RALLY quorum: launch a side quest on any free chip.
+        # Only fires when a mesh model is assembling, there's a free chip, and we have
+        # models in the side quest pool and the RALLY interrupt hasn't been signalled.
+        if (self._mesh_holding
+                and self._free_chips
+                and self._side_quest_pool
+                and not self._rally_interrupt_flag):
+            chip_id = min(self._free_chips)
+            self._free_chips.discard(chip_id)
+            self._side_quest_chips.add(chip_id)
+            model = self._side_quest_pool.pop(0)
+            self._launch_side_quest(chip_id, model)
+            # Keep scanning — multiple chips may be free simultaneously.
+            self._dispatch_next()
+            return
 
         # Check if run is complete: pool empty, no mesh holding, all chips free.
         if not self._model_pool and not self._mesh_holding and len(self._free_chips) == self.num_chips:
@@ -1259,6 +1277,26 @@ class RunScreen(Screen):
         """Handle a RALLY event: show banner, fire mesh subprocess."""
         self._mesh_holding      = None
         self._opportunist_active = False
+        self._rally_interrupt_flag = True   # signal side quest workers to exit cleanly
+
+        # Kill any side quest subprocesses on the rally chips and reclaim them.
+        for cid in list(chip_ids):
+            proc = self._side_quest_procs.pop(cid, None)
+            if proc is not None:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:
+                    pass
+                self._side_quest_chips.discard(cid)
+                try:
+                    el = self.query_one("#event-log", EventLog)
+                    el.write(
+                        f"[yellow]⚡ C{cid} SIDE QUEST cut short — ALL CHIPS CALLED TO RALLY[/]"
+                    )
+                except Exception:
+                    pass
+
         for cid in chip_ids:
             self._free_chips.discard(cid)
 
