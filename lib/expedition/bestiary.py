@@ -164,6 +164,23 @@ _ERROR_RULES: list[tuple[str, str, str, str]] = [
      "oom",
      "Out of memory",
      "config: lower --max-model-params or add chip memory guard"),
+    # IRD_LF_CACHE server required (Tenstorrent internal model cache)
+    # These models pull weights from an internal S3 via a cache proxy that's
+    # only reachable in the Tenstorrent CI environment.
+    ("IRD_LF_CACHE",
+     "missing_dependency",
+     "IRD LF Cache server required",
+     "filter: model requires internal Tenstorrent model cache server; exclude from external runs"),
+    # Index out of range / out of bounds — usually a model-specific shape bug
+    # that won't be fixed by retrying.
+    ("out of bounds",
+     "shape_mismatch",
+     "Index out of bounds",
+     "bug: model has a dimension/index mismatch; report with model ID"),
+    ("index out of range",
+     "shape_mismatch",
+     "Index out of range",
+     "bug: model has a dimension/index mismatch; report with model ID"),
 ]
 
 _CATEGORY_OTHER = ("other", "Other", "investigate manually")

@@ -241,6 +241,29 @@ def _print_failure(model_id: str, error: str, elapsed: float) -> None:
     print(f"\n  {BOLD}{RED}✗ FAILED{RESET}  {DIM}{error[:80]}{RESET}  ({elapsed:.1f}s  −10pts)")
 
 
+def _try_install_missing(error_str: str) -> str | None:
+    """If error_str is a ModuleNotFoundError, try to pip-install the package.
+
+    Returns the package name that was installed (or attempted), or None if
+    the error is not a missing-module error.
+    """
+    import re, subprocess
+    m = re.search(r"No module named ['\"]([^'\"]+)['\"]", error_str)
+    if not m:
+        return None
+    pkg = m.group(1).split(".")[0]  # top-level package name
+    print(f"  {YELLOW}→ missing package '{pkg}' — trying pip install...{RESET}")
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", pkg, "-q"],
+            timeout=60, check=False,
+        )
+        print(f"  {GREEN}✓ installed '{pkg}' — retrying model{RESET}")
+    except Exception as exc:
+        print(f"  {RED}✗ pip install failed: {exc}{RESET}")
+    return pkg
+
+
 def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool, Any, float, str, Any]:
     """Run forge compile + inference for one model.
 
@@ -272,6 +295,27 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
     import torch
 
     sys.path.insert(0, os.path.expanduser("~/tt-forge-fe"))
+
+    # Pre-load TT MLIR/Metal shared libs before importing forge._C to avoid
+    # a segfault in the global C++ constructor chain when dlopen resolves them
+    # in a different order.  Using ctypes forces them into the process address
+    # space first; the subsequent import forge then finds them already mapped.
+    import ctypes, glob as _glob
+    _install_lib = os.path.join(
+        os.path.expanduser("~/tt-forge-fe"),
+        "third_party/tt-mlir/build/install/lib",
+    )
+    for _lib in [
+        "libdevice.so", "libtt_metal.so",
+        "libTTMLIRRuntime.so", "libTTMLIRCompiler.so", "libTTNNCompileSo.so",
+    ]:
+        _p = os.path.join(_install_lib, _lib)
+        if os.path.exists(_p):
+            try:
+                ctypes.CDLL(_p)
+            except Exception:
+                pass
+
     import forge
 
     # Wraps a model whose forward() returns a tuple/ModelOutput so the forge
@@ -735,6 +779,10 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
 
         # ── Compile + inference ──────────────────────────────────────────────
         success, output, compile_time, error_str, compiled_module = _compile_model(loader, chip_id)
+        # Auto-install missing packages and retry once
+        if not success and "No module named" in error_str:
+            if _try_install_missing(error_str):
+                success, output, compile_time, error_str, compiled_module = _compile_model(loader, chip_id)
         elapsed = time.time() - start
 
         if success:

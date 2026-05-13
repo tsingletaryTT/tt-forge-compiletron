@@ -591,6 +591,33 @@ footer a { color: var(--teal); text-decoration: none; }
 }
 .chip-pts { color: var(--gold); text-align: right; }
 .chip-meta { color: var(--muted); font-size: 0.72rem; }
+
+/* ── Demo video switcher ───────────────────────────────────────────────── */
+.demo-switcher {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 0.9rem;
+  justify-content: center;
+}
+.demo-mode {
+  background: var(--bg2);
+  border: 1px solid var(--dim);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 0.80rem;
+  letter-spacing: 0.03em;
+  padding: 0.4rem 1rem;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.demo-mode:hover { border-color: var(--teal); color: var(--teal2); }
+.demo-mode.active {
+  background: var(--bg3);
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
 </style>
 </head>
 <body>
@@ -640,23 +667,53 @@ footer a { color: var(--teal); text-decoration: none; }
   </div>
   <br/>
   <div id="demo">
+    <div class="demo-switcher">
+      <button class="demo-mode" id="btn-scripted" onclick="switchDemo('scripted')">⚡ Scripted Finale</button>
+      <button class="demo-mode active" id="btn-live" onclick="switchDemo('live')">🎮 Live Demo</button>
+    </div>
     <div class="player-wrap">
       <div class="player-bar">
         <div class="dot dot-r"></div>
         <div class="dot dot-y"></div>
         <div class="dot dot-g"></div>
-        <span class="player-title">expedition #023 — 4 chips — seed-only — forge</span>
+        <span class="player-title" id="player-title">expedition #038 — 4 chips · BLACKHOLE · forge</span>
       </div>
-      <video class="demo-gif" autoplay loop muted playsinline>
-        <source src="./demo.mp4" type="video/mp4">
+      <video class="demo-gif" id="demo-video" autoplay loop muted playsinline>
+        <source id="demo-src" src="./demo_live.mp4" type="video/mp4">
       </video>
     </div>
-    <p class="demo-hint">
-      Live recording · 145 seconds · 4 chips · 6 compiles (albert × 4, alexnet × 2) · 5 failures · SummaryScreen leaderboard ·
-      idle clamped to ≤ 1.2s · regenerate with
+    <p class="demo-hint" id="demo-hint">
+      Live recording · 62 seconds · 4 chips · BLACKHOLE · forge ·
+      regenerate with
       <code style="font-family:var(--mono);font-size:0.78rem;color:var(--teal2)">bash scripts/record_demo.sh</code>
     </p>
   </div>
+
+  <script>
+  function switchDemo(mode) {
+    var video = document.getElementById('demo-video');
+    var src   = document.getElementById('demo-src');
+    var title = document.getElementById('player-title');
+    var hint  = document.getElementById('demo-hint');
+    var btnS  = document.getElementById('btn-scripted');
+    var btnL  = document.getElementById('btn-live');
+    if (mode === 'scripted') {
+      src.src   = './demo.mp4';
+      title.textContent = 'expedition #007 — scripted demo — wave finale';
+      hint.innerHTML = 'Scripted &middot; 72 seconds &middot; 4 chips &middot; wave finale &middot; 26 frames &middot; regenerate with <code style="font-family:var(--mono);font-size:0.78rem;color:var(--teal2)">python3 scripts/gen_demo_cast.py &gt; docs/demo.cast</code>';
+      btnS.classList.add('active');
+      btnL.classList.remove('active');
+    } else {
+      src.src   = './demo_live.mp4';
+      title.textContent = 'expedition #038 — 4 chips · BLACKHOLE · forge';
+      hint.innerHTML = 'Live recording &middot; 62 seconds &middot; 4 chips &middot; BLACKHOLE &middot; forge &middot; regenerate with <code style="font-family:var(--mono);font-size:0.78rem;color:var(--teal2)">bash scripts/record_demo.sh</code>';
+      btnS.classList.remove('active');
+      btnL.classList.add('active');
+    }
+    video.load();
+    video.play().catch(function(){});
+  }
+  </script>
 
 </section>
 

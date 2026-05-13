@@ -15,8 +15,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-CAST="docs/demo.cast"
-OUT="docs/demo.mp4"
+# Allow overriding via environment: CAST=... OUT=... bash scripts/render_demo_video.sh
+CAST="${CAST:-docs/demo.cast}"
+OUT="${OUT:-docs/demo.mp4}"
 DISPLAY_NUM=":99"
 SPEED=2
 FONT="Ubuntu Mono"

@@ -24,6 +24,7 @@ import contextlib
 import csv
 import io
 import json
+import math
 import os
 import random
 import re
@@ -225,16 +226,15 @@ class HardwareWidget(Static):
             data    = json.loads(result.stdout)
             devices = data.get("device_info", [])
             lines: list[str] = []
-            for dev in devices[:4]:
+            for i, dev in enumerate(devices[:4]):
                 # tt-smi -s nests board fields under "board_info" and clock/temp under "telemetry"
                 binfo  = dev.get("board_info", {})
-                dev_id = binfo.get("board_id",   "?")
                 btype  = binfo.get("board_type", "?")[:10]
                 telem  = dev.get("telemetry", {})
                 temp   = telem.get("asic_temperature", "?")
-                aiclk  = telem.get("aiclk",            "?")   # field is "aiclk", not "ai_clk"
+                aiclk  = telem.get("aiclk",            "?")
                 lines.append(
-                    f"[bold cyan]Chip {dev_id}[/] {btype}"
+                    f"[bold cyan]Chip {i}[/] {btype}"
                     f"  [yellow]{aiclk}MHz[/]  [red]{temp}°C[/]"
                 )
             self.update(Text.from_markup(
@@ -1135,6 +1135,32 @@ class RunScreen(Screen):
                 "PYTHONUNBUFFERED":        "1",
             }
 
+        # ── RALLY: suspend TUI entirely so MOGWAI RAVE TAPES renders raw ────────────
+        # Uses the same app.suspend() pattern as action_show_toplike. The event
+        # loop blocks on subprocess.run() but the TUI is suspended so nothing needs
+        # to refresh. When the subprocess exits TUI resumes automatically.
+        if mesh_chip_ids:
+            cmd = [
+                python_exe, worker_path,
+                "--chip",       str(chip_id),
+                "--run",        str(self.run_number),
+                "--bestiary",   str(self._project_dir / "data" / "bestiary.json"),
+                "--model-json", model_json_path,
+                "--results",    results_path,
+            ]
+            with self.app.suspend():
+                subprocess.run(cmd, env=env)
+            status = _read_status(chip_id)
+            pts    = int(status.get("pts", 0))
+            try:
+                el = self.query_one("#event-log", EventLog)
+                el.log_chip_done(chip_id, pts, self._chip_best[chip_id])
+            except Exception:
+                pass
+            for cid in mesh_chip_ids:
+                self._on_chip_free(cid)
+            return
+
         # Write confidence label to the chip panel.
         try:
             panel = self.query_one(f"#chip-{chip_id}", ChipPanel)
@@ -1169,12 +1195,6 @@ class RunScreen(Screen):
             line = raw.decode("utf-8", errors="replace")
             if panel:
                 panel.write_line(line)
-            # During a RALLY, also stream output to the rally banner (Task 9 adds widget).
-            if mesh_chip_ids:
-                try:
-                    self.query_one("#rally-banner", RallyBanner).append_output(line)
-                except Exception:
-                    pass
             self._parse_for_events(chip_id, line)
 
         await proc.wait()
@@ -1189,18 +1209,9 @@ class RunScreen(Screen):
         except Exception:
             pass
 
-        # Free the chip(s) and continue dispatching.
-        if mesh_chip_ids:
-            for cid in mesh_chip_ids:
-                self._on_chip_free(cid)
-            # Hide RALLY banner, restore chip grid (Task 9 adds these widgets).
-            try:
-                self.query_one("#chip-grid").display    = True
-                self.query_one("#rally-banner").display = False
-            except Exception:
-                pass
-        else:
-            self._on_chip_free(chip_id)
+        # Free the chip and continue dispatching.
+        # (mesh_chip_ids path returns early above — only single-chip runs reach here.)
+        self._on_chip_free(chip_id)
 
     def _on_chip_free(self, chip_id: int) -> None:
         """Mark a chip as free and trigger the next dispatch cycle."""
@@ -1228,7 +1239,7 @@ class RunScreen(Screen):
             el.write(f"[bold green]{'═'*34}[/]")
         except Exception:
             await asyncio.sleep(2.4)
-        self.app.push_screen(SummaryScreen(
+        self.app.push_screen(WaveFinaleScreen(
             self.num_chips,
             self.run_number,
             auto_quit_secs=getattr(self.app, "auto_quit_secs", 0),
@@ -1244,23 +1255,12 @@ class RunScreen(Screen):
 
         decision = mesh_model.get("decision")
 
-        # Show RALLY banner, hide chip grid as a whole so the sidebar
-        # never shifts — toggling individual rows inside chip-grid caused
-        # the fr layout to collapse chip-grid to 0 width momentarily.
-        try:
-            self.query_one("#rally-banner").display = True
-            self.query_one("#chip-grid").display    = False
-            rally = self.query_one("#rally-banner", RallyBanner)
-            rally.start(mesh_model, chip_ids, decision)
-        except Exception:
-            pass
-
         try:
             el = self.query_one("#event-log", EventLog)
             chips_str = "+".join(str(c) for c in chip_ids)
             el.write(
                 f"[bold gold]⚡ RALLY — {mesh_model.get('model_id','?').split('/')[-1]} "
-                f"on chips {chips_str}[/]"
+                f"on chips {chips_str} — dropping to raw terminal[/]"
             )
         except Exception:
             pass
@@ -1340,6 +1340,264 @@ class RunScreen(Screen):
             combat.write(f"[bold cyan]{'═' * 34}[/]\n")
         except Exception:
             pass
+
+
+# ── Finale wave animation ──────────────────────────────────────────────────────
+
+# 256-colour ANSI palette matching the Tenstorrent dark theme
+_WAVE_PAL = {
+    'teal':  "\033[38;5;87m",
+    'cyan':  "\033[38;5;51m",
+    'lteal': "\033[38;5;159m",
+    'blue':  "\033[38;5;75m",
+    'pink':  "\033[38;5;213m",
+    'lpurp': "\033[38;5;183m",
+    'gold':  "\033[38;5;220m",
+}
+
+# Mirrored wave geometry: (base_y_frac, amp_frac, freq_cycles, time_speed, phase, color)
+# Gold hairline at dead centre; teal/cyan bookend top and bottom.
+_WAVE_DEFS = [
+    (0.04, 0.030, 2.0,  0.9, 0.00, 'teal'),
+    (0.11, 0.040, 3.3,  1.4, 0.55, 'cyan'),
+    (0.19, 0.055, 2.6,  1.0, 1.10, 'lteal'),
+    (0.28, 0.045, 1.9,  1.7, 1.65, 'blue'),
+    (0.37, 0.060, 2.9,  1.2, 2.20, 'pink'),
+    (0.44, 0.035, 4.1,  1.8, 2.75, 'lpurp'),
+    (0.50, 0.020, 5.0,  2.5, 3.14, 'gold'),   # center hairline
+    (0.56, 0.035, 4.1,  1.8, 3.53, 'lpurp'),
+    (0.63, 0.060, 2.9,  1.2, 4.08, 'pink'),
+    (0.72, 0.045, 1.9,  1.7, 4.63, 'blue'),
+    (0.81, 0.055, 2.6,  1.0, 5.18, 'lteal'),
+    (0.89, 0.040, 3.3,  1.4, 5.73, 'cyan'),
+    (0.96, 0.030, 2.0,  0.9, 6.28, 'teal'),
+]
+_DENSITY_CHARS = {0: ' ', 1: '░', 2: '▒', 3: '▓', 4: '█'}
+
+
+def _wave_frame_tui(t: float, frame_i: int, cols: int, rows: int,
+                    run_number: int = 0, stats: dict | None = None) -> Text:
+    """Render one finale wave frame as a Rich Text (built from ANSI codes).
+
+    Mirror of gen_demo_cast._render_wave_frame but sized to the live terminal
+    and populated with actual run stats in the centre banner.
+    """
+    RS_ = "\033[0m"
+    B_  = "\033[1m"
+    TWO_PI = 2.0 * math.pi
+
+    stats  = stats or {}
+    fade   = min(1.0, frame_i / 4.0)
+    tc     = rows // 2
+    txt_top, txt_bot = tc - 4, tc + 4
+
+    # Build per-cell arrays: character, ANSI colour code, brightness
+    cell_ch = [[' '] * cols for _ in range(rows)]
+    cell_cl = [['' ] * cols for _ in range(rows)]
+    cell_br = [[0  ] * cols for _ in range(rows)]
+
+    for base_frac, amp_frac, freq, spd, phase, ckey in _WAVE_DEFS:
+        base_y = base_frac * rows
+        amp    = amp_frac * rows * fade
+        color  = _WAVE_PAL[ckey]
+        for col in range(cols):
+            wave_y = base_y + amp * math.sin(
+                freq * col / max(cols, 1) * TWO_PI + t * spd + phase
+            )
+            iy = int(round(wave_y))
+            for dy in range(-3, 4):
+                y = iy + dy
+                if y < 0 or y >= rows or txt_top <= y <= txt_bot:
+                    continue
+                dist = abs(dy) + abs(wave_y - iy) * 0.5
+                br   = max(0, 4 - int(dist * 1.8))
+                if br > cell_br[y][col]:
+                    cell_br[y][col] = br
+                    cell_ch[y][col] = _DENSITY_CHARS[br]
+                    cell_cl[y][col] = color
+
+    # Achievement banner fades in after the first 4 frames
+    text_rows: dict[int, str] = {}
+    if frame_i >= 4:
+        def _ct(s: str, col: str) -> str:
+            pad = max(0, (cols - len(s)) // 2)
+            return ' ' * pad + B_ + col + s + RS_
+
+        att    = stats.get('attempted',  0)
+        comp   = stats.get('compiled',   0)
+        fail   = stats.get('failed',     0)
+        pts    = stats.get('points',     0)
+        new    = stats.get('new_models', 0)
+        streak = stats.get('streak',     0)
+        rarity = stats.get('rarity',     'COMPLETE')
+        p      = _WAVE_PAL
+        sep    = '━' * min(56, max(cols - 4, 0))
+        text_rows = {
+            tc - 3: _ct(sep, p['gold']),
+            tc - 2: _ct(f'⚡   EXPEDITION  #{run_number:03d}  COMPLETE   ⚡', p['gold']),
+            tc - 1: _ct(f'{att} attempted  ·  {comp} compiled  ·  {fail} failed', p['teal']),
+            tc:     _ct(f'+{pts:,} PTS  ·  {new} NEW TO BESTIARY', p['gold']),
+            tc + 1: _ct(f'🔥 STREAK ×{streak}  ·  {rarity}  ★ ★ ★', p['pink']),
+            tc + 2: _ct(sep, p['gold']),
+        }
+
+    # Assemble ANSI string with run-length colour encoding
+    parts: list[str] = []
+    for y in range(rows):
+        if y in text_rows:
+            parts.append(text_rows[y])
+        else:
+            cur_cl = None
+            for x in range(cols):
+                ch = cell_ch[y][x]
+                cl = cell_cl[y][x]
+                if cl != cur_cl:
+                    parts.append(cl if cl else RS_)
+                    cur_cl = cl
+                parts.append(ch)
+            if cur_cl:
+                parts.append(RS_)
+        parts.append('\n')
+
+    return Text.from_ansi(''.join(parts))
+
+
+# ── WaveCanvas widget ─────────────────────────────────────────────────────────
+
+class WaveCanvas(Widget):
+    """Lightweight canvas that renders wave frames via render() + refresh().
+
+    Using render() instead of Static.update() avoids triggering a full Textual
+    layout recalculation on every frame — keeping animation fluid even on large
+    terminals.
+    """
+
+    DEFAULT_CSS = "WaveCanvas { width: 100%; height: 100%; overflow: hidden; }"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._text: Text = Text("")
+
+    def set_frame(self, text: Text) -> None:
+        self._text = text
+        self.refresh()
+
+    def render(self) -> Text:
+        return self._text
+
+
+# ── WaveFinaleScreen ───────────────────────────────────────────────────────────
+
+class WaveFinaleScreen(Screen):
+    """Full-screen Rave-Tapes wave animation shown between RunScreen and SummaryScreen."""
+
+    CSS = """
+    WaveFinaleScreen {
+        layout: vertical;
+        overflow: hidden;
+    }
+    """
+
+    # 26 frames × 0.13s ≈ 3.4 s of animation before auto-advancing
+    TOTAL_FRAMES = 26
+
+    def __init__(self, num_chips: int, run_number: int,
+                 auto_quit_secs: int = 0, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.num_chips       = num_chips
+        self.run_number      = run_number
+        self._auto_quit_secs = auto_quit_secs
+        self._frame          = 0
+        self._t              = 0.0
+        self._stats: dict    = {}
+        self._finished       = False
+
+    def compose(self) -> ComposeResult:
+        yield WaveCanvas()
+
+    def on_mount(self) -> None:
+        self._load_stats()
+        self._timer = self.set_interval(0.13, self._tick)
+
+    def _load_stats(self) -> None:
+        """Read per-chip CSV results to populate the achievement banner."""
+        total_s = total_f = total_pts = max_streak = new_models = 0
+        best_rank = 0
+        rarity_rank = {"legendary": 3, "rare": 2, "uncommon": 1, "common": 0}
+        best_rarity = "COMPLETE"
+        for chip_id in range(self.num_chips):
+            path = Path(f"/tmp/expedition_results_chip{chip_id}.csv")
+            if not path.exists():
+                continue
+            try:
+                for row in csv.DictReader(path.open()):
+                    pts = int(row.get("pts") or 0)
+                    total_pts += pts
+                    if row.get("status") == "success":
+                        total_s += 1
+                        if row.get("first_ever") == "True":
+                            new_models += 1
+                        sk = int(row.get("streak") or 0)
+                        max_streak = max(max_streak, sk)
+                        rar = row.get("rarity", "common").lower()
+                        rank = rarity_rank.get(rar, 0)
+                        if rank > best_rank:
+                            best_rank = rank
+                            best_rarity = rar.upper() + " FINALE"
+                    elif row.get("status") == "failed":
+                        total_f += 1
+            except Exception:
+                pass
+        self._stats = {
+            "attempted":  total_s + total_f,
+            "compiled":   total_s,
+            "failed":     total_f,
+            "points":     total_pts,
+            "new_models": new_models,
+            "streak":     max_streak,
+            "rarity":     best_rarity,
+        }
+
+    async def _tick(self) -> None:
+        if self._finished:
+            return
+        self._frame += 1
+        self._t     += 0.30
+        cols = self.size.width  or 220
+        rows = self.size.height or 58
+        # Offload heavy computation (sin loops + Text.from_ansi) to a thread
+        # so the event loop stays free and Textual can render other widgets.
+        loop = asyncio.get_event_loop()
+        text = await loop.run_in_executor(
+            None, _wave_frame_tui,
+            self._t, self._frame, cols, rows, self.run_number, self._stats,
+        )
+        try:
+            self.query_one(WaveCanvas).set_frame(text)
+        except Exception:
+            pass
+        if self._frame >= self.TOTAL_FRAMES:
+            self._advance()
+
+    def _advance(self) -> None:
+        if self._finished:
+            return
+        self._finished = True
+        try:
+            self._timer.stop()
+        except Exception:
+            pass
+        self.app.push_screen(SummaryScreen(
+            self.num_chips,
+            self.run_number,
+            auto_quit_secs=self._auto_quit_secs,
+        ))
+
+    def on_key(self, _event: object) -> None:
+        """Keypress skips the animation — but only after a few frames so
+        queued keypresses from RunScreen's countdown don't kill it instantly."""
+        if self._frame >= 3:
+            self._advance()
 
 
 # ── SummaryScreen ─────────────────────────────────────────────────────────────

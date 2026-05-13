@@ -198,6 +198,24 @@ def _print_failure(model_id: str, error: str, elapsed: float) -> None:
     print(f"\n  {BOLD}{RED}✗ FAILED{RESET}  {DIM}{error[:80]}{RESET}  ({elapsed:.1f}s  −10pts)")
 
 
+def _try_install_missing(error_str: str) -> str | None:
+    """If error_str is a ModuleNotFoundError, pip-install the package and return its name."""
+    import re, subprocess
+    m = re.search(r"No module named ['\"]([^'\"]+)['\"]", error_str)
+    if not m:
+        return None
+    pkg = m.group(1).split(".")[0]
+    print(f"  {YELLOW}→ missing package '{pkg}' — trying pip install into XLA venv...{RESET}")
+    # Install into the XLA venv (this process's interpreter)
+    try:
+        subprocess.run([sys.executable, "-m", "pip", "install", pkg, "-q"],
+                       timeout=60, check=False)
+        print(f"  {GREEN}✓ installed '{pkg}' — retrying model{RESET}")
+    except Exception as exc:
+        print(f"  {RED}✗ pip install failed: {exc}{RESET}")
+    return pkg
+
+
 # ── JAX/XLA device setup ──────────────────────────────────────────────────────
 
 def _setup_jax(chip_id: int):
@@ -782,6 +800,12 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
         success, output, compile_time, error_str, compiled_bundle = _compile_model_xla(
             loader, device, chip_id
         )
+        # Auto-install missing packages and retry once
+        if not success and "No module named" in error_str:
+            if _try_install_missing(error_str):
+                success, output, compile_time, error_str, compiled_bundle = _compile_model_xla(
+                    loader, device, chip_id
+                )
         elapsed = time.time() - start
 
         if success:

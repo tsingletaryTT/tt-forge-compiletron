@@ -480,35 +480,36 @@ def _build_curated_queue(num_chips: int) -> list[list[dict]]:
     """Return a hand-curated 5-model queue designed for the showcase demo.
 
     Chip assignments:
-      C0: roberta/sequence_classification/onnx  (forge + ONNX export)
-      C1: openai-community/gpt2                 (XLA via JAX library flag)
-      C2: microsoft/resnet-50                   (forge, frontier CV)
-      C3: attention_denseunet/pytorch           (forge, expected FAIL)
-    Finale (all 4 chips): albert/masked_lm/pytorch  (forge, NLP masked LM)
+      C0: alexnet/pytorch                 (forge, fast vision warm-up)
+      C1: openai-community/gpt2           (HuggingFace frontier, iconic LLM, 30M dl)
+      C2: beit/pytorch                    (forge, vision transformer)
+      C3: attention_denseunet/pytorch     (forge, deliberate FAIL — shape mismatch)
+    Finale (all 4 chips): bloom/pytorch   (forge, BLOOM multilingual LLM — dramatic)
 
     The first four items are assigned one-per-chip in order.  The finale uses
-    mesh_chips=4 so the TUI holds it until all chips are free simultaneously.
+    mesh_chips=num_chips so the TUI holds it until all chips are free simultaneously,
+    then suspends the TUI and runs raw so the RALLY output fills the terminal.
     """
     _FORGEMS = "_forgems"
 
     items: list[dict] = [
-        # C0: ONNX roberta — tests ONNX export path
+        # C0: AlexNet — fast vision warm-up, reliable first success
         {
-            "model_id": "roberta/sequence_classification/onnx",
-            "display_name": "Roberta Sentiment ONNX",
-            "task": "text-classification",
+            "model_id": "alexnet/pytorch",
+            "display_name": "AlexNet",
+            "task": "image-classification",
             "source": "tt-forge-models",
-            "rarity": "familiar",
+            "rarity": "uncommon",
             "hf_downloads": None,
             "hf_created_at": None,
             "mesh_chips": 1,
             "library": "pytorch",
             "model_type": "",
-            "loader_module": f"{_FORGEMS}.roberta.sequence_classification.onnx.loader",
+            "loader_module": f"{_FORGEMS}.alexnet.pytorch.loader",
             "loader_class": "ModelLoader",
             "is_frontier": False,
         },
-        # C1: GPT-2 via forge — large download count, iconic text model
+        # C1: GPT-2 — HuggingFace frontier, 30M downloads, iconic LLM
         {
             "model_id": "openai-community/gpt2",
             "display_name": "GPT-2",
@@ -524,23 +525,23 @@ def _build_curated_queue(num_chips: int) -> list[list[dict]]:
             "loader_class": None,
             "is_frontier": True,
         },
-        # C2: ResNet-50 frontier — canonical CV image classification
+        # C2: BEiT — vision transformer (image classification), proven on forge
         {
-            "model_id": "microsoft/resnet-50",
-            "display_name": "ResNet-50",
+            "model_id": "beit/pytorch",
+            "display_name": "BEiT",
             "task": "image-classification",
-            "source": "huggingface",
+            "source": "tt-forge-models",
             "rarity": "rare",
-            "hf_downloads": 12_000_000,
-            "hf_created_at": "2023-01-01T00:00:00Z",
+            "hf_downloads": None,
+            "hf_created_at": None,
             "mesh_chips": 1,
             "library": "pytorch",
-            "model_type": "resnet",
-            "loader_module": None,
-            "loader_class": None,
-            "is_frontier": True,
+            "model_type": "",
+            "loader_module": f"{_FORGEMS}.beit.pytorch.loader",
+            "loader_class": "ModelLoader",
+            "is_frontier": False,
         },
-        # C3: DenseUNet — deliberate FAIL (shape_mismatch in bestiary)
+        # C3: Attention DenseUNet — deliberate FAIL (confirmed shape_mismatch)
         {
             "model_id": "attention_denseunet/pytorch",
             "display_name": "Attention DenseUNet",
@@ -556,20 +557,20 @@ def _build_curated_queue(num_chips: int) -> list[list[dict]]:
             "loader_class": "ModelLoader",
             "is_frontier": False,
         },
-        # Finale: AlexNet on all 4 chips simultaneously — simple single-output
-        # CV model with no tuple/dict return, ideal for mesh compilation.
+        # Finale: BLOOM — BigScience multilingual LLM, all 4 chips united.
+        # Suspends TUI so RALLY output fills the raw terminal dramatically.
         {
-            "model_id": "alexnet/pytorch",
-            "display_name": "AlexNet",
-            "task": "image-classification",
+            "model_id": "bloom/pytorch",
+            "display_name": "BLOOM",
+            "task": "text-generation",
             "source": "tt-forge-models",
-            "rarity": "uncommon",
+            "rarity": "legendary",
             "hf_downloads": None,
             "hf_created_at": None,
             "mesh_chips": num_chips,
             "library": "pytorch",
             "model_type": "",
-            "loader_module": f"{_FORGEMS}.alexnet.pytorch.loader",
+            "loader_module": f"{_FORGEMS}.bloom.pytorch.loader",
             "loader_class": "ModelLoader",
             "is_frontier": False,
         },

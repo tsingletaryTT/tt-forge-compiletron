@@ -69,7 +69,8 @@ python3 expedition.py run --tui --backend xla
 
 **Setup screen** — configure chips, limit, backend (forge / xla / mixed),
 and source filters. Press Enter to start immediately, or wait 4 seconds for
-auto-start. Useful for unattended recording (`asciinema rec --command "..."`).
+auto-start. Pass `--auto-quit N` to also exit automatically N seconds after the
+summary screen, enabling fully unattended recording.
 
 **Run screen** — one panel per chip, live event log, scrolling pyfiglet ASCII
 banners of each model name, real-time scores, and First Voice inference output.
@@ -232,17 +233,31 @@ side-by-side comparison of the two compilation stacks.
 
 ## Recording demos
 
-The TUI auto-starts after 4 seconds, so no tmux key injection is needed:
+The TUI has two auto-pilot features that make fully unattended recording possible:
+
+- **Auto-start** — Setup screen counts down 4 seconds then starts the expedition
+  automatically. No need to press Enter.
+- **`--auto-quit N`** — TUI exits N seconds after the Summary screen appears.
+  The recording ends without any manual interaction.
 
 ```bash
-# Record a 16-model demo (4 models × 4 chips, no download wait)
+# Fully unattended: auto-starts, auto-quits 30s after summary (default)
 bash scripts/record_demo.sh
 
-# Or manually
+# Custom model count
+bash scripts/record_demo.sh --models 6
+
+# Custom summary linger time
+bash scripts/record_demo.sh --auto-quit 45
+
+# Manual finish (press q on summary screen yourself)
+bash scripts/record_demo.sh --no-auto
+
+# Or drive it directly
 asciinema rec docs/demo_raw.cast --overwrite \
     --cols 220 --rows 58 \
     --command "python3 expedition.py run --tui \
-        --seed-only --limit 16 --chips 4 --no-predownload"
+        --seed-only --limit 16 --chips 4 --no-predownload --auto-quit 30"
 
 # Post-process: smooth and compress
 python3 scripts/compress_cast.py docs/demo_raw.cast docs/demo.cast \
