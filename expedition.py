@@ -476,7 +476,7 @@ def _scan_frontier(
     ]
 
 
-def _build_curated_queue(num_chips: int) -> list[list[dict]]:
+def _build_curated_queue(num_chips: int) -> tuple[list[list[dict]], list[dict]]:
     """Return a hand-curated 5-model queue designed for the showcase demo.
 
     Chip assignments:
@@ -484,11 +484,17 @@ def _build_curated_queue(num_chips: int) -> list[list[dict]]:
       C1: openai-community/gpt2           (HuggingFace frontier, iconic LLM, 30M dl)
       C2: beit/pytorch                    (forge, vision transformer)
       C3: attention_denseunet/pytorch     (forge, deliberate FAIL — shape mismatch)
-    Finale (all 4 chips): bloom/pytorch   (forge, BLOOM multilingual LLM — dramatic)
+    Finale (all 4 chips): bloom/causal_lm/jax (XLA, BLOOM 4-chip data-parallel — genuine)
 
     The first four items are assigned one-per-chip in order.  The finale uses
     mesh_chips=num_chips so the TUI holds it until all chips are free simultaneously,
     then suspends the TUI and runs raw so the RALLY output fills the terminal.
+
+    Returns:
+        A tuple of (chip_queues, side_quest_pool) where chip_queues is a list
+        of per-chip model queues and side_quest_pool is the list of curated
+        fast models for idle-chip side-quest speed runs (see
+        _build_side_quest_pool).
     """
     _FORGEMS = "_forgems"
 
@@ -557,20 +563,21 @@ def _build_curated_queue(num_chips: int) -> list[list[dict]]:
             "loader_class": "ModelLoader",
             "is_frontier": False,
         },
-        # Finale: BLOOM — BigScience multilingual LLM, all 4 chips united.
-        # Suspends TUI so RALLY output fills the raw terminal dramatically.
+        # Finale: BLOOM-1.1B via JAX — genuine 4-chip data-parallel inference.
+        # The XLA worker shards a batch of 4 inputs across all chips simultaneously,
+        # with params replicated via NamedSharding.  This is real multi-chip compute.
         {
-            "model_id": "bloom/pytorch",
-            "display_name": "BLOOM",
+            "model_id": "bloom/causal_lm/jax",
+            "display_name": "BLOOM 1b1",
             "task": "text-generation",
             "source": "tt-forge-models",
             "rarity": "legendary",
             "hf_downloads": None,
             "hf_created_at": None,
             "mesh_chips": num_chips,
-            "library": "pytorch",
+            "library": "jax",
             "model_type": "",
-            "loader_module": f"{_FORGEMS}.bloom.pytorch.loader",
+            "loader_module": f"{_FORGEMS}.bloom.causal_lm.jax.loader",
             "loader_class": "ModelLoader",
             "is_frontier": False,
         },
@@ -584,7 +591,138 @@ def _build_curated_queue(num_chips: int) -> list[list[dict]]:
     # Finale appended to chip 0 — RunScreen._dispatch_next will hold it in
     # _mesh_holding until all chips finish their individual models.
     chip_queues[0].append(items[-1])
-    return chip_queues
+    return chip_queues, _build_side_quest_pool(num_chips)
+
+
+def _build_side_quest_pool(num_chips: int) -> list[dict]:
+    """Return curated tiny models for idle-chip side-quest speed runs.
+
+    Used when chips go idle while waiting for a multi-chip RALLY.  All
+    entries use mesh_chips=1 and the standard forge (PyTorch) worker.
+    """
+    _FORGEMS = "_forgems"
+    return [
+        {
+            "model_id": "mobilenetv2/pytorch",
+            "display_name": "MobileNetV2",
+            "task": "image-classification",
+            "source": "tt-forge-models",
+            "rarity": "common",
+            "hf_downloads": None,
+            "hf_created_at": None,
+            "mesh_chips": 1,
+            "library": "pytorch",
+            "model_type": "",
+            "loader_module": f"{_FORGEMS}.mobilenetv2.pytorch.loader",
+            "loader_class": "ModelLoader",
+            "is_frontier": False,
+        },
+        {
+            "model_id": "ghostnet/pytorch",
+            "display_name": "GhostNet",
+            "task": "image-classification",
+            "source": "tt-forge-models",
+            "rarity": "uncommon",
+            "hf_downloads": None,
+            "hf_created_at": None,
+            "mesh_chips": 1,
+            "library": "pytorch",
+            "model_type": "",
+            "loader_module": f"{_FORGEMS}.ghostnet.pytorch.loader",
+            "loader_class": "ModelLoader",
+            "is_frontier": False,
+        },
+        {
+            "model_id": "googlenet/pytorch",
+            "display_name": "GoogLeNet",
+            "task": "image-classification",
+            "source": "tt-forge-models",
+            "rarity": "common",
+            "hf_downloads": None,
+            "hf_created_at": None,
+            "mesh_chips": 1,
+            "library": "pytorch",
+            "model_type": "",
+            "loader_module": f"{_FORGEMS}.googlenet.pytorch.loader",
+            "loader_class": "ModelLoader",
+            "is_frontier": False,
+        },
+        {
+            "model_id": "efficientnet_lite/pytorch",
+            "display_name": "EfficientNet-Lite",
+            "task": "image-classification",
+            "source": "tt-forge-models",
+            "rarity": "uncommon",
+            "hf_downloads": None,
+            "hf_created_at": None,
+            "mesh_chips": 1,
+            "library": "pytorch",
+            "model_type": "",
+            "loader_module": f"{_FORGEMS}.efficientnet_lite.pytorch.loader",
+            "loader_class": "ModelLoader",
+            "is_frontier": False,
+        },
+        {
+            "model_id": "densenet/pytorch",
+            "display_name": "DenseNet-121",
+            "task": "image-classification",
+            "source": "tt-forge-models",
+            "rarity": "uncommon",
+            "hf_downloads": None,
+            "hf_created_at": None,
+            "mesh_chips": 1,
+            "library": "pytorch",
+            "model_type": "",
+            "loader_module": f"{_FORGEMS}.densenet.pytorch.loader",
+            "loader_class": "ModelLoader",
+            "is_frontier": False,
+        },
+        {
+            "model_id": "resnet/pytorch",
+            "display_name": "ResNet",
+            "task": "image-classification",
+            "source": "tt-forge-models",
+            "rarity": "common",
+            "hf_downloads": None,
+            "hf_created_at": None,
+            "mesh_chips": 1,
+            "library": "pytorch",
+            "model_type": "",
+            "loader_module": f"{_FORGEMS}.resnet.pytorch.loader",
+            "loader_class": "ModelLoader",
+            "is_frontier": False,
+        },
+        {
+            "model_id": "squeezebert/pytorch",
+            "display_name": "SqueezeBERT",
+            "task": "text-classification",
+            "source": "tt-forge-models",
+            "rarity": "rare",
+            "hf_downloads": None,
+            "hf_created_at": None,
+            "mesh_chips": 1,
+            "library": "pytorch",
+            "model_type": "",
+            "loader_module": f"{_FORGEMS}.squeezebert.pytorch.loader",
+            "loader_class": "ModelLoader",
+            "is_frontier": False,
+        },
+        {
+            "model_id": "deit/pytorch",
+            "display_name": "DeiT",
+            "task": "image-classification",
+            "source": "tt-forge-models",
+            "rarity": "uncommon",
+            "hf_downloads": None,
+            "hf_created_at": None,
+            "mesh_chips": 1,
+            "library": "pytorch",
+            "model_type": "",
+            "loader_module": f"{_FORGEMS}.deit.pytorch.loader",
+            "loader_class": "ModelLoader",
+            "is_frontier": False,
+        },
+    ]
 
 
 def build_queues(
@@ -1597,7 +1735,7 @@ def main():
 
     # ── Queue building ────────────────────────────────────────────────────────
     if getattr(args, "curated", False):
-        chip_queues = _build_curated_queue(num_chips)
+        chip_queues, _ = _build_curated_queue(num_chips)
     else:
         chip_queues = build_queues(
             num_chips=num_chips,
