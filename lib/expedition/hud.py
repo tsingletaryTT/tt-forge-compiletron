@@ -28,6 +28,9 @@ class ChipState:
 
     Attributes:
         chip_id:        Zero-based chip index.
+        run_number:     Current expedition run number (written to status file so
+                        a resumed per-model worker can distinguish same-run state
+                        from a stale file left by a previous run).
         pts:            Cumulative score (successes add, failures deduct).
         streak:         Current consecutive-success streak.
         best_streak:    Highest streak seen so far in this run.
@@ -39,6 +42,7 @@ class ChipState:
         done:           True once the chip has finished all its models.
     """
     chip_id: int
+    run_number: int = 0
     pts: int = 0
     streak: int = 0
     best_streak: int = 0
@@ -65,8 +69,17 @@ class ChipHUD:
         total_models:  Total number of models scheduled for this Expedition run.
     """
 
-    def __init__(self, chip_id: int, total_models: int) -> None:
-        self._state = ChipState(chip_id=chip_id, total_models=total_models)
+    def __init__(self, chip_id: int, total_models: int, run_number: int = 0) -> None:
+        self._state = ChipState(chip_id=chip_id, total_models=total_models,
+                                run_number=run_number)
+        # When the TUI dispatches one model per subprocess invocation, each new
+        # worker must carry forward the pts/successes/failures/streak accumulated
+        # by earlier models on the same chip.  We do this by reading the existing
+        # status file if (and only if) its run_number matches — which guarantees
+        # we're resuming within the same run rather than inheriting a stale file
+        # from the previous expedition.
+        if run_number > 0:
+            self._resume_accumulated_state()
 
     # ------------------------------------------------------------------
     # Public read-only access
@@ -133,6 +146,31 @@ class ChipHUD:
     # Status file I/O
     # ------------------------------------------------------------------
 
+    def _resume_accumulated_state(self) -> None:
+        """Load accumulated run state from the existing status file, if any.
+
+        Only carries forward state when the status file's run number matches
+        the current run_number, ensuring stale files from previous expeditions
+        are ignored.  Silently does nothing on any I/O or parse error.
+        """
+        status_dir = os.environ.get(_STATUS_DIR_ENV, _DEFAULT_STATUS_DIR)
+        path = Path(status_dir) / f"expedition_chip_{self._state.chip_id}.status"
+        try:
+            data: dict[str, str] = {}
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if "=" in line:
+                    k, _, v = line.partition("=")
+                    data[k.strip()] = v.strip()
+            if data.get("run") != str(self._state.run_number):
+                return  # stale file from a different run — start fresh
+            self._state.pts         = int(data.get("pts",         0))
+            self._state.successes   = int(data.get("successes",   0))
+            self._state.failures    = int(data.get("failures",    0))
+            self._state.streak      = int(data.get("streak",      0))
+            self._state.best_streak = int(data.get("best_streak", 0))
+        except Exception:
+            pass  # missing file, parse error, etc. — fresh state is fine
+
     def write_status(self) -> None:
         """Serialise current state to a flat key=value status file.
 
@@ -151,6 +189,7 @@ class ChipHUD:
         s = self._state
         lines = [
             f"chip_id={s.chip_id}",
+            f"run={s.run_number}",
             f"current={s.current_index}",
             f"total={s.total_models}",
             f"successes={s.successes}",

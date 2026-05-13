@@ -808,7 +808,7 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
         queue = _load_queue(queue_path)
     else:
         raise ValueError("Either queue_path or model_json_path must be provided")
-    hud = ChipHUD(chip_id=chip_id, total_models=len(queue))
+    hud = ChipHUD(chip_id=chip_id, total_models=len(queue), run_number=run_number)
     hud.write_status()
 
     _set_pane_title(f"C{chip_id}·XLA · {len(queue)} queued · run #{run_number:03d}")

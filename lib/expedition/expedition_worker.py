@@ -763,9 +763,11 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
         queue = _load_queue(queue_path)
     else:
         raise ValueError("Either queue_path or model_json_path must be provided")
-    hud = ChipHUD(chip_id=chip_id, total_models=len(queue))
-    # Write a zeroed status file immediately so the ScoreStrip doesn't read a
-    # stale file from the previous run while this worker is still initializing.
+    hud = ChipHUD(chip_id=chip_id, total_models=len(queue), run_number=run_number)
+    # Write the status file immediately so the ScoreStrip doesn't read a stale
+    # file while this worker is initializing.  When resuming mid-run (TUI
+    # per-model dispatch), this writes the already-accumulated pts/successes so
+    # the score strip stays correct between model invocations.
     hud.write_status()
 
     _set_pane_title(f"C{chip_id} · {len(queue)} queued · run #{run_number:03d}")
