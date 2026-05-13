@@ -1185,15 +1185,18 @@ class RunScreen(Screen):
             ]
             with self.app.suspend():
                 subprocess.run(cmd, env=env)
-            status = _read_status(chip_id)
-            pts    = int(status.get("pts", 0))
-            try:
-                el = self.query_one("#event-log", EventLog)
-                el.log_chip_done(chip_id, pts, self._chip_best[chip_id])
-            except Exception:
-                pass
+            # Update state counters — do NOT call _on_chip_free/_dispatch_next/_on_all_done,
+            # which would flash the RunScreen grid and show the countdown before pushing
+            # WaveFinaleScreen.  Go straight to the finale instead.
             for cid in mesh_chip_ids:
-                self._on_chip_free(cid)
+                self._free_chips.add(cid)
+                self._done_count += 1
+            if not self._all_done:
+                self._all_done = True
+                self.app.push_screen(WaveFinaleScreen(
+                    self.num_chips, self.run_number,
+                    auto_quit_secs=getattr(self.app, "auto_quit_secs", 0),
+                ))
             return
 
         # Write confidence label to the chip panel.
@@ -1737,34 +1740,36 @@ class WaveFinaleScreen(Screen):
         self._timer = self.set_interval(0.13, self._tick)
 
     def _load_stats(self) -> None:
-        """Read per-chip CSV results to populate the achievement banner."""
+        """Read per-chip CSV results (main + side quests) to populate the achievement banner."""
         total_s = total_f = total_pts = max_streak = new_models = 0
         best_rank = 0
         rarity_rank = {"legendary": 3, "rare": 2, "uncommon": 1, "common": 0}
         best_rarity = "COMPLETE"
+        # Main quest results
         for chip_id in range(self.num_chips):
-            path = Path(f"/tmp/expedition_results_chip{chip_id}.csv")
-            if not path.exists():
-                continue
-            try:
-                for row in csv.DictReader(path.open()):
-                    pts = int(row.get("pts") or 0)
-                    total_pts += pts
-                    if row.get("status") == "success":
-                        total_s += 1
-                        if row.get("first_ever") == "True":
-                            new_models += 1
-                        sk = int(row.get("streak") or 0)
-                        max_streak = max(max_streak, sk)
-                        rar = row.get("rarity", "common").lower()
-                        rank = rarity_rank.get(rar, 0)
-                        if rank > best_rank:
-                            best_rank = rank
-                            best_rarity = rar.upper() + " FINALE"
-                    elif row.get("status") == "failed":
-                        total_f += 1
-            except Exception:
-                pass
+            for suffix in ("", "_sq"):
+                path = Path(f"/tmp/expedition_results_chip{chip_id}{suffix}.csv")
+                if not path.exists():
+                    continue
+                try:
+                    for row in csv.DictReader(path.open()):
+                        pts = int(row.get("pts") or 0)
+                        total_pts += pts
+                        if row.get("status") == "success":
+                            total_s += 1
+                            if row.get("first_ever") == "True":
+                                new_models += 1
+                            sk = int(row.get("streak") or 0)
+                            max_streak = max(max_streak, sk)
+                            rar = row.get("rarity", "common").lower()
+                            rank = rarity_rank.get(rar, 0)
+                            if rank > best_rank:
+                                best_rank = rank
+                                best_rarity = rar.upper() + " FINALE"
+                        elif row.get("status") == "failed":
+                            total_f += 1
+                except Exception:
+                    pass
         self._stats = {
             "attempted":  total_s + total_f,
             "compiled":   total_s,
@@ -1866,7 +1871,7 @@ class SummaryScreen(Screen):
         log = self.query_one("#summary-log", RichLog)
         rn  = self.run_number
 
-        # ── Load results from per-chip CSV files ─────────────────────────────
+        # ── Load main quest results ───────────────────────────────────────────
         chip_results: list[dict] = []
         for chip_id in range(self.num_chips):
             path = Path(f"/tmp/expedition_results_chip{chip_id}.csv")
@@ -1892,6 +1897,22 @@ class SummaryScreen(Screen):
                 "times":      times,
             })
 
+        # ── Load side quest results per chip ──────────────────────────────────
+        sq_by_chip: dict[int, dict] = {}
+        for chip_id in range(self.num_chips):
+            path = Path(f"/tmp/expedition_results_chip{chip_id}_sq.csv")
+            if not path.exists():
+                continue
+            try:
+                rows = list(csv.DictReader(path.open()))
+            except Exception:
+                continue
+            sq_by_chip[chip_id] = {
+                "pts":       sum(int(r.get("pts") or 0) for r in rows),
+                "successes": [r for r in rows if r.get("status") == "success"],
+                "failures":  [r for r in rows if r.get("status") == "failed"],
+            }
+
         chip_results.sort(key=lambda x: -x["pts"])
 
         if not chip_results:
@@ -1913,6 +1934,11 @@ class SummaryScreen(Screen):
         total_pts      = sum(c["pts"] for c in chip_results)
         rate           = total_ns / max(total_attempted, 1)
 
+        all_sq_s     = [r for sq in sq_by_chip.values() for r in sq["successes"]]
+        all_sq_f     = [r for sq in sq_by_chip.values() for r in sq["failures"]]
+        total_sq_pts = sum(sq["pts"] for sq in sq_by_chip.values())
+        has_sq       = bool(sq_by_chip)
+
         import datetime
         now_str = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M")
 
@@ -1921,62 +1947,94 @@ class SummaryScreen(Screen):
         log.write(f"[bold cyan]║  ⚡ EXPEDITION #{rn:03d} COMPLETE   {now_str}[/]")
         log.write(f"[bold cyan]╚{'═' * 58}[/]\n")
 
-        # ── THIS RUN summary panel ────────────────────────────────────────────
+        # ── MAIN QUEST panel ──────────────────────────────────────────────────
         pts_col   = "gold1" if total_pts > 0 else ("red" if total_pts < 0 else "dim")
-        rate_w    = round(rate * 40)
-        rate_bar  = f"[green]{'█' * rate_w}[/][dim]{'░' * (40 - rate_w)}[/]"
+        rate_w    = round(rate * 44)
+        rate_bar  = f"[green]{'█' * rate_w}[/][dim]{'░' * (44 - rate_w)}[/]"
         fe_note   = f"  [bold gold1]★ {len(all_first)} new[/]" if all_first else ""
         fv_note   = f"  [bold magenta]🗣 {len(all_fv)} voiced[/]" if all_fv else ""
-        summary_panel = Panel(
+        log.write(Panel(
             Text.from_markup(
-                f"[bold]{total_attempted}[/] attempted   "
-                f"[green]{total_ns}[/] compiled   "
-                f"[red]{total_nf}[/] failed   "
-                f"[cyan]{rate:.0%}[/] rate   "
+                f"[bold]{total_attempted}[/] attempted  "
+                f"[green]{total_ns}[/] compiled  "
+                f"[red]{total_nf}[/] failed  "
+                f"[cyan]{rate:.0%}[/]  "
                 f"[{pts_col}]{total_pts:+,}[/] pts"
                 f"{fe_note}{fv_note}\n"
                 f"{rate_bar}  [bold]{rate:.0%}[/]"
             ),
-            title="[bold cyan]THIS RUN[/]",
+            title="[bold cyan]MAIN QUEST[/]",
             border_style="cyan",
-        )
-        log.write(summary_panel)
+        ))
+
+        # ── SIDE QUESTS panel (only if any ran) ───────────────────────────────
+        if has_sq:
+            sq_attempted = len(all_sq_s) + len(all_sq_f)
+            sq_rate      = len(all_sq_s) / max(sq_attempted, 1)
+            sq_pts_col   = "gold1" if total_sq_pts > 0 else "dim"
+            log.write(Panel(
+                Text.from_markup(
+                    f"[bold]{sq_attempted}[/] bonus models  "
+                    f"[green]{len(all_sq_s)}[/] compiled  "
+                    f"[red]{len(all_sq_f)}[/] failed  "
+                    f"[cyan]{sq_rate:.0%}[/]  "
+                    f"[{sq_pts_col}]{total_sq_pts:+,}[/] bonus pts"
+                ),
+                title="[bold yellow]⚡ SIDE QUESTS[/]",
+                border_style="yellow",
+            ))
+
         log.write("")
 
-        # ── Chip leaderboard (Rich Table) ─────────────────────────────────────
+        # ── Chip leaderboard ─────────────────────────────────────────────────
         log.write("[bold cyan]  CHIP LEADERBOARD[/]")
         medals   = ["🥇", "🥈", "🥉", "  "]
         lb_table = Table(show_header=False, box=None, padding=(0, 1))
-        lb_table.add_column("Medal", no_wrap=True)
-        lb_table.add_column("Bar",   no_wrap=True)
-        lb_table.add_column("Pts",   justify="right", no_wrap=True)
-        lb_table.add_column("W/L",   no_wrap=True)
-        lb_table.add_column("Extra", no_wrap=True)
+        lb_table.add_column("Medal",  no_wrap=True)
+        lb_table.add_column("Bar",    no_wrap=True)
+        lb_table.add_column("Pts",    justify="right", no_wrap=True)
+        lb_table.add_column("W/L",    no_wrap=True)
+        lb_table.add_column("SQ",     no_wrap=True)
+        lb_table.add_column("Extra",  no_wrap=True)
         for i, c in enumerate(chip_results):
-            medal  = medals[min(i, 3)]
-            ns     = len(c["successes"])
-            nf     = len(c["failures"])
-            fe     = len(c["first_evers"])
-            pts    = c["pts"]
-            times  = c["times"]
-            ratio  = ns / max(ns + nf, 1)
-            filled = round(ratio * 24)
-            bar    = "█" * filled + "░" * (24 - filled)
-            bc     = "green" if ratio > 0.6 else ("yellow" if ratio > 0.3 else "red")
-            pc     = "gold1" if pts > 0 else ("red" if pts < 0 else "dim")
-            avg_t  = f"{sum(times)/len(times):.0f}s avg" if times else "—"
-            fe_s   = f"[bold gold1]★{fe}[/]" if fe else ""
+            medal    = medals[min(i, 3)]
+            ns       = len(c["successes"])
+            nf       = len(c["failures"])
+            fe       = len(c["first_evers"])
+            pts      = c["pts"]
+            times    = c["times"]
+            sq       = sq_by_chip.get(c["chip_id"], {})
+            sq_ns    = len(sq.get("successes", []))
+            sq_nf    = len(sq.get("failures", []))
+            sq_pts_c = sq.get("pts", 0)
+            ratio    = ns / max(ns + nf, 1)
+            filled   = round(ratio * 20)
+            bar      = "█" * filled + "░" * (20 - filled)
+            bc       = "green" if ratio > 0.6 else ("yellow" if ratio > 0.3 else "red")
+            pc       = "gold1" if pts > 0 else ("red" if pts < 0 else "dim")
+            avg_t    = f"{sum(times)/len(times):.0f}s avg" if times else "—"
+            fe_s     = f"[bold gold1]★{fe}[/]" if fe else ""
+            if sq_ns and sq_nf:
+                sq_cell = f"[yellow]SQ✓{sq_ns}[/][dim]✗{sq_nf}[/]"
+            elif sq_ns:
+                sq_cell = f"[yellow]SQ✓{sq_ns}[/]"
+            elif sq_nf:
+                sq_cell = f"[dim]SQ✗{sq_nf}[/]"
+            else:
+                sq_cell = ""
+            sq_pts_tag = f" [yellow]{sq_pts_c:+,}[/]" if sq_pts_c else ""
             lb_table.add_row(
                 f"{medal} [yellow]C{c['chip_id']}[/]",
                 f"[{bc}]{bar}[/]",
                 f"[{pc}]{pts:>+,}[/]",
                 f"[green]✓{ns}[/] [red]✗{nf}[/] {fe_s}",
+                f"{sq_cell}{sq_pts_tag}".strip() or "[dim]—[/]",
                 f"[dim]{avg_t}[/]",
             )
         log.write(lb_table)
         log.write("")
 
-        # ── Compile-time histogram + success rate ─────────────────────────────
+        # ── Compile-time histogram ────────────────────────────────────────────
         if all_times:
             buckets = [
                 ("  < 5s", [t for t in all_times if t <  5]),
@@ -1994,81 +2052,71 @@ class SummaryScreen(Screen):
                 log.write(f"  [dim]{label}[/]  [{col}]{bar}[/]  {cnt}")
             log.write("")
 
-        # ── New bestiary entries ──────────────────────────────────────────────
-        if all_first:
-            log.write(f"[bold cyan]{'─' * 60}[/]")
-            log.write(f"[bold gold1]  ★ NEW TO BESTIARY ({len(all_first)})[/]")
-            log.write(f"[bold cyan]{'─' * 60}[/]")
-            for r in all_first:
-                artifact = (r.get("artifact") or "").strip()
-                log.write(f"[bold gold1]★[/] [cyan]{r['model']}[/]")
-                if artifact:
-                    log.write(f"    [dim italic]{artifact[:120]}[/]")
-            log.write("")
+        # ── ARTIFACTS ────────────────────────────────────────────────────────
+        # Grouped: First Voice (text predictions) → new-to-bestiary → other hits → SQ bonus.
+        art_fv    = all_fv
+        art_first = [r for r in all_first if r.get("first_voice") != "True"]
+        art_shown = {r["model"] for r in art_fv} | {r["model"] for r in art_first}
+        art_other = [r for r in all_successes
+                     if (r.get("artifact") or "").strip()
+                     and r["model"] not in art_shown]
+        art_sq    = [r for r in all_sq_s if (r.get("artifact") or "").strip()]
 
-        # ── First Voice entries ───────────────────────────────────────────────
-        if all_fv:
-            log.write(f"[bold magenta]{'─' * 60}[/]")
-            log.write(f"[bold magenta]  🗣 FIRST VOICE ({len(all_fv)})[/]")
-            log.write(f"[bold magenta]{'─' * 60}[/]")
-            for r in all_fv:
-                artifact = (r.get("artifact") or "").strip()
-                log.write(f"[bold magenta]🗣[/] [cyan]{r['model']}[/]")
-                if artifact:
-                    log.write(f"    [italic]{artifact[:120]}[/]")
-            log.write("")
-
-        # ── All compiled — artifacts ─────────────────────────────────────────
-        # Show every successful model's artifact.  First-voice text predictions
-        # get a bold highlight; image class predictions show dimmed.
-        shown_already = {r["model"] for r in all_first} | {r["model"] for r in all_fv}
-        other_hits = [r for r in all_successes
-                      if (r.get("artifact") or "").strip()
-                      and r["model"] not in shown_already]
-        if other_hits or all_fv or all_first:
+        if art_fv or art_first or art_other or art_sq:
             log.write(f"[bold cyan]{'─' * 60}[/]")
             log.write("[bold cyan]  ARTIFACTS[/]")
             log.write(f"[bold cyan]{'─' * 60}[/]")
-            # First voice entries get the brightest treatment
-            for r in all_fv:
-                artifact = (r.get("artifact") or "").strip()
-                backend  = r.get("backend", "")
-                be_tag   = f" [dim]\\[{backend}][/]" if backend else ""
-                log.write(f"[bold magenta]🗣[/] [bold]{r['model']}[/]{be_tag}")
-                if artifact:
-                    log.write(f"    [bold magenta]{artifact}[/]")
-            # New-to-bestiary entries (non-first-voice) get gold
-            for r in all_first:
-                if r.get("first_voice") == "True":
-                    continue  # already shown above
-                artifact = (r.get("artifact") or "").strip()
+            for r in art_fv:
+                a  = (r.get("artifact") or "").strip()
+                be = r.get("backend", "")
+                log.write(
+                    f"[bold magenta]🗣[/] [bold]{r['model']}[/]"
+                    + (f" [dim][{be}][/]" if be else "")
+                )
+                if a:
+                    log.write(f"    [bold magenta]{a}[/]")
+            for r in art_first:
+                a = (r.get("artifact") or "").strip()
                 log.write(f"[gold1]★[/] [bold]{r['model']}[/]")
-                if artifact:
-                    log.write(f"    [gold1]{artifact[:120]}[/]")
-            # Remaining successes with artifacts
-            for r in other_hits:
-                artifact = (r.get("artifact") or "").strip()
+                if a:
+                    log.write(f"    [gold1]{a[:120]}[/]")
+            for r in art_other:
+                a = (r.get("artifact") or "").strip()
                 log.write(f"  [cyan]{r['model']}[/]")
-                log.write(f"    [dim]{artifact[:120]}[/]")
+                if a:
+                    log.write(f"    [dim]{a[:120]}[/]")
+            if art_sq:
+                log.write(f"  [yellow]⚡ BONUS HAUL[/]")
+                for r in art_sq:
+                    a = (r.get("artifact") or "").strip()
+                    log.write(f"  [yellow]{r['model']}[/]")
+                    if a:
+                        log.write(f"    [yellow]{a[:120]}[/]")
             log.write("")
 
-        # ── Failures ─────────────────────────────────────────────────────────
-        if all_failures:
+        # ── FAILED ───────────────────────────────────────────────────────────
+        # Show error class + hint; one-line exception summary (no full stack traces).
+        all_fails_combined = all_failures + all_sq_f
+        sq_model_set       = {r["model"] for r in all_sq_f}
+        if all_fails_combined:
             from lib.expedition.bestiary import _classify_error
             log.write(f"[bold red]{'─' * 60}[/]")
-            log.write(f"[bold red]  ✗ FAILED THIS RUN ({len(all_failures)})[/]")
+            log.write(f"[bold red]  ✗ FAILED ({len(all_fails_combined)})[/]")
             log.write(f"[bold red]{'─' * 60}[/]")
-            for r in all_failures:
+            for r in all_fails_combined:
                 err = (r.get("error") or "").strip()
                 key, label, hint = _classify_error(err)
+                sq_tag = " [yellow][SQ][/]" if r["model"] in sq_model_set else ""
+                # Last non-empty error line gives the actual exception without the traceback.
+                err_lines  = [l for l in err.splitlines() if l.strip()]
+                err_short  = err_lines[-1].strip()[:100] if err_lines else ""
                 log.write(
-                    f"[bold red]✗[/] [white]{r['model']}[/]"
-                    f"  [dim]\\[{label}][/]"
+                    f"[bold red]✗[/] [white]{r['model']}[/]{sq_tag}"
+                    f"  [dim][{label}][/]  [dim italic]{hint}[/]"
                 )
-                if err:
-                    for eline in err.splitlines():
-                        log.write(f"    [dim]{eline}[/]")
-                log.write(f"  [dim italic]{hint}[/]\n")
+                if err_short:
+                    log.write(f"    [dim]{err_short}[/]")
+            log.write("")
 
         # ── Field journal snippet ─────────────────────────────────────────────
         try:
@@ -2076,30 +2124,25 @@ class SummaryScreen(Screen):
             journal_text = read_journal(rn, project_dir=PROJECT_DIR)
             if journal_text:
                 log.write(f"[bold cyan]{'─' * 60}[/]")
-                log.write("[bold cyan]  📓 EXPEDITION FIELD JOURNAL[/]")
+                log.write("[bold cyan]  📓 FIELD JOURNAL[/]")
                 log.write(f"[bold cyan]{'─' * 60}[/]")
-                for line in journal_text.splitlines()[:30]:
+                for line in journal_text.splitlines()[:20]:
                     if line.startswith("## "):
                         log.write(f"[bold yellow]{line[3:]}[/]")
                     elif line.startswith("> "):
                         log.write(f"[italic]{line[2:]}[/]")
-                    elif line.startswith("─"):
-                        log.write(f"[dim]{line}[/]")
                     else:
                         log.write(line or " ")
-                journal_path = PROJECT_DIR / "data" / "expeditions" / f"expedition_{rn:04d}.md"
-                log.write(f"\n[dim]Full journal: {journal_path}[/]")
                 log.write("")
         except Exception:
             pass
 
-        # ── All-time bestiary stats ───────────────────────────────────────────
+        # ── All-time stats ────────────────────────────────────────────────────
         try:
             from lib.expedition.bestiary import Bestiary
             b      = Bestiary(path=str(PROJECT_DIR / "data" / "bestiary.json"))
             total  = len(b.compiled)
             totals = getattr(b, "chip_totals", {})
-            # Find the chip with the most all-time points.
             best_chip    = max(totals, key=lambda k: totals[k].get("pts", 0), default=None)
             best_chip_pt = totals[best_chip].get("pts", 0) if best_chip else 0
             best_streak  = max((v.get("best_streak", 0) for v in totals.values()), default=0)
@@ -2114,7 +2157,7 @@ class SummaryScreen(Screen):
         except Exception:
             pass
 
-        # ── Footer prompt ─────────────────────────────────────────────────────
+        # ── Footer ───────────────────────────────────────────────────────────
         log.write("")
         log.write(
             "[bold green]  ══[/]"
