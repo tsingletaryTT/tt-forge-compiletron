@@ -26,7 +26,7 @@ cd "$(dirname "$0")/.."
 
 CAST="docs/demo_raw.cast"
 COLS=220
-ROWS=58
+ROWS=50
 CHIPS=4
 MODELS_PER_CHIP=${MODELS_PER_CHIP:-4}
 AUTO_QUIT=30   # seconds to linger on summary screen before auto-exit
@@ -58,6 +58,16 @@ done
 if ! python3 -c "import forge" &>/dev/null; then
     echo "WARNING: forge not importable — activate the forge environment first:"
     echo "  source ~/tt-forge-fe/env/activate"
+fi
+
+# ── shm cleanup ──────────────────────────────────────────────────────────────
+# Forge compile leaves behind sm_segment.* files in /dev/shm after each run.
+# Stale segments from a previous (possibly crashed) run will cause the next
+# forge.compile() call to hang indefinitely.  Always purge them before recording.
+SHM_COUNT=$(find /dev/shm -maxdepth 1 -name 'sm_segment.tt-quietbox.*.0' 2>/dev/null | wc -l)
+if [[ "$SHM_COUNT" -gt 0 ]]; then
+    echo "⚠  Clearing $SHM_COUNT stale /dev/shm segment(s) from previous run..."
+    find /dev/shm -maxdepth 1 -name 'sm_segment.tt-quietbox.*.0' -delete
 fi
 
 mkdir -p docs

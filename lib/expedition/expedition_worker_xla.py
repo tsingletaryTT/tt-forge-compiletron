@@ -253,6 +253,7 @@ def _compile_model_xla(
     device,
     chip_id: int,
     timeout: int = 300,
+    mesh_chips: int = 1,
 ) -> tuple[bool, Any, float, str, Any]:
     """Run JAX JIT compile + inference for one Flax model.
 
@@ -268,16 +269,23 @@ def _compile_model_xla(
     here is the wall-clock duration of that first call, which includes both
     XLA compilation and the initial inference.
 
+    When mesh_chips > 1, uses JAX data parallelism: params are replicated
+    across all chips and the input batch is sharded evenly across devices.
+    This is genuine multi-chip computation — each device runs 1/N of the batch
+    simultaneously and XLA handles cross-device communication automatically.
+
     Args:
         model_loader: Callable returning (flax_model, params, tokenizer, input_fn).
                       input_fn(device) → jax.Array dummy input.
-        device:       The jax.Device this worker owns.
+        device:       The jax.Device this worker owns (lead chip for multi-chip).
         chip_id:      Zero-based chip index (for logging).
         timeout:      SIGALRM timeout in seconds for the compile+run step.
+        mesh_chips:   Number of chips to use.  >1 triggers data-parallel sharding.
     """
     try:
         import jax
         import jax.numpy as jnp
+        import numpy as np
         from jax.sharding import Mesh, NamedSharding, PartitionSpec
 
         _print_live_info(f"Loading Flax model...")
@@ -285,17 +293,12 @@ def _compile_model_xla(
 
         _print_live_info(f"Architecture: {type(model).__name__}")
 
-        # Restrict execution to this chip's device via explicit sharding.
-        mesh = Mesh([device], axis_names=("x",))
-
         # Build the forward function to JIT. Three calling conventions:
         # 1. HuggingFace FlaxPreTrainedModel: model(**inputs, params=params) → output
-        # 2. Flax NNX modules: nnx.merge + call
-        # 3. Flax Linen modules: model.apply({"params": params}, **inputs)
+        # 2. Flax Linen modules: model.apply({"params": params}, **inputs)
+        # 3. Raw array input (e.g. AlexNet): passed positionally with train=False
         flax_params = params
 
-        # Check for HuggingFace transformers style (FlaxPreTrainedModel).
-        # These classes expose a direct __call__ that takes params as kwarg.
         from transformers.modeling_flax_utils import FlaxPreTrainedModel  # noqa
         if isinstance(model, FlaxPreTrainedModel):
             def forward(params, inputs):
@@ -320,30 +323,86 @@ def _compile_model_xla(
                     return out[0]
                 return out
 
-        compiled_fn = jax.jit(forward)
+        if mesh_chips > 1:
+            # ── Data-parallel multi-chip path ────────────────────────────────
+            # Params are replicated across all N chips; the input batch (size N)
+            # is sharded so each chip processes exactly one example.  XLA JIT
+            # generates a single program that runs on all chips in parallel.
+            all_devices = jax.devices()
+            n = min(mesh_chips, len(all_devices))
+            if n < mesh_chips:
+                _print_live_info(
+                    f"Only {n} TT device(s) visible — using {n}-chip data-parallel"
+                )
+            mesh       = Mesh(np.array(all_devices[:n]), axis_names=("batch",))
+            replicated = NamedSharding(mesh, PartitionSpec())
+            batched    = NamedSharding(mesh, PartitionSpec("batch",))
 
-        # Build a minimal dummy input for the first (compilation) call.
-        dummy_inputs = make_input(device)
-        _print_live_info(f"Input shape: {jax.tree_util.tree_map(lambda x: x.shape, dummy_inputs)}")
+            _print_live_info(f"{n}-chip data-parallel mesh: {[str(d) for d in all_devices[:n]]}")
 
-        _print_progress_step(2, 3, "Compiling via JAX JIT (first call triggers XLA)...")
-        compile_start = time.time()
+            sharded_params = jax.device_put(flax_params, replicated)
 
-        signal.signal(signal.SIGALRM, _timeout_handler)
-        signal.alarm(timeout)
-        try:
-            with jax.default_device(device):
-                output = compiled_fn(flax_params, dummy_inputs)
-                output.block_until_ready()  # ensure device execution completes
-            signal.alarm(0)
-        except TimeoutException:
-            signal.alarm(0)
-            return False, None, time.time() - compile_start, "TIMEOUT", None
+            # Build a batch of n identical inputs (one element per device).
+            single = make_input(all_devices[0])
+            if isinstance(single, dict):
+                dummy_inputs = {k: jnp.concatenate([v] * n, axis=0) for k, v in single.items()}
+            else:
+                dummy_inputs = jnp.concatenate([single] * n, axis=0)
+            sharded_inputs = jax.device_put(dummy_inputs, batched)
 
-        compile_time = time.time() - compile_start
-        _print_progress_step(3, 3, f"Output shape: {output.shape}  ({compile_time:.1f}s)")
+            compiled_fn = jax.jit(
+                forward,
+                in_shardings=(replicated, batched),
+                out_shardings=batched,
+            )
 
-        return True, output, compile_time, "", (compiled_fn, flax_params, device)
+            _print_live_info(
+                f"Input shape: {jax.tree_util.tree_map(lambda x: x.shape, dummy_inputs)}"
+            )
+            _print_progress_step(2, 3, f"Compiling via JAX JIT across {n} chips (data-parallel)...")
+            compile_start = time.time()
+
+            signal.signal(signal.SIGALRM, _timeout_handler)
+            signal.alarm(timeout)
+            try:
+                output = compiled_fn(sharded_params, sharded_inputs)
+                output.block_until_ready()
+                signal.alarm(0)
+            except TimeoutException:
+                signal.alarm(0)
+                return False, None, time.time() - compile_start, "TIMEOUT", None
+
+            compile_time = time.time() - compile_start
+            _print_progress_step(3, 3, f"Output shape: {output.shape}  ({compile_time:.1f}s — {n} chips)")
+
+            # Return the lead device's bundle for optional First Voice pass.
+            return True, output, compile_time, "", (compiled_fn, sharded_params, all_devices[0])
+
+        else:
+            # ── Single-chip path ─────────────────────────────────────────────
+            compiled_fn = jax.jit(forward)
+
+            dummy_inputs = make_input(device)
+            _print_live_info(f"Input shape: {jax.tree_util.tree_map(lambda x: x.shape, dummy_inputs)}")
+
+            _print_progress_step(2, 3, "Compiling via JAX JIT (first call triggers XLA)...")
+            compile_start = time.time()
+
+            signal.signal(signal.SIGALRM, _timeout_handler)
+            signal.alarm(timeout)
+            try:
+                with jax.default_device(device):
+                    output = compiled_fn(flax_params, dummy_inputs)
+                    output.block_until_ready()  # ensure device execution completes
+                signal.alarm(0)
+            except TimeoutException:
+                signal.alarm(0)
+                return False, None, time.time() - compile_start, "TIMEOUT", None
+
+            compile_time = time.time() - compile_start
+            _print_progress_step(3, 3, f"Output shape: {output.shape}  ({compile_time:.1f}s)")
+
+            return True, output, compile_time, "", (compiled_fn, flax_params, device)
 
     except TimeoutException:
         signal.alarm(0)
@@ -798,13 +857,13 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
 
         # ── Compile + inference ──────────────────────────────────────────────
         success, output, compile_time, error_str, compiled_bundle = _compile_model_xla(
-            loader, device, chip_id
+            loader, device, chip_id, mesh_chips=item.mesh_chips
         )
         # Auto-install missing packages and retry once
         if not success and "No module named" in error_str:
             if _try_install_missing(error_str):
                 success, output, compile_time, error_str, compiled_bundle = _compile_model_xla(
-                    loader, device, chip_id
+                    loader, device, chip_id, mesh_chips=item.mesh_chips
                 )
         elapsed = time.time() - start
 
