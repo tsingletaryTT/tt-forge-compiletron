@@ -1380,22 +1380,54 @@ class RunScreen(Screen):
         self._rally_interrupt_flag = True   # signal side quest workers to exit cleanly
 
         # Kill any side quest subprocesses on the rally chips and reclaim them.
+        # Use SIGTERM first so the forge worker can unwind its device handle cleanly,
+        # then SIGKILL after 2s if it hasn't exited.  Abrupt SIGKILL leaves the TT
+        # PCIe device in a locked state that causes the XLA backend to time out.
+        interrupted_chips: list[int] = []
         for cid in list(chip_ids):
             proc = self._side_quest_procs.pop(cid, None)
             if proc is not None:
                 try:
-                    proc.kill()
-                    await proc.wait()
+                    proc.terminate()             # SIGTERM — polite exit
+                    try:
+                        await asyncio.wait_for(proc.wait(), timeout=2.0)
+                    except asyncio.TimeoutError:
+                        proc.kill()              # SIGKILL if unresponsive after 2s
+                        await proc.wait()
                 except Exception:
                     pass
                 self._side_quest_chips.discard(cid)
+                interrupted_chips.append(cid)
+
+        if interrupted_chips:
+            chips_str_sq = "+".join(str(c) for c in interrupted_chips)
+            try:
+                el = self.query_one("#event-log", EventLog)
+                el.write(
+                    f"[yellow]⚡ C{chips_str_sq} SIDE QUEST cut short — ALL CHIPS CALLED TO RALLY[/]"
+                )
+            except Exception:
+                pass
+
+            # Clear any stale /dev/shm segments left by killed forge workers.
+            # Without this the XLA backend can fail to initialize the TT device.
+            import glob as _glob
+            for seg in _glob.glob("/dev/shm/sm_segment.*"):
                 try:
-                    el = self.query_one("#event-log", EventLog)
-                    el.write(
-                        f"[yellow]⚡ C{cid} SIDE QUEST cut short — ALL CHIPS CALLED TO RALLY[/]"
-                    )
+                    __import__("os").unlink(seg)
                 except Exception:
                     pass
+
+            # Give the TT PCIe interface time to release before XLA grabs it.
+            # Killed forge subprocesses may hold a device lock for ~2-3s after exit.
+            try:
+                el = self.query_one("#event-log", EventLog)
+                el.write("[dim]  ⏳ Clearing devices before RALLY...[/]")
+                for n in (3, 2, 1):
+                    el.write(f"[dim]    {n}...[/]")
+                    await asyncio.sleep(1.0)
+            except Exception:
+                await asyncio.sleep(3.0)
 
         for cid in chip_ids:
             self._free_chips.discard(cid)
