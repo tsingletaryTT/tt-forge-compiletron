@@ -481,7 +481,7 @@ def _build_curated_queue(num_chips: int) -> tuple[list[list[dict]], list[dict]]:
 
     Chip assignments (2 models each, then BLOOM finale on all chips):
       C0: AlexNet → MobileNetV2 → [BLOOM rally]
-      C1: GPT-2 → SqueezeBERT  (the "text chip": LLM then classifier)
+      C1: GPT-2 → MusicGen Small (intentional fail — forge encoder-decoder gap; in bestiary)
       C2: BEiT → DeiT           (the "vision transformer chip")
       C3: Attention DenseUNet FAIL → ResNet (recovery win)
     Finale (all 4 chips): bloom/causal_lm/jax (XLA, BLOOM 4-chip data-parallel — genuine)
@@ -587,21 +587,23 @@ def _build_curated_queue(num_chips: int) -> tuple[list[list[dict]], list[dict]]:
             "loader_class": "ModelLoader",
             "is_frontier": False,
         },
-        # C1: SqueezeBERT — compact BERT-variant for text classification; pairs
-        # with C1's GPT-2 to make C1 the "text chip" of the run.
-        # (MusicGen Small was replaced: TypeError in forge tracer on encoder-decoder.)
+        # C1: MusicGen Small — intentional failure, kept as an honest mark on our
+        # record.  forge's tracer can't handle encoder-decoder models with int
+        # scalar inputs (TypeError: ones_like() argument must be Tensor, not NoneType).
+        # Recorded in the bestiary as a known gap to fix.  Mirrors C3's DenseUNet: one
+        # deliberate fail per run shows the hardware is real, not cherry-picked.
         {
-            "model_id": "squeezebert/pytorch",
-            "display_name": "SqueezeBERT",
-            "task": "text-classification",
+            "model_id": "musicgen_small/pytorch",
+            "display_name": "MusicGen Small",
+            "task": "text-to-audio",
             "source": "tt-forge-models",
-            "rarity": "rare",
+            "rarity": "legendary",
             "hf_downloads": None,
             "hf_created_at": None,
             "mesh_chips": 1,
             "library": "pytorch",
             "model_type": "",
-            "loader_module": f"{_FORGEMS}.squeezebert.pytorch.loader",
+            "loader_module": f"{_FORGEMS}.musicgen_small.pytorch.loader",
             "loader_class": "ModelLoader",
             "is_frontier": False,
         },
