@@ -34,6 +34,8 @@ import os
 import signal
 import sys
 import time
+import collections.abc
+from collections.abc import Mapping as _Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Any
@@ -313,7 +315,7 @@ def _compile_model_xla(
             # - dict inputs (e.g. {"pixel_values": ...}): unpacked as kwargs
             # - raw array inputs (e.g. AlexNet): passed positionally with train=False
             def forward(params, inputs):
-                if isinstance(inputs, dict):
+                if isinstance(inputs, _Mapping):
                     out = model.apply({"params": params}, **inputs)
                 else:
                     out = model.apply({"params": params}, inputs, train=False)
@@ -343,8 +345,9 @@ def _compile_model_xla(
             sharded_params = jax.device_put(flax_params, replicated)
 
             # Build a batch of n identical inputs (one element per device).
+            # Use Mapping (not dict) — BatchEncoding inherits from UserDict, not dict.
             single = make_input(all_devices[0])
-            if isinstance(single, dict):
+            if isinstance(single, _Mapping):
                 dummy_inputs = {k: jnp.concatenate([v] * n, axis=0) for k, v in single.items()}
             else:
                 dummy_inputs = jnp.concatenate([single] * n, axis=0)
