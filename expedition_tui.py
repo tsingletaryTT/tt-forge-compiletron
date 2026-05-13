@@ -103,8 +103,8 @@ def _strip_osc(line: str) -> str:
 
 # ── Status file I/O ───────────────────────────────────────────────────────────
 
-def _read_status(chip_id: int) -> dict[str, str]:
-    status_dir = os.environ.get("EXPEDITION_STATUS_DIR", "/tmp")
+def _read_status(chip_id: int, status_dir: str | None = None) -> dict[str, str]:
+    status_dir = status_dir or os.environ.get("EXPEDITION_STATUS_DIR", "/tmp")
     path = Path(status_dir) / f"expedition_chip_{chip_id}.status"
     out: dict[str, str] = {}
     try:
@@ -1273,21 +1273,27 @@ class RunScreen(Screen):
         # Write model JSON to a separate temp file (avoids clobbering main worker files).
         model_for_worker = {k: v for k, v in model.items() if k not in _WORKER_SKIP_KEYS}
         model_json_path  = f"/tmp/expedition_model_chip{chip_id}_sq.json"
-        results_path     = f"/tmp/expedition_results_chip{chip_id}.csv"
+        # Side quests write to a separate results CSV so the summary screen can
+        # distinguish them, and use a separate EXPEDITION_STATUS_DIR so the
+        # score strip status file isn't clobbered (wiping the main-queue pts).
+        sq_status_dir    = "/tmp/expedition_sq"
+        Path(sq_status_dir).mkdir(exist_ok=True)
+        results_path     = f"/tmp/expedition_results_chip{chip_id}_sq.csv"
         Path(model_json_path).write_text(json.dumps(model_for_worker))
 
         python_exe  = sys.executable
         worker_path = str(self._project_dir / "lib" / "expedition" / "expedition_worker.py")
         env = {
             **os.environ,
-            "TT_VISIBLE_DEVICES":      str(chip_id),
-            "TT_METAL_ARCH_NAME":      self.arch,
-            "TT_METAL_LOGGER_LEVEL":   "FATAL",
-            "TT_MESH_GRAPH_DESC_PATH": str(
+            "TT_VISIBLE_DEVICES":        str(chip_id),
+            "TT_METAL_ARCH_NAME":        self.arch,
+            "TT_METAL_LOGGER_LEVEL":     "FATAL",
+            "TT_MESH_GRAPH_DESC_PATH":   str(
                 self._project_dir / "mesh_graph_descriptors"
                 / "p100_mesh_graph_descriptor.textproto"
             ),
-            "PYTHONUNBUFFERED": "1",
+            "EXPEDITION_STATUS_DIR":     sq_status_dir,
+            "PYTHONUNBUFFERED":          "1",
         }
 
         proc = await asyncio.create_subprocess_exec(
@@ -1326,19 +1332,25 @@ class RunScreen(Screen):
         if panel:
             panel.mark_done(proc.returncode == 0)
 
+        sq_status = _read_status(chip_id, status_dir=sq_status_dir)
+        sq_pts    = int(sq_status.get("pts", 0))
+
         if proc.returncode == 0:
             if   elapsed < 10: speed_label = f"⚡ {elapsed:.1f}s — BLAZING"
             elif elapsed < 20: speed_label = f"⚡ {elapsed:.1f}s — fast"
             else:               speed_label = f"{elapsed:.1f}s"
             try:
                 el = self.query_one("#event-log", EventLog)
-                el.write(f"[bold cyan]⚡ C{chip_id} BONUS ★ {display} — {speed_label}[/]")
+                el.write(
+                    f"[bold cyan]⚡ C{chip_id} BONUS [gold1]+{sq_pts}pts[/][bold cyan]"
+                    f" ★ {display} — {speed_label}[/]"
+                )
             except Exception:
                 pass
         else:
             try:
                 el = self.query_one("#event-log", EventLog)
-                el.write(f"[dim]⚡ C{chip_id} SIDE QUEST FAIL — {display}[/]")
+                el.write(f"[dim]⚡ C{chip_id} SIDE QUEST FAIL — {display} ({elapsed:.1f}s)[/]")
             except Exception:
                 pass
 
