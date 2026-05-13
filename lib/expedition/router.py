@@ -33,6 +33,7 @@ _FORGE_FATAL_CATEGORIES: frozenset[str] = frozenset({
 # failures fall back to forge so we stop burning retries on a broken XLA path.
 _XLA_FATAL_CATEGORIES: frozenset[str] = frozenset({
     "xla_runtime_error",
+    "wrong_backend",   # PyTorch tensor sent to XLA worker via bad routing
 })
 
 
@@ -80,6 +81,17 @@ def route_model(
     library    = (item.get("library") or "").lower()
     model_type = (item.get("model_type") or "").lower()
 
+    # Seed-model IDs encode the backend as the last path segment (e.g. "gpt2/pytorch").
+    # If library is empty, infer it from the path so the XLA-affinity guard below
+    # can correctly reject pytorch models that happen to share a model_type with
+    # a known XLA-affinity architecture.
+    if not library:
+        path_tail = model_id.split("/")[-1].lower()
+        if path_tail in ("pytorch", "torch"):
+            library = "pytorch"
+        elif path_tail in ("jax", "flax"):
+            library = path_tail
+
     # ── Backend routing ───────────────────────────────────────────────────────
 
     # Priority 1: JAX/Flax library tag is definitive.
@@ -104,7 +116,12 @@ def route_model(
         reason     = "xla-failure-history"
 
     # Priority 3: Architecture is known to work well on XLA.
-    elif model_type in _XLA_AFFINITY_TYPES:
+    # Guard: skip if the model is explicitly a PyTorch library model — those
+    # carry PyTorch tensors and cannot run in the XLA/JAX worker.  Seed-model
+    # IDs like "gpt2/pytorch" have library="" but a path segment of "pytorch";
+    # HF items have library="pytorch" set explicitly.  Either way, forge is the
+    # correct backend regardless of model_type affinity.
+    elif model_type in _XLA_AFFINITY_TYPES and library not in ("pytorch", "torch"):
         backend    = "xla"
         confidence = 0.68
         reason     = "arch-xla-affinity"

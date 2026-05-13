@@ -265,8 +265,10 @@ def _decode_qa(output: Any, tokenizer: Any, inputs: Any) -> str:
         return _raw_fallback(output)
     try:
         # Support both tuple/list output and attribute-based output objects.
-        if isinstance(output, (tuple, list)) and len(output) == 2:
-            start_logits, end_logits = output
+        # Some QA models return (start_logits, end_logits, hidden_states, ...)
+        # so accept any tuple/list with >=2 elements.
+        if isinstance(output, (tuple, list)) and len(output) >= 2:
+            start_logits, end_logits = output[:2]
         elif hasattr(output, "start_logits") and hasattr(output, "end_logits"):
             start_logits = output.start_logits
             end_logits = output.end_logits

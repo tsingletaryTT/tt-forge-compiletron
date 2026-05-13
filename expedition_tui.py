@@ -96,6 +96,29 @@ _RE_TT_NOISE = re.compile(r"Always \s*\|")
 # frozenset is created once rather than on every _launch_model call.
 _WORKER_SKIP_KEYS = frozenset({"chips_needed", "decision"})
 
+# Backend suffixes that appear as the last path segment in seed-model IDs like
+# "gpt2/pytorch" or "bloom/causal_lm/jax".  Strip them to get a clean name.
+_BACKEND_SUFFIXES = frozenset({
+    "pytorch", "jax", "onnx", "tensorflow", "flax", "paddle", "paddlepaddle",
+})
+
+
+def _model_short(model_id: str, max_len: int = 22) -> str:
+    """Return a display-friendly short name for a model ID.
+
+    Seed-model IDs follow the pattern "<name>/<task>/<backend>" or "<name>/<backend>".
+    If the last path segment is a known backend tag, the real model name is the
+    *first* segment (e.g. "bloom/causal_lm/jax" → "bloom").  HuggingFace IDs like
+    "openai-community/gpt2" have non-backend last segments, so we use that last
+    segment (the repo name after the org prefix).
+    """
+    parts = model_id.split("/")
+    if parts[-1].lower() in _BACKEND_SUFFIXES:
+        name = parts[0]
+    else:
+        name = parts[-1]
+    return name[:max_len]
+
 
 def _strip_osc(line: str) -> str:
     return _RE_OSC.sub("", line)
@@ -129,7 +152,7 @@ def _render_score_row(chip_id: int) -> Text:
     streak    = int(s.get("streak",    0))
     successes = int(s.get("successes", 0))
     failures  = int(s.get("failures",  0))
-    model     = s.get("model", "")[:22]
+    model     = _model_short(s.get("model", ""))
     done      = s.get("done", "0") == "1"
 
     # Use completed (successes + failures) as numerator so the bar doesn't jump
@@ -265,7 +288,7 @@ class EventLog(RichLog):
     def log_success(self, chip_id: int, model: str, rarity: str,
                     pts: int, first_ever: bool, streak: int) -> None:
         badge  = _RARITY_MARKUP.get(rarity, _RARITY_MARKUP["common"])
-        short  = model.split("/")[-1][:22] if model else "unknown"
+        short  = _model_short(model)
         first  = "  [bold gold1]★ BESTIARY[/]" if first_ever else ""
         streak_txt = f"  🔥×{streak}" if streak >= 2 else ""
         self.write(
@@ -274,7 +297,7 @@ class EventLog(RichLog):
         )
 
     def log_failure(self, chip_id: int, model: str) -> None:
-        short  = model.split("/")[-1][:22] if model else "unknown"
+        short  = _model_short(model)
         flavor = random.choice(_FAILURE_FLAVOR)
         self.write(
             f"[bold red]☠[/] [yellow]C{chip_id}[/] [dim]{short}[/]"
@@ -321,7 +344,7 @@ class RallyBanner(Static):
 
     def start(self, model: dict, chip_ids: list[int], decision) -> None:
         """Activate the banner for the given model and chip configuration."""
-        self._model_name = model.get("model_id", "?").split("/")[-1]
+        self._model_name = _model_short(model.get("model_id", "?"))
         self._chip_ids   = chip_ids
         self._backend    = decision.backend
         self._confidence = decision.confidence

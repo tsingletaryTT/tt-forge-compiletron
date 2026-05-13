@@ -181,6 +181,14 @@ _ERROR_RULES: list[tuple[str, str, str, str]] = [
      "shape_mismatch",
      "Index out of range",
      "bug: model has a dimension/index mismatch; report with model ID"),
+    # Wrong backend: PyTorch tensor passed to the XLA/JAX worker.  Happens when
+    # a model with library="pytorch" is incorrectly routed to XLA via arch-affinity
+    # (e.g. "gpt2" model_type).  The router now guards against this, but historical
+    # entries should be classified so the router's xla-fatal gate can fire.
+    ("interpreting argument",
+     "wrong_backend",
+     "Wrong backend (PyTorch→XLA)",
+     "fix: router now guards library=pytorch from XLA routing; re-run to confirm"),
 ]
 
 _CATEGORY_OTHER = ("other", "Other", "investigate manually")
