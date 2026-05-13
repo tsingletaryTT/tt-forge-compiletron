@@ -1649,6 +1649,9 @@ def main():
     run_p.add_argument("--auto-quit",            type=int, default=0, metavar="SECS",
                        help="Auto-quit SECS seconds after the summary screen appears "
                             "(useful for unattended recording; 0=disabled)")
+    run_p.add_argument("--confirm",              action="store_true",
+                       help="Pause on setup screen and wait for ENTER before starting "
+                            "(default: auto-start immediately)")
 
     sub.add_parser("summary", help="Print bestiary summary")
 
@@ -1714,6 +1717,7 @@ def main():
             curated=getattr(args, "curated", False),
             backend=args.backend,
             auto_quit_secs=getattr(args, "auto_quit", 0),
+            confirm=getattr(args, "confirm", False),
             # TUI workers download models on-demand; pre-downloading 40+ models
             # during setup would silently block for 30+ minutes with no progress
             # visible to the user.  Pass-through only if explicitly requested.

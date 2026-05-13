@@ -446,7 +446,7 @@ class SetupScreen(Screen):
         self._backend      = "auto"   # auto | forge | xla | mixed
         self._discovering  = False  # True while HF discovery / queue-build is running
         self._setup_done   = False  # True once queues are built (no re-run)
-        self._autostart_secs = 4   # Countdown seconds before auto-start (0 = disabled)
+        self._autostart_secs = 4   # Countdown seconds before auto-start (0 = auto-fire immediately)
 
     def on_mount(self) -> None:
         app = self.app
@@ -466,10 +466,16 @@ class SetupScreen(Screen):
         self._staples              = app.staples
         self._curated              = getattr(app, "curated", False)
         self._backend              = getattr(app, "backend", "auto")
+        confirm                    = getattr(app, "confirm", False)
+        # confirm=False (default): fire immediately; confirm=True: 4s countdown + Enter.
+        if not confirm:
+            self._autostart_secs = 0
         self._refresh_config()
-        # Auto-start countdown: fires every second; starts expedition when it hits 0.
         if self._autostart_secs > 0:
             self._autostart_timer = self.set_interval(1.0, self._autostart_tick)
+        else:
+            # Auto-fire after layout settles (one event-loop tick).
+            self.call_after_refresh(self.action_start)
 
     def _autostart_tick(self) -> None:
         """Decrement the auto-start countdown and fire when it reaches zero."""
@@ -527,8 +533,10 @@ class SetupScreen(Screen):
             status = "[bold cyan]⚙ Discovering…[/]"
         elif self._autostart_secs > 0:
             status = f"[bold yellow]● ENTER to start  [dim](auto in {self._autostart_secs}s)[/][/]"
-        else:
+        elif getattr(self.app, "confirm", False):
             status = "[bold yellow]● Ready — press ENTER[/]"
+        else:
+            status = "[bold cyan]⚡ Auto-starting…[/]"
 
         lines = [
             f"[bold cyan]⚡ EXPEDITION {rn}[/]",
@@ -2170,6 +2178,7 @@ class ExpeditionTUI(App[None]):
         curated:                bool  = False,
         backend:                str   = "auto",
         auto_quit_secs:         int   = 0,
+        confirm:                bool  = False,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -2194,6 +2203,7 @@ class ExpeditionTUI(App[None]):
         self.curated              = curated
         self.backend              = backend
         self.auto_quit_secs       = auto_quit_secs
+        self.confirm              = confirm
 
     def on_mount(self) -> None:
         rn = f"Run #{self.run_number:03d}"
