@@ -934,6 +934,7 @@ class RunScreen(Screen):
         self._side_quest_chips:     set[int]                                   = set()
         self._side_quest_procs:     dict[int, asyncio.subprocess.Process]      = {}
         self._rally_interrupt_flag: bool                                        = False
+        self._rally_in_progress:    bool                                        = False
 
     def compose(self) -> ComposeResult:
         rn = f"Run #{self.run_number:03d}"
@@ -1012,6 +1013,10 @@ class RunScreen(Screen):
         a @work coroutine), detect it here and fire the transition."""
         if self._all_done:
             return
+        # Do not fire while a RALLY subprocess is running — _launch_model will
+        # push WaveFinaleScreen after the subprocess exits.
+        if self._rally_in_progress:
+            return
         # Only trigger once pool is drained and no mesh is assembling.
         if self._model_pool or self._mesh_holding:
             return
@@ -1045,12 +1050,20 @@ class RunScreen(Screen):
         # Check if a waiting mesh model now has quorum.
         if self._mesh_holding:
             chips_needed: int = self._mesh_holding["chips_needed"]
-            # Count idle + interruptible side-quest chips toward quorum.
+            # Count idle + still-running side-quest chips toward eventual quorum.
             all_available = self._free_chips | self._side_quest_chips
             if len(all_available) >= chips_needed:
-                chip_ids = sorted(all_available)[:chips_needed]
-                self._fire_rally(self._mesh_holding, chip_ids)
+                # Enough chips will eventually be free — stop dispatching new side quests
+                # but let existing ones finish naturally (no killing).
+                self._rally_interrupt_flag = True
+                # Fire RALLY only once all needed chips are genuinely idle.
+                if len(self._free_chips) >= chips_needed:
+                    chip_ids = sorted(self._free_chips)[:chips_needed]
+                    self._fire_rally(self._mesh_holding, chip_ids)
+                    return
+                # Rally is pending — chips still finishing side quests. Wait.
                 return
+            # Not enough chips will be available yet — fall through to side quest dispatch.
 
         # Scan the pool for a dispatchable model.
         for i, model in enumerate(self._model_pool):
@@ -1184,7 +1197,8 @@ class RunScreen(Screen):
                 "--results",    results_path,
             ]
             with self.app.suspend():
-                subprocess.run(cmd, env=env)
+                subprocess.run(cmd, env=env, stdin=subprocess.DEVNULL)
+            self._rally_in_progress = False
             # Update state counters — do NOT call _on_chip_free/_dispatch_next/_on_all_done,
             # which would flash the RunScreen grid and show the countdown before pushing
             # WaveFinaleScreen.  Go straight to the finale instead.
@@ -1322,16 +1336,10 @@ class RunScreen(Screen):
         self._side_quest_procs[chip_id] = proc
 
         async for raw in proc.stdout:
-            if self._rally_interrupt_flag:
-                break
             line = raw.decode("utf-8", errors="replace")
             if panel:
                 panel.write_line(line)
             self._parse_for_events(chip_id, line)
-
-        if self._rally_interrupt_flag:
-            # _fire_rally owns this chip — don't free it or call _dispatch_next.
-            return
 
         await proc.wait()
         elapsed = _time.time() - start_t
@@ -1397,60 +1405,24 @@ class RunScreen(Screen):
 
     @work
     async def _fire_rally(self, mesh_model: dict, chip_ids: list[int]) -> None:
-        """Handle a RALLY event: show banner, fire mesh subprocess."""
-        self._mesh_holding      = None
+        """Handle a RALLY event: show banner, fire mesh subprocess.
+
+        All side quests have already finished naturally before this is called —
+        _dispatch_next only fires here once _free_chips >= chips_needed.
+        No killing, no device-settle wait.
+        """
+        self._mesh_holding       = None
         self._opportunist_active = False
-        self._rally_interrupt_flag = True   # signal side quest workers to exit cleanly
+        self._rally_in_progress  = True   # block watchdog from firing _on_all_done
 
-        # Kill any side quest subprocesses on the rally chips and reclaim them.
-        # Use SIGTERM first so the forge worker can unwind its device handle cleanly,
-        # then SIGKILL after 2s if it hasn't exited.  Abrupt SIGKILL leaves the TT
-        # PCIe device in a locked state that causes the XLA backend to time out.
-        interrupted_chips: list[int] = []
-        for cid in list(chip_ids):
-            proc = self._side_quest_procs.pop(cid, None)
-            if proc is not None:
-                try:
-                    proc.terminate()             # SIGTERM — polite exit
-                    try:
-                        await asyncio.wait_for(proc.wait(), timeout=2.0)
-                    except asyncio.TimeoutError:
-                        proc.kill()              # SIGKILL if unresponsive after 2s
-                        await proc.wait()
-                except Exception:
-                    pass
-                self._side_quest_chips.discard(cid)
-                interrupted_chips.append(cid)
-
-        if interrupted_chips:
-            chips_str_sq = "+".join(str(c) for c in interrupted_chips)
+        # Clear /dev/shm forge segments from completed side-quest workers.
+        # They exited cleanly, but forge sometimes leaves a segment behind.
+        import glob as _glob
+        for seg in _glob.glob("/dev/shm/sm_segment.*"):
             try:
-                el = self.query_one("#event-log", EventLog)
-                el.write(
-                    f"[yellow]⚡ C{chips_str_sq} SIDE QUEST cut short — ALL CHIPS CALLED TO RALLY[/]"
-                )
+                __import__("os").unlink(seg)
             except Exception:
                 pass
-
-            # Clear any stale /dev/shm segments left by killed forge workers.
-            # Without this the XLA backend can fail to initialize the TT device.
-            import glob as _glob
-            for seg in _glob.glob("/dev/shm/sm_segment.*"):
-                try:
-                    __import__("os").unlink(seg)
-                except Exception:
-                    pass
-
-            # Give the TT PCIe interface time to release before XLA grabs it.
-            # Killed forge subprocesses may hold a device lock for ~2-3s after exit.
-            try:
-                el = self.query_one("#event-log", EventLog)
-                el.write("[dim]  ⏳ Clearing devices before RALLY...[/]")
-                for n in (3, 2, 1):
-                    el.write(f"[dim]    {n}...[/]")
-                    await asyncio.sleep(1.0)
-            except Exception:
-                await asyncio.sleep(3.0)
 
         for cid in chip_ids:
             self._free_chips.discard(cid)
@@ -1468,6 +1440,7 @@ class RunScreen(Screen):
             pass
 
         # Launch a single multi-chip subprocess on the lead chip.
+        # _rally_in_progress remains True — _launch_model clears it after subprocess exits.
         lead = chip_ids[0]
         self._launch_model(lead, mesh_model, decision, mesh_chip_ids=chip_ids)
 
@@ -1700,9 +1673,11 @@ class WaveFinaleScreen(Screen):
     }
     """
 
-    # 26 frames × 0.13s ≈ 3.4 s of animation before auto-advancing
+    # Pre-compute 26 frames but only play the first 8 (≈ 1 s of motion),
+    # then freeze on the last frame.  Continuing to render past that point
+    # shows visible slowdown from widget state accumulation.  Keypress advances.
     TOTAL_FRAMES   = 26
-    _PLAY_FRAMES   = 22   # stop playback early — last few frames stutter on _advance() push
+    _PLAY_FRAMES   = 8
 
     def __init__(self, num_chips: int, run_number: int,
                  auto_quit_secs: int = 0, **kwargs) -> None:
@@ -1790,16 +1765,18 @@ class WaveFinaleScreen(Screen):
                 pass
         self._frame_idx += 1
         if self._frame_idx >= self._PLAY_FRAMES:
-            self._advance()
+            # Freeze on the last frame — stop the timer, hold the image.
+            # Always auto-advance after 2 s; keypress also works immediately.
+            try:
+                self._timer.stop()
+            except Exception:
+                pass
+            self.set_timer(2.0, self._advance)
 
     def _advance(self) -> None:
         if self._finished:
             return
         self._finished = True
-        try:
-            self._timer.stop()
-        except Exception:
-            pass
         self.app.push_screen(SummaryScreen(
             self.num_chips,
             self.run_number,
@@ -1807,8 +1784,8 @@ class WaveFinaleScreen(Screen):
         ))
 
     def on_key(self, _event: object) -> None:
-        """Keypress skips the animation — but only after a few frames so
-        queued keypresses from RunScreen's countdown don't kill it instantly."""
+        """Any keypress advances past the frozen wave to the SummaryScreen.
+        Guard of 3 frames prevents queued RunScreen keypresses from skipping instantly."""
         if self._frame_idx >= 3:
             self._advance()
 
@@ -1942,170 +1919,133 @@ class SummaryScreen(Screen):
         import datetime
         now_str = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M")
 
-        # ── Header ────────────────────────────────────────────────────────────
-        log.write(f"[bold cyan]╔{'═' * 54}[/]")
-        log.write(f"[bold cyan]║  ⚡ EXPEDITION #{rn:03d} COMPLETE   {now_str}[/]")
-        log.write(f"[bold cyan]╚{'═' * 54}[/]\n")
+        # ── Classification badge ──────────────────────────────────────────────
+        if rate >= 0.80:
+            classification = "OUTSTANDING"
+        elif rate >= 0.60:
+            classification = "COMPILED"
+        elif rate >= 0.40:
+            classification = "PARTIAL"
+        else:
+            classification = "CRITICAL"
 
-        # ── MAIN QUEST block (left-border only — no right-side clip) ──────────
         pts_col  = "gold1" if total_pts > 0 else ("red" if total_pts < 0 else "dim")
-        rate_w   = round(rate * 30)
-        rate_bar = f"[green]{'█' * rate_w}[/][dim]{'░' * (30 - rate_w)}[/]"
-        fe_note  = f"  [bold gold1]★{len(all_first)} new[/]" if all_first else ""
-        fv_note  = f"  [bold magenta]🗣{len(all_fv)}[/]" if all_fv else ""
-        log.write(f"[bold cyan]╔══ MAIN QUEST {'═' * 40}[/]")
-        log.write(
-            f"[bold cyan]║[/]  [bold]{total_attempted}[/] attempted  "
-            f"[green]{total_ns}[/] compiled  [red]{total_nf}[/] failed  "
-            f"[cyan]{rate:.0%}[/]  [{pts_col}]{total_pts:+,}[/] pts"
-            f"{fe_note}{fv_note}"
+        rate_col = "green" if rate > 0.6 else ("yellow" if rate > 0.3 else "red")
+
+        # ── Header ────────────────────────────────────────────────────────────
+        log.write(f"[bold cyan]╔{'═' * 62}[/]")
+        log.write(f"[bold cyan]║  ██ TENSTORRENT SILICON DIVISION — FIELD REPORT #{rn:03d}[/]")
+        log.write(f"[bold cyan]║  ██ CLASSIFICATION: {classification:<12}  DATE: {now_str}[/]")
+        log.write(f"[bold cyan]╚{'═' * 62}[/]\n")
+
+        # ── MISSION SUMMARY ───────────────────────────────────────────────────
+        bar_w = round(rate * 53)
+        rate_bar = (
+            f"[{'green' if rate > 0.6 else 'yellow'}]{'█' * bar_w}[/]"
+            f"[dim]{'░' * (53 - bar_w)}[/]"
         )
-        log.write(f"[bold cyan]║[/]  {rate_bar}  [bold]{rate:.0%}[/]")
-        log.write(f"[bold cyan]╚{'═' * 54}[/]")
+        log.write("[bold cyan]  MISSION SUMMARY[/]")
+        log.write(f"[cyan]  {'─' * 57}[/]")
+        log.write(
+            f"  [dim]TARGETS ACQUIRED:[/]   [bold]{total_ns} / {total_attempted}[/]"
+            f"    [dim]SUCCESS RATE:[/] [{rate_col}]{rate:.0%}[/]"
+        )
+        log.write(
+            f"  [dim]POINTS EXTRACTED:[/]  [{pts_col}]{total_pts:+,}[/]"
+            f"     [dim]NEW ASSETS:[/]   [bold gold1]{len(all_first)}[/]"
+        )
+        log.write(f"  {rate_bar}")
+        log.write("")
 
-        # ── SIDE QUESTS block (only if any ran) ───────────────────────────────
-        if has_sq:
-            sq_attempted = len(all_sq_s) + len(all_sq_f)
-            sq_rate      = len(all_sq_s) / max(sq_attempted, 1)
-            sq_pts_col   = "gold1" if total_sq_pts > 0 else "dim"
-            log.write(f"[bold yellow]╔══ ⚡ SIDE QUESTS {'═' * 36}[/]")
+        # ── OPERATIVE STATUS (chip leaderboard with NATO codenames) ───────────
+        _CODENAMES = ["ALPHA", "BRAVO", "CHARLIE", "DELTA"]
+        log.write("[bold cyan]  OPERATIVE STATUS[/]")
+        log.write(f"[cyan]  {'─' * 57}[/]")
+        for rank, c in enumerate(chip_results):
+            codename = _CODENAMES[rank] if rank < 4 else f"CHIP-{rank}"
+            ns    = len(c["successes"])
+            nf    = len(c["failures"])
+            pts   = c["pts"]
+            times = c["times"]
+            sq    = sq_by_chip.get(c["chip_id"], {})
+            sq_ns = len(sq.get("successes", []))
+            sq_nf = len(sq.get("failures",  []))
+            ratio  = ns / max(ns + nf, 1)
+            filled = round(ratio * 12)
+            bar    = "█" * filled + "░" * (12 - filled)
+            bc     = "green" if ratio > 0.6 else ("yellow" if ratio > 0.3 else "red")
+            pc     = "gold1" if pts > 0 else ("red" if pts < 0 else "dim")
+            avg_t  = f"{sum(times)/len(times):.0f}s" if times else "—"
+            sq_note = f"  [yellow]SQ✓{sq_ns}[/]" if sq_ns else (f"  [dim]SQ✗{sq_nf}[/]" if sq_nf else "")
             log.write(
-                f"[bold yellow]║[/]  [bold]{sq_attempted}[/] bonus models  "
-                f"[green]{len(all_sq_s)}[/] compiled  [red]{len(all_sq_f)}[/] failed  "
-                f"[cyan]{sq_rate:.0%}[/]  [{sq_pts_col}]{total_sq_pts:+,}[/] bonus pts"
+                f"  [bold]{codename:<7}[/] [yellow][C{c['chip_id']}][/]"
+                f"  [{bc}]{bar}[/]"
+                f"  [bold]{ns}[/] acquired  [dim]{nf}[/] lost"
+                f"  [{pc}]{pts:>+,}[/]  [dim]{avg_t}[/]{sq_note}"
             )
-            log.write(f"[bold yellow]╚{'═' * 54}[/]")
-
         log.write("")
 
-        # ── Chip leaderboard ─────────────────────────────────────────────────
-        # Bar=12, compact columns — fits 80 cols with 4 chips.
-        log.write("[bold cyan]  CHIP LEADERBOARD[/]")
-        medals   = ["🥇", "🥈", "🥉", "  "]
-        lb_table = Table(show_header=False, box=None, padding=(0, 1))
-        lb_table.add_column("Medal", no_wrap=True)
-        lb_table.add_column("Bar",   no_wrap=True)
-        lb_table.add_column("Pts",   justify="right", no_wrap=True)
-        lb_table.add_column("W/L",   no_wrap=True)
-        lb_table.add_column("Extra", no_wrap=True)
-        for i, c in enumerate(chip_results):
-            medal    = medals[min(i, 3)]
-            ns       = len(c["successes"])
-            nf       = len(c["failures"])
-            fe       = len(c["first_evers"])
-            pts      = c["pts"]
-            times    = c["times"]
-            sq       = sq_by_chip.get(c["chip_id"], {})
-            sq_ns    = len(sq.get("successes", []))
-            sq_nf    = len(sq.get("failures", []))
-            sq_pts_c = sq.get("pts", 0)
-            ratio    = ns / max(ns + nf, 1)
-            filled   = round(ratio * 12)
-            bar      = "█" * filled + "░" * (12 - filled)
-            bc       = "green" if ratio > 0.6 else ("yellow" if ratio > 0.3 else "red")
-            pc       = "gold1" if pts > 0 else ("red" if pts < 0 else "dim")
-            avg_t    = f"{sum(times)/len(times):.0f}s" if times else "—"
-            fe_s     = f"[bold gold1]★{fe}[/]" if fe else ""
-            # Fold SQ info into W/L column to keep row width bounded
-            sq_part  = ""
-            if sq_ns or sq_nf:
-                sq_part = f" [yellow]SQ✓{sq_ns}[/]" if sq_ns else ""
-                if sq_nf:
-                    sq_part += f"[dim]✗{sq_nf}[/]"
-                if sq_pts_c:
-                    sq_part += f"[yellow]{sq_pts_c:+,}[/]"
-            lb_table.add_row(
-                f"{medal} [yellow]C{c['chip_id']}[/]",
-                f"[{bc}]{bar}[/]",
-                f"[{pc}]{pts:>+,}[/]",
-                f"[green]✓{ns}[/] [red]✗{nf}[/] {fe_s}{sq_part}",
-                f"[dim]{avg_t}[/]",
+        # ── NEW INTELLIGENCE (new-to-bestiary entries with first voice / artifact) ──
+        _RARITY_COLOR = {
+            "legendary": "gold1", "rare": "magenta",
+            "uncommon":  "cyan",  "common": "dim",
+            "familiar":  "dim",
+        }
+        if all_first:
+            log.write(f"[bold gold1]  ★ NEW INTELLIGENCE ({len(all_first)})[/]")
+            log.write(f"[cyan]  {'─' * 57}[/]")
+            for r in all_first:
+                rar   = r.get("rarity", "common").lower()
+                rc    = _RARITY_COLOR.get(rar, "dim")
+                tag   = f"[{rc}][{rar.upper()}][/]"
+                art   = (r.get("artifact") or "").strip()
+                is_fv = r.get("first_voice") == "True"
+                label = "INTERCEPT:" if is_fv else "ARTIFACT: "
+                log.write(f"  {tag}  [bold]{r['model']}[/]")
+                if art:
+                    log.write(f"    [dim]{label}[/] [{rc}]{art}[/]")
+                log.write("")
+
+        # ── CATALOGUED (other compiled models, compact) ───────────────────────
+        shown = {r["model"] for r in all_first}
+        other = [r for r in all_successes if r["model"] not in shown]
+        if other:
+            names = "  ·  ".join(r["model"].split("/")[-1] for r in other)
+            log.write(f"[dim]  CATALOGUED ({len(other)})[/]")
+            log.write(f"  [dim]{names}[/]")
+            log.write("")
+
+        # ── SIDE QUEST bonus haul (compact one-liner) ─────────────────────────
+        if has_sq:
+            sq_ns_total = sum(len(sq["successes"]) for sq in sq_by_chip.values())
+            sq_nf_total = sum(len(sq["failures"])  for sq in sq_by_chip.values())
+            sqc = "gold1" if total_sq_pts > 0 else "dim"
+            log.write(
+                f"[yellow]  ⚡ BONUS HAUL[/]  ·  "
+                f"[dim]{sq_ns_total + sq_nf_total} bonus models[/]  ·  "
+                f"[green]{sq_ns_total} compiled[/]  ·  "
+                f"[{sqc}]{total_sq_pts:+,} pts[/]"
             )
-        log.write(lb_table)
-        log.write("")
-
-        # ── Compile-time histogram ────────────────────────────────────────────
-        if all_times:
-            buckets = [
-                ("  < 5s", [t for t in all_times if t <  5]),
-                (" 5-15s", [t for t in all_times if  5 <= t < 15]),
-                ("15-30s", [t for t in all_times if 15 <= t < 30]),
-                (" > 30s", [t for t in all_times if t >= 30]),
-            ]
-            max_b = max(len(b[1]) for b in buckets) or 1
-            log.write("[bold cyan]  COMPILE TIMES[/]")
-            for label, ts in buckets:
-                w   = round(len(ts) / max_b * 20)
-                bar = "█" * w + "░" * (20 - w)
-                cnt = str(len(ts)) if ts else "0"
-                col = "cyan" if ts else "dim"
-                log.write(f"  [dim]{label}[/]  [{col}]{bar}[/]  {cnt}")
             log.write("")
 
-        # ── ARTIFACTS ────────────────────────────────────────────────────────
-        # Grouped: First Voice (text predictions) → new-to-bestiary → other hits → SQ bonus.
-        art_fv    = all_fv
-        art_first = [r for r in all_first if r.get("first_voice") != "True"]
-        art_shown = {r["model"] for r in art_fv} | {r["model"] for r in art_first}
-        art_other = [r for r in all_successes
-                     if (r.get("artifact") or "").strip()
-                     and r["model"] not in art_shown]
-        art_sq    = [r for r in all_sq_s if (r.get("artifact") or "").strip()]
-
-        if art_fv or art_first or art_other or art_sq:
-            log.write(f"[bold cyan]{'─' * 60}[/]")
-            log.write("[bold cyan]  ARTIFACTS[/]")
-            log.write(f"[bold cyan]{'─' * 60}[/]")
-            for r in art_fv:
-                a  = (r.get("artifact") or "").strip()
-                be = r.get("backend", "")
-                log.write(
-                    f"[bold magenta]🗣[/] [bold]{r['model']}[/]"
-                    + (f" [dim][{be}][/]" if be else "")
-                )
-                if a:
-                    log.write(f"    [bold magenta]{a}[/]")
-            for r in art_first:
-                a = (r.get("artifact") or "").strip()
-                log.write(f"[gold1]★[/] [bold]{r['model']}[/]")
-                if a:
-                    log.write(f"    [gold1]{a[:120]}[/]")
-            for r in art_other:
-                a = (r.get("artifact") or "").strip()
-                log.write(f"  [cyan]{r['model']}[/]")
-                if a:
-                    log.write(f"    [dim]{a[:120]}[/]")
-            if art_sq:
-                log.write(f"  [yellow]⚡ BONUS HAUL[/]")
-                for r in art_sq:
-                    a = (r.get("artifact") or "").strip()
-                    log.write(f"  [yellow]{r['model']}[/]")
-                    if a:
-                        log.write(f"    [yellow]{a[:120]}[/]")
-            log.write("")
-
-        # ── FAILED ───────────────────────────────────────────────────────────
-        # Show error class + hint; one-line exception summary (no full stack traces).
+        # ── TARGETS AT LARGE (failures) ───────────────────────────────────────
         all_fails_combined = all_failures + all_sq_f
         sq_model_set       = {r["model"] for r in all_sq_f}
         if all_fails_combined:
             from lib.expedition.bestiary import _classify_error
-            log.write(f"[bold red]{'─' * 60}[/]")
-            log.write(f"[bold red]  ✗ FAILED ({len(all_fails_combined)})[/]")
-            log.write(f"[bold red]{'─' * 60}[/]")
+            log.write(f"[bold red]  TARGETS AT LARGE ({len(all_fails_combined)})[/]")
+            log.write(f"[red]  {'─' * 57}[/]")
             for r in all_fails_combined:
-                err = (r.get("error") or "").strip()
+                err       = (r.get("error") or "").strip()
                 key, label, hint = _classify_error(err)
-                sq_tag = " [yellow][SQ][/]" if r["model"] in sq_model_set else ""
-                # Last non-empty error line gives the actual exception without the traceback.
-                err_lines  = [l for l in err.splitlines() if l.strip()]
-                err_short  = err_lines[-1].strip()[:100] if err_lines else ""
+                err_lines = [l for l in err.splitlines() if l.strip()]
+                err_short = err_lines[-1].strip()[:80] if err_lines else ""
+                sq_tag    = " [yellow][SQ][/]" if r["model"] in sq_model_set else ""
                 log.write(
-                    f"[bold red]✗[/] [white]{r['model']}[/]{sq_tag}"
-                    f"  [dim][{label}][/]  [dim italic]{hint}[/]"
+                    f"  [red]{r['model']}[/]{sq_tag}"
+                    f"  [bold red]{label.upper()}[/]"
+                    + (f"  [dim]{err_short}[/]" if err_short else "")
                 )
-                if err_short:
-                    log.write(f"    [dim]{err_short}[/]")
             log.write("")
 
         # ── Field journal snippet ─────────────────────────────────────────────
@@ -2113,9 +2053,9 @@ class SummaryScreen(Screen):
             from lib.expedition.notes import read_journal
             journal_text = read_journal(rn, project_dir=PROJECT_DIR)
             if journal_text:
-                log.write(f"[bold cyan]{'─' * 60}[/]")
+                log.write(f"[cyan]  {'─' * 57}[/]")
                 log.write("[bold cyan]  📓 FIELD JOURNAL[/]")
-                log.write(f"[bold cyan]{'─' * 60}[/]")
+                log.write(f"[cyan]  {'─' * 57}[/]")
                 for line in journal_text.splitlines()[:20]:
                     if line.startswith("## "):
                         log.write(f"[bold yellow]{line[3:]}[/]")
@@ -2127,7 +2067,7 @@ class SummaryScreen(Screen):
         except Exception:
             pass
 
-        # ── All-time stats ────────────────────────────────────────────────────
+        # ── All-time stats + footer ───────────────────────────────────────────
         try:
             from lib.expedition.bestiary import Bestiary
             b      = Bestiary(path=str(PROJECT_DIR / "data" / "bestiary.json"))
@@ -2136,19 +2076,14 @@ class SummaryScreen(Screen):
             best_chip    = max(totals, key=lambda k: totals[k].get("pts", 0), default=None)
             best_chip_pt = totals[best_chip].get("pts", 0) if best_chip else 0
             best_streak  = max((v.get("best_streak", 0) for v in totals.values()), default=0)
-            streak_note  = f"  best streak 🔥×{best_streak}" if best_streak >= 2 else ""
+            streak_note  = f"  🔥×{best_streak}" if best_streak >= 2 else ""
             chip_note    = f"  C{best_chip} leads {best_chip_pt:,}pts" if best_chip else ""
-            log.write(f"[bold cyan]{'─' * 60}[/]")
-            log.write(
-                f"[bold cyan]  ALL-TIME  {total} compiled"
-                f"{streak_note}{chip_note}[/]"
-            )
-            log.write(f"[bold cyan]{'═' * 60}[/]")
+            log.write(f"[cyan]  {'─' * 57}[/]")
+            log.write(f"  [dim]ALL-TIME:[/]  {total} compiled{streak_note}{chip_note}")
         except Exception:
             pass
 
-        # ── Footer ───────────────────────────────────────────────────────────
-        log.write("")
+        log.write(f"[bold cyan]  {'═' * 57}[/]")
         log.write(
             "[bold green]  ══[/]"
             " [bold]\\[R][/] Run Again"

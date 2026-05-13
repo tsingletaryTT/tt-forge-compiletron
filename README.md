@@ -75,8 +75,11 @@ summary screen, enabling fully unattended recording.
 **Run screen** — one panel per chip, live event log, scrolling pyfiglet ASCII
 banners of each model name, real-time scores, and First Voice inference output.
 
-**Summary screen** — points leaderboard by chip with progress bars, compile-time
-histogram (< 5s / 5–15s / 15–30s / > 30s), failure details, all-time bestiary stats.
+**Summary screen** — Field Report aesthetic. NATO codenames (ALPHA/BRAVO/CHARLIE/DELTA)
+ranked by points. MISSION SUMMARY with classification badge (OUTSTANDING/COMPILED/PARTIAL/CRITICAL),
+NEW INTELLIGENCE for first-ever models (INTERCEPT for first voice, ARTIFACT for tensor stats),
+compact CATALOGUED list for other successes, and TARGETS AT LARGE for failures. All-time
+bestiary totals at the bottom. Auto-advances from the wave finale after 2 seconds.
 
 ---
 

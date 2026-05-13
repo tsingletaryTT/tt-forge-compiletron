@@ -264,7 +264,7 @@ def _print_success(model_id: str, compile_time: float, total_time: float,
           + (f"  {GOLD}★ FIRST EVER{RESET}" if is_first_ever else "")
           + (f"  🔥×{streak}" if streak >= 2 else ""))
     if artifact:
-        print(f"    {CYAN}❝ {artifact[:120]}{RESET}")
+        print(f"    {CYAN}❝ {artifact}{RESET}")
 
 
 def _print_failure(model_id: str, error: str, elapsed: float) -> None:
@@ -362,21 +362,53 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
         if not _is_onnx:
             model.eval()
 
+        # Patch the model config for forge traceability:
+        # - use_cache=False: KV caches have dynamic shapes that the XLA runtime
+        #   can't handle (causes INTERNAL error code 13); disabling them makes
+        #   causal-LM outputs a single logits tensor instead of (logits, past_kv).
+        # - return_dict=False: forge's TorchScript tracer requires tuple outputs,
+        #   not HuggingFace ModelOutput dataclass instances.
+        if hasattr(model, 'config') and not _is_onnx:
+            cfg = model.config
+            if hasattr(cfg, 'use_cache'):
+                cfg.use_cache = False
+            if hasattr(cfg, 'return_dict'):
+                cfg.return_dict = False
+
         # Determine the input shape from the loader's optional _input_type hint.
         if hasattr(model_loader, "_input_type"):
             itype = model_loader._input_type
         else:
             itype = "image"  # default: vision model input shape
 
-        if itype == "text":
-            # Minimal tokenized sequence: batch=1, seq_len=32, vocab_size=1000
-            sample_input = torch.randint(0, 1000, (1, 32))
-        elif itype == "audio":
-            # 1 second of mono audio at 16kHz
-            sample_input = torch.randn(1, 16000)
-        else:
-            # Standard ImageNet-style input: batch=1, RGB, 224×224
-            sample_input = torch.randn(1, 3, 224, 224)
+        # Prefer real inputs from the loader's load_inputs() when available —
+        # these match the model's actual forward() signature and avoid shape
+        # mismatches for encoder-decoder models (e.g. MusicGen) that need
+        # multiple structured tensors.  Falls back to dummy on any error.
+        sample_inputs: list = []
+        _load_inputs_fn = getattr(model_loader, "_load_inputs", None)
+        if _load_inputs_fn is not None:
+            try:
+                raw = _load_inputs_fn()
+                if isinstance(raw, dict):
+                    sample_inputs = [v for v in raw.values() if isinstance(v, torch.Tensor)]
+                elif isinstance(raw, (list, tuple)):
+                    sample_inputs = [v for v in raw if isinstance(v, torch.Tensor)]
+                elif isinstance(raw, torch.Tensor):
+                    sample_inputs = [raw]
+            except Exception:
+                sample_inputs = []
+
+        if not sample_inputs:
+            if itype == "text":
+                # Minimal tokenized sequence: batch=1, seq_len=32, vocab_size=1000
+                sample_inputs = [torch.randint(0, 1000, (1, 32))]
+            elif itype == "audio":
+                # 1 second of mono audio at 16kHz
+                sample_inputs = [torch.randn(1, 16000)]
+            else:
+                # Standard ImageNet-style input: batch=1, RGB, 224×224
+                sample_inputs = [torch.randn(1, 3, 224, 224)]
 
         _print_live_info(f"Architecture: {type(model).__name__}")
 
@@ -392,14 +424,14 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
             # ONNX models have fixed input shapes — use a 1×3×224×224 dummy
             # that matches the export shape used by most vision ONNX exporters.
             try:
-                compiled = forge.compile(model, sample_inputs=[sample_input])
+                compiled = forge.compile(model, sample_inputs=sample_inputs)
             except Exception as exc:
                 compile_error = exc
         else:
             # Two-stage compile: raw model first, then wrapped on tracer failure.
             for attempt, target in enumerate([model, _LogitsWrapper(model)]):
                 try:
-                    compiled = forge.compile(target, sample_inputs=[sample_input])
+                    compiled = forge.compile(target, sample_inputs=sample_inputs)
                     compile_error = None
                     break
                 except Exception as exc:
@@ -422,7 +454,7 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
         signal.signal(signal.SIGALRM, _timeout_handler)
         signal.alarm(timeout)
         try:
-            output = compiled(sample_input)
+            output = compiled(*sample_inputs)
             signal.alarm(0)  # cancel the alarm on clean completion
         except TimeoutException:
             signal.alarm(0)
@@ -682,6 +714,10 @@ def _build_loader(item: QueueItem):
             loader._input_type = "audio"
         else:
             loader._input_type = getattr(instance, "_input_type", "image")
+        # Attach load_inputs so _compile_model can get real structured inputs
+        # for complex models (encoder-decoder, multi-input) instead of a dummy.
+        if hasattr(instance, "load_inputs"):
+            loader._load_inputs = instance.load_inputs
         return loader
 
 
@@ -771,7 +807,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
 
         # Show previous model's artifact as a teaser before the new compile starts.
         if last_artifact:
-            print(f"  {DIM}last: {last_artifact[:80]}{RESET}")
+            print(f"  {DIM}last: {last_artifact}{RESET}")
 
         _print_progress_step(1, 3, "Loading model...")
         start = time.time()
@@ -834,7 +870,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             if is_first_voice and first_voice_sample:
                 print(f"    {GOLD}🗣 First Voice{RESET}  "
                       f"{DIM}[{first_voice_sample['description']}]{RESET}")
-                print(f"    {PINK}{first_voice_text[:120]}{RESET}")
+                print(f"    {PINK}{first_voice_text}{RESET}")
 
             compiled_at = datetime.datetime.now().isoformat()
 
@@ -858,7 +894,8 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                     pass  # journal write failure must never interrupt the run
 
             # Persist the artifact text to data/artifacts/<safe_name>.txt.
-            # The default artifacts_dir in Bestiary.save_artifact is "data/artifacts".
+            # When first voice succeeded, write the full decoded text; otherwise
+            # write the raw tensor-stats artifact.
             bestiary.save_artifact(
                 model_id=item.model_id,
                 task=item.task,
@@ -869,6 +906,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             )
 
             # Record the compilation in the bestiary compiled dict.
+            # artifact = raw tensor stats (always); first_voice = decoded text (when available).
             bestiary.record_success(
                 model_id=item.model_id,
                 chip=chip_id,
@@ -879,8 +917,9 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                 rarity=rarity.value,
                 hf_downloads=item.hf_downloads,
                 hf_created_at=item.hf_created_at,
-                artifact=first_voice_text if is_first_voice else artifact,
+                artifact=artifact,
                 backend="forge",
+                first_voice=first_voice_text if is_first_voice else "",
             )
             # Accumulate points into the per-chip all-time leaderboard entry.
             bestiary.add_chip_points(

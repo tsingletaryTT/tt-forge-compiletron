@@ -477,16 +477,16 @@ def _scan_frontier(
 
 
 def _build_curated_queue(num_chips: int) -> tuple[list[list[dict]], list[dict]]:
-    """Return a hand-curated 5-model queue designed for the showcase demo.
+    """Return a hand-curated 9-model queue designed for the showcase demo.
 
-    Chip assignments:
-      C0: alexnet/pytorch                 (forge, fast vision warm-up)
-      C1: openai-community/gpt2           (HuggingFace frontier, iconic LLM, 30M dl)
-      C2: beit/pytorch                    (forge, vision transformer)
-      C3: attention_denseunet/pytorch     (forge, deliberate FAIL — shape mismatch)
+    Chip assignments (2 models each, then BLOOM finale on all chips):
+      C0: AlexNet → MobileNetV2 → [BLOOM rally]
+      C1: GPT-2 → MusicGen Small (text-to-music, audio generative model)
+      C2: BEiT → YOLOS-Small (first object detection in the bestiary)
+      C3: Attention DenseUNet FAIL → ResNet (recovery win)
     Finale (all 4 chips): bloom/causal_lm/jax (XLA, BLOOM 4-chip data-parallel — genuine)
 
-    The first four items are assigned one-per-chip in order.  The finale uses
+    The first eight items are assigned two-per-chip in order.  The finale uses
     mesh_chips=num_chips so the TUI holds it until all chips are free simultaneously,
     then suspends the TUI and runs raw so the RALLY output fills the terminal.
 
@@ -498,7 +498,8 @@ def _build_curated_queue(num_chips: int) -> tuple[list[list[dict]], list[dict]]:
     """
     _FORGEMS = "_forgems"
 
-    items: list[dict] = [
+    # --- Round 1: one model per chip (fast warm-up, showcases variety) ---
+    round1: list[dict] = [
         # C0: AlexNet — fast vision warm-up, reliable first success
         {
             "model_id": "alexnet/pytorch",
@@ -515,21 +516,24 @@ def _build_curated_queue(num_chips: int) -> tuple[list[list[dict]], list[dict]]:
             "loader_class": "ModelLoader",
             "is_frontier": False,
         },
-        # C1: GPT-2 — HuggingFace frontier, 30M downloads, iconic LLM
+        # C1: GPT-2 — iconic LLM, 30M+ HuggingFace downloads; use dedicated
+        # tt-forge-models loader (GPT2LMHeadModel) so the worker can apply
+        # use_cache=False and avoid dynamic KV-cache shapes that cause
+        # XlaRuntimeError: INTERNAL error code 13 with the frontier loader.
         {
-            "model_id": "openai-community/gpt2",
+            "model_id": "gpt2/pytorch",
             "display_name": "GPT-2",
             "task": "text-generation",
-            "source": "huggingface",
+            "source": "tt-forge-models",
             "rarity": "legendary",
             "hf_downloads": 30_000_000,
             "hf_created_at": "2023-01-01T00:00:00Z",
             "mesh_chips": 1,
             "library": "pytorch",
             "model_type": "gpt2",
-            "loader_module": None,
-            "loader_class": None,
-            "is_frontier": True,
+            "loader_module": f"{_FORGEMS}.gpt2.pytorch.loader",
+            "loader_class": "ModelLoader",
+            "is_frontier": False,
         },
         # C2: BEiT — vision transformer (image classification), proven on forge
         {
@@ -563,34 +567,106 @@ def _build_curated_queue(num_chips: int) -> tuple[list[list[dict]], list[dict]]:
             "loader_class": "ModelLoader",
             "is_frontier": False,
         },
-        # Finale: BLOOM-1.1B via JAX — genuine 4-chip data-parallel inference.
-        # The XLA worker shards a batch of 4 inputs across all chips simultaneously,
-        # with params replicated via NamedSharding.  This is real multi-chip compute.
+    ]
+
+    # --- Round 2: second model per chip (more variety while BLOOM assembles) ---
+    round2: list[dict] = [
+        # C0: MobileNetV2 — efficient mobile architecture, second win for C0
         {
-            "model_id": "bloom/causal_lm/jax",
-            "display_name": "BLOOM 1b1",
-            "task": "text-generation",
+            "model_id": "mobilenetv2/pytorch",
+            "display_name": "MobileNetV2",
+            "task": "image-classification",
+            "source": "tt-forge-models",
+            "rarity": "common",
+            "hf_downloads": None,
+            "hf_created_at": None,
+            "mesh_chips": 1,
+            "library": "pytorch",
+            "model_type": "",
+            "loader_module": f"{_FORGEMS}.mobilenetv2.pytorch.loader",
+            "loader_class": "ModelLoader",
+            "is_frontier": False,
+        },
+        # C1: MusicGen Small — audio generative model (text-to-music); nothing
+        # like it exists in the bestiary.  Pairs nicely with C1's GPT-2: both
+        # generate sequences, one in token space, one in continuous audio space.
+        {
+            "model_id": "musicgen_small/pytorch",
+            "display_name": "MusicGen Small",
+            "task": "text-to-audio",
             "source": "tt-forge-models",
             "rarity": "legendary",
             "hf_downloads": None,
             "hf_created_at": None,
-            "mesh_chips": num_chips,
-            "library": "jax",
+            "mesh_chips": 1,
+            "library": "pytorch",
             "model_type": "",
-            "loader_module": f"{_FORGEMS}.bloom.causal_lm.jax.loader",
+            "loader_module": f"{_FORGEMS}.musicgen_small.pytorch.loader",
+            "loader_class": "ModelLoader",
+            "is_frontier": False,
+        },
+        # C2: YOLOS-Small — first object detection model in the bestiary;
+        # uses a pure ViT backbone with no region proposals (novel architecture).
+        {
+            "model_id": "yolos_small/pytorch",
+            "display_name": "YOLOS-Small",
+            "task": "object-detection",
+            "source": "tt-forge-models",
+            "rarity": "rare",
+            "hf_downloads": None,
+            "hf_created_at": None,
+            "mesh_chips": 1,
+            "library": "pytorch",
+            "model_type": "",
+            "loader_module": f"{_FORGEMS}.yolos_small.pytorch.loader",
+            "loader_class": "ModelLoader",
+            "is_frontier": False,
+        },
+        # C3: ResNet — recovery win after DenseUNet FAIL; proven workhorse
+        {
+            "model_id": "resnet/pytorch",
+            "display_name": "ResNet",
+            "task": "image-classification",
+            "source": "tt-forge-models",
+            "rarity": "common",
+            "hf_downloads": None,
+            "hf_created_at": None,
+            "mesh_chips": 1,
+            "library": "pytorch",
+            "model_type": "",
+            "loader_module": f"{_FORGEMS}.resnet.pytorch.loader",
             "loader_class": "ModelLoader",
             "is_frontier": False,
         },
     ]
 
-    # First four items go one-per-chip; finale goes on chip 0 and the worker
-    # holds it until all chips are free (mesh_chips == num_chips).
+    # Finale: BLOOM-1.1B via JAX — genuine 4-chip data-parallel inference.
+    # The XLA worker shards a batch of 4 inputs across all chips simultaneously,
+    # with params replicated via NamedSharding.  This is real multi-chip compute.
+    finale: dict = {
+        "model_id": "bloom/causal_lm/jax",
+        "display_name": "BLOOM 1b1",
+        "task": "text-generation",
+        "source": "tt-forge-models",
+        "rarity": "legendary",
+        "hf_downloads": None,
+        "hf_created_at": None,
+        "mesh_chips": num_chips,
+        "library": "jax",
+        "model_type": "",
+        "loader_module": f"{_FORGEMS}.bloom.causal_lm.jax.loader",
+        "loader_class": "ModelLoader",
+        "is_frontier": False,
+    }
+
+    # Build per-chip queues: round1 one-per-chip, then round2 one-per-chip,
+    # then BLOOM finale on chip 0 (held until all chips free by RunScreen).
     chip_queues: list[list[dict]] = [[] for _ in range(num_chips)]
-    for i, item in enumerate(items[:-1]):
+    for i, item in enumerate(round1):
         chip_queues[i % num_chips].append(item)
-    # Finale appended to chip 0 — RunScreen._dispatch_next will hold it in
-    # _mesh_holding until all chips finish their individual models.
-    chip_queues[0].append(items[-1])
+    for i, item in enumerate(round2):
+        chip_queues[i % num_chips].append(item)
+    chip_queues[0].append(finale)
     return chip_queues, _build_side_quest_pool(num_chips)
 
 
@@ -1569,7 +1645,8 @@ def _print_failure_reasons(stats: list[dict], *, W: int = 72, header: str = "FAI
 def cmd_summary():
     """
     Print a human-readable snapshot of the expedition bestiary: total
-    compiled, total failed, chip hall-of-fame, and the failure-reason leaderboard.
+    compiled, total failed, chip hall-of-fame, first voice gallery, and
+    the failure-reason leaderboard.
     """
     from lib.expedition.bestiary import Bestiary
     b = Bestiary(path=str(BESTIARY_PATH))
@@ -1589,6 +1666,15 @@ def cmd_summary():
             print(f"    Chip {chip_id}: {data['pts']:,} pts  "
                   f"★{data['first_evers']} first-evers  "
                   f"best streak ×{data['best_streak']}")
+
+    # ── First Voice gallery ───────────────────────────────────────────────────
+    voices = [(mid, v["first_voice"]) for mid, v in compiled.items()
+              if v.get("first_voice")]
+    if voices:
+        print(f"\n  🗣 First Voice Gallery ({len(voices)} models):")
+        for mid, voice in voices:
+            short = mid.split("/")[-1]
+            print(f"    {short}: {voice}")
 
     _print_failure_reasons(b.failure_stats(), W=W)
     print(f"\n{'═'*W}\n")

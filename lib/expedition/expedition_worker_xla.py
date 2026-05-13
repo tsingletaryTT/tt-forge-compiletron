@@ -236,6 +236,7 @@ def _setup_jax(chip_id: int):
     os.environ.setdefault("JAX_PLATFORMS", "tt")
     os.environ.setdefault("XLA_FLAGS", "--xla_dump_to=/dev/null")
 
+    _print_live_info(f"TT_VISIBLE_DEVICES={os.environ.get('TT_VISIBLE_DEVICES', '(not set)')}")
     import jax
     devices = jax.devices()
     if not devices:

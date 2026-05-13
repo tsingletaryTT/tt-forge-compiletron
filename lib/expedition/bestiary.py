@@ -273,6 +273,7 @@ class Bestiary:
         hf_created_at: str | None,
         artifact: str,
         backend: str = "forge",
+        first_voice: str = "",
     ) -> None:
         """Record a successful compilation.
 
@@ -297,8 +298,10 @@ class Bestiary:
             rarity:        Rarity tier from scorer.py: "common", "uncommon", "rare", "legendary".
             hf_downloads:  Monthly downloads from HuggingFace model card (None if unavailable).
             hf_created_at: ISO-8601 creation timestamp from HuggingFace (None if unavailable).
-            artifact:      Decoded inference output string — the model's "voice" in the bestiary.
+            artifact:      Raw decoded inference output (tensor stats or top-class prediction).
             backend:       Compilation backend used: "forge" (default) or "xla".
+            first_voice:   Decoded first-voice text (real sample input → decoded output).
+                           Empty string when first voice was not attempted or failed.
         """
         now = datetime.now(timezone.utc).isoformat()
         if model_id not in self._data["compiled"]:
@@ -316,6 +319,7 @@ class Bestiary:
                 "hf_downloads": hf_downloads,
                 "hf_created_at": hf_created_at,
                 "artifact": artifact,
+                "first_voice": first_voice,
                 "backend": backend,
                 "backends_succeeded": [backend],
             }
@@ -326,6 +330,11 @@ class Bestiary:
             entry["best_time_s"] = time_s
         # Always update artifact so the bestiary reflects the most recent output.
         entry["artifact"] = artifact
+        # Update first_voice if we got a non-empty result (never clobber with "").
+        if first_voice:
+            entry["first_voice"] = first_voice
+        elif "first_voice" not in entry:
+            entry["first_voice"] = ""
         # Accumulate the set of backends that have successfully compiled this model.
         # setdefault handles legacy entries written before this field existed,
         # seeding the list from the stored `backend` field (defaulting to "forge").
