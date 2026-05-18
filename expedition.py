@@ -252,7 +252,8 @@ def _with_spinner(msg: str, fn, *args, **kwargs):
 # ── Queue building ────────────────────────────────────────────────────────────
 
 def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = False,
-                       framework: str | None = None) -> list[dict]:
+                       framework: str | None = None,
+                       xla_mesh: int = 1) -> list[dict]:
     """
     Walk ~/code/tt-forge-models and return QueueItem dicts for loaders.
 
@@ -384,7 +385,10 @@ def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = Fals
                 "rarity": "familiar",       # seed models are known quantities
                 "hf_downloads": None,
                 "hf_created_at": None,
-                "mesh_chips": 1,
+                # For JAX loaders, honour the caller's xla_mesh request so that
+                # multi-chip shard_map dispatch is reflected in the queue item.
+                # PyTorch/forge loaders always stay at 1 (single-chip only).
+                "mesh_chips": xla_mesh if loader_lib == "jax" and xla_mesh > 1 else 1,
                 # library reflects the actual framework so the dispatch router can
                 # send JAX loaders to XLA and pytorch loaders to forge.
                 "library": loader_lib,
@@ -815,6 +819,7 @@ def build_queues(
     max_params_b: float = 0.0,
     skip_gated: bool = True,
     staples: bool = False,
+    xla_mesh: int = 1,
 ) -> list[list[dict]]:
     """
     Build per-chip model queues by merging forge-models seed items with HF
@@ -832,6 +837,10 @@ def build_queues(
         limit:      If > 0, cap total unique models across all chips combined.
         staples:    If True, include tt-forge-models seed models even if they
                     have already been compiled (bypass bestiary filter).
+        xla_mesh:   Number of chips for JAX/XLA seed models (data-parallel
+                    shard_map dispatch).  1 = single-chip (default).  Values
+                    > 1 are threaded through to _scan_forge_models so that
+                    every JAX loader item gets mesh_chips=xla_mesh.
 
     Returns:
         A list of num_chips lists, each containing queue item dicts.
@@ -849,7 +858,8 @@ def build_queues(
         # Use _with_spinner so the terminal shows activity during the forge-models
         # scan (which involves importlib reflection and can take a few seconds).
         seed_items = _with_spinner("scanning tt-forge-models library…",
-                                   _scan_forge_models, compiled_ids, staples)
+                                   _scan_forge_models, compiled_ids, staples,
+                                   xla_mesh=xla_mesh)
 
         # Always include at least one seed model as a canary — a known-good
         # baseline that confirms the hardware/forge stack is healthy, and a
@@ -857,7 +867,7 @@ def build_queues(
         # already in the bestiary (and --staples wasn't set), pull one at
         # random from the full zoo ignoring the compiled filter.
         if not seed_items:
-            all_seeds = _scan_forge_models(set(), include_all=True)
+            all_seeds = _scan_forge_models(set(), include_all=True, xla_mesh=xla_mesh)
             if all_seeds:
                 import random as _random
                 canary = _random.choice(all_seeds)
@@ -1747,6 +1757,9 @@ def main():
     run_p.add_argument("--bench-shapes", action="store_true",
                        help="Also sweep input shapes after bench passes. "
                             "Requires --bench-passes > 0.")
+    run_p.add_argument("--xla-mesh", type=int, default=1, metavar="N",
+                       help="Run JAX/XLA seed models on N chips (data-parallel). "
+                            "1 = single-chip (default). Requires --backend xla or mixed.")
 
     sub.add_parser("summary", help="Print bestiary summary")
 
@@ -1780,6 +1793,7 @@ def main():
         args.parallel_downloads = 4
         args.bench_passes = 0
         args.bench_shapes = False
+        args.xla_mesh = 1
 
     # ── Hardware detection ────────────────────────────────────────────────────
     from lib.hardware import detect_hardware, get_hardware_summary
@@ -1851,6 +1865,7 @@ def main():
             max_params_b=args.max_model_params,
             skip_gated=not args.allow_gated,
             staples=args.staples,
+            xla_mesh=getattr(args, "xla_mesh", 1),
         )
 
     # ── Queue assignment summary ──────────────────────────────────────────────
