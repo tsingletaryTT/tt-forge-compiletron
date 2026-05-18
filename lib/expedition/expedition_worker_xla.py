@@ -120,11 +120,96 @@ _NEWNESS_STYLE = {
 }
 
 _CSV_FIELDNAMES = [
-    "model", "status", "pts", "compile_time", "artifact",
-    "first_ever", "first_voice", "error", "backend",
+    "model", "status", "pts", "compile_time", "infer_time",
+    "artifact", "first_ever", "first_voice", "error", "backend",
 ]
 
 BACKEND_LABEL = "xla"
+
+_TOKEN_TASKS: frozenset[str] = frozenset({
+    "text-generation", "nlp_causal_lm", "nlp_masked_lm",
+    "fill-mask", "nlp_text_cls", "nlp_token_cls",
+})
+
+
+def _compute_throughput_xla(task: str, output: Any, infer_s: float) -> tuple[float, str]:
+    """Compute throughput for XLA output (JAX arrays).
+
+    Same logic as the forge worker but handles JAX array shapes.
+    Returns (tokens_per_sec, "tokens/sec") for token tasks,
+    (ms_per_sample, "ms/sample") otherwise.  Returns (0.0, "") on failure.
+    """
+    if infer_s <= 0.0 or output is None:
+        return 0.0, ""
+    try:
+        if task in _TOKEN_TASKS:
+            seq_len = output.shape[1]
+            return round(seq_len / infer_s, 3), "tokens/sec"
+    except (AttributeError, IndexError):
+        pass
+    return round(infer_s * 1000.0, 3), "ms/sample"
+
+
+def _percentile_xla(sorted_data: list[float], p: float) -> float:
+    """Return the p-th percentile of an already-sorted list of floats."""
+    if not sorted_data:
+        return 0.0
+    idx = (p / 100.0) * (len(sorted_data) - 1)
+    lo = int(idx)
+    hi = min(lo + 1, len(sorted_data) - 1)
+    return sorted_data[lo] + (sorted_data[hi] - sorted_data[lo]) * (idx - lo)
+
+
+def _run_bench_passes_xla(
+    compiled_bundle: tuple,
+    task: str,
+    n_passes: int,
+) -> dict:
+    """Run warm-up + timed inference passes using a JAX compiled bundle.
+
+    compiled_bundle is (compiled_fn, params, device) from _compile_model_xla.
+    Warm-up: 2 passes. Then n_passes timed.  Stops on error.
+    Returns dict with bench_passes, infer_p50_s, infer_p95_s,
+    throughput_p50, throughput_p95.  Empty dict on failure or n_passes <= 0.
+    """
+    if n_passes <= 0 or compiled_bundle is None:
+        return {}
+    try:
+        compiled_fn, params, device = compiled_bundle
+        # Reconstruct dummy inputs — XLA bench uses the same shape as the JIT run.
+        import jax, jax.numpy as jnp
+        dummy = jnp.ones((1, 32), dtype=jnp.int32)
+        with jax.default_device(device):
+            for _ in range(2):  # warm-up
+                out = compiled_fn(params, dummy)
+                out.block_until_ready()
+        times: list[float] = []
+        last_out = None
+        with jax.default_device(device):
+            for _ in range(n_passes):
+                try:
+                    t0 = time.time()
+                    last_out = compiled_fn(params, dummy)
+                    last_out.block_until_ready()
+                    times.append(time.time() - t0)
+                except Exception:
+                    break
+        if not times:
+            return {}
+        times.sort()
+        p50 = _percentile_xla(times, 50)
+        p95 = _percentile_xla(times, 95)
+        tput_p50, _ = _compute_throughput_xla(task, last_out, p50)
+        tput_p95, _ = _compute_throughput_xla(task, last_out, p95)
+        return {
+            "bench_passes":   len(times),
+            "infer_p50_s":    round(p50, 4),
+            "infer_p95_s":    round(p95, 4),
+            "throughput_p50": round(tput_p50, 2),
+            "throughput_p95": round(tput_p95, 2),
+        }
+    except Exception:
+        return {}
 
 
 class TimeoutException(Exception):
@@ -184,16 +269,37 @@ def _print_live_info(msg: str, ok: bool = True) -> None:
     print(f"    {marker} {msg}")
 
 
-def _print_success(model_id: str, compile_time: float, total_time: float,
-                   artifact: str, score_pts: int, is_first_ever: bool,
-                   streak: int) -> None:
+def _print_success(
+    model_id: str,
+    compile_time: float,
+    infer_time: float,
+    artifact: str,
+    score_pts: int,
+    is_first_ever: bool,
+    streak: int,
+    throughput: float = 0.0,
+    throughput_unit: str = "",
+    bench_p50: float = 0.0,
+) -> None:
+    """Print the post-compile success summary line for one XLA model.
+
+    Shows compile time, infer time, optional throughput (from bench_p50 if
+    available, otherwise from the single second-pass infer_time), score points,
+    streak indicator, and first-ever badge.
+    """
+    streak_str = f"  {TEAL}🔥×{streak}{RESET}" if streak >= 3 else ""
+    first_str  = f"  {GOLD}★ FIRST{RESET}" if is_first_ever else ""
+    if bench_p50 > 0.0 and throughput_unit:
+        tput_str = f"  ~{throughput:.1f} {throughput_unit} (p50)"
+    elif throughput > 0.0 and throughput_unit:
+        tput_str = f"  {throughput:.1f} {throughput_unit}"
+    else:
+        tput_str = ""
     print(f"\n  {BOLD}{GREEN}✓ SUCCESS{RESET}  {TEAL}[XLA]{RESET}")
-    print(f"    compile: {compile_time:.1f}s  total: {total_time:.1f}s  "
-          f"pts: {GOLD}{score_pts:+d}{RESET}"
-          + (f"  {GOLD}★ FIRST EVER{RESET}" if is_first_ever else "")
-          + (f"  🔥×{streak}" if streak >= 2 else ""))
-    if artifact:
-        print(f"    {CYAN}❝ {artifact[:120]}{RESET}")
+    print(f"    compile: {compile_time:.1f}s  infer: {infer_time:.2f}s"
+          f"{tput_str}  pts: {GOLD}{score_pts:+d}{RESET}"
+          f"{streak_str}{first_str}")
+    print(f"    {DIM}{artifact[:80]}{RESET}")
 
 
 def _print_failure(model_id: str, error: str, elapsed: float) -> None:
@@ -257,20 +363,25 @@ def _compile_model_xla(
     chip_id: int,
     timeout: int = 300,
     mesh_chips: int = 1,
-) -> tuple[bool, Any, float, str, Any]:
+) -> tuple[bool, Any, float, float, str, Any]:
     """Run JAX JIT compile + inference for one Flax model.
 
-    Returns 5-tuple (success, output, compile_time, error_str, compiled_fn):
-      - success:      True if compile and first inference succeeded.
-      - output:       Raw JAX array output (None on failure).
-      - compile_time: Seconds for the first jax.jit call (JIT compilation).
-      - error_str:    Empty on success; "TIMEOUT" or "ExcType: msg" on failure.
-      - compiled_fn:  The jax.jit-compiled callable for First Voice re-use.
+    Returns 6-tuple (success, output, compile_time, infer_s, error_str, compiled_bundle):
+      - success:        True if compile and first inference succeeded.
+      - output:         Raw JAX array output (None on failure).
+      - compile_time:   Seconds for the first jax.jit call (JIT + first inference combined).
+      - infer_s:        Seconds for a *second* inference pass run after JIT; measures
+                        pure inference latency without compilation overhead.  0.0 if the
+                        second pass was skipped or raised an exception.
+      - error_str:      Empty on success; "TIMEOUT" or "ExcType: msg" on failure.
+      - compiled_bundle: (compiled_fn, params, lead_device) tuple for bench passes and
+                        First Voice re-use.  None on failure.
 
     Unlike forge, there is no explicit "compile then run" step — jax.jit
     traces lazily and compiles on the first call. The compile_time reported
     here is the wall-clock duration of that first call, which includes both
-    XLA compilation and the initial inference.
+    XLA compilation and the initial inference. infer_s measures a separate
+    second call after JIT is warm, giving a cleaner inference-only figure.
 
     When mesh_chips > 1, uses JAX data parallelism: params are replicated
     across all chips and the input batch is sharded evenly across devices.
@@ -377,13 +488,23 @@ def _compile_model_xla(
                 signal.alarm(0)
             except TimeoutException:
                 signal.alarm(0)
-                return False, None, time.time() - compile_start, "TIMEOUT", None
+                return False, None, time.time() - compile_start, 0.0, "TIMEOUT", None
 
             compile_time = time.time() - compile_start
             _print_progress_step(3, 3, f"Output shape: {output.shape}  ({compile_time:.1f}s — {n} chips)")
 
-            # Return the lead device's bundle for optional First Voice pass.
-            return True, output, compile_time, "", (compiled_fn, sharded_params, all_devices[0])
+            # Second pass for pure infer_s measurement (JIT already done).
+            infer_s = 0.0
+            try:
+                infer_start = time.time()
+                _ = compiled_fn(sharded_params, sharded_inputs)
+                _.block_until_ready()
+                infer_s = time.time() - infer_start
+            except Exception:
+                pass
+
+            # Return the lead device's bundle for optional First Voice and bench passes.
+            return True, output, compile_time, infer_s, "", (compiled_fn, sharded_params, all_devices[0])
 
         else:
             # ── Single-chip path ─────────────────────────────────────────────
@@ -404,19 +525,30 @@ def _compile_model_xla(
                 signal.alarm(0)
             except TimeoutException:
                 signal.alarm(0)
-                return False, None, time.time() - compile_start, "TIMEOUT", None
+                return False, None, time.time() - compile_start, 0.0, "TIMEOUT", None
 
             compile_time = time.time() - compile_start
             _print_progress_step(3, 3, f"Output shape: {output.shape}  ({compile_time:.1f}s)")
 
-            return True, output, compile_time, "", (compiled_fn, flax_params, device)
+            # Second pass for pure infer_s measurement (JIT already done).
+            infer_s = 0.0
+            try:
+                with jax.default_device(device):
+                    infer_start = time.time()
+                    _ = compiled_fn(flax_params, dummy_inputs)
+                    _.block_until_ready()
+                    infer_s = time.time() - infer_start
+            except Exception:
+                pass
+
+            return True, output, compile_time, infer_s, "", (compiled_fn, flax_params, device)
 
     except TimeoutException:
         signal.alarm(0)
-        return False, None, 0.0, "TIMEOUT", None
+        return False, None, 0.0, 0.0, "TIMEOUT", None
     except Exception as e:
         signal.alarm(0)
-        return False, None, 0.0, f"{type(e).__name__}: {str(e)[:300]}", None
+        return False, None, 0.0, 0.0, f"{type(e).__name__}: {str(e)[:300]}", None
 
 
 def _attempt_first_voice_xla(
@@ -739,7 +871,9 @@ def _build_loader_xla(item: QueueItem):
 
 def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
                    queue_path: str | None, results_path: str,
-                   model_json_path: str | None = None) -> None:
+                   model_json_path: str | None = None,
+                   bench_passes: int = 0,
+                   bench_shapes: bool = False) -> None:
     """Main entry point for the XLA per-chip worker.
 
     Same interface as expedition_worker.run_worker but uses JAX/Flax instead
@@ -756,6 +890,10 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
         model_json_path: Optional path to a single-model JSON file (a flat dict rather
                          than a list). When provided, overrides queue_path and processes
                          exactly one model. The TUI uses this for per-model dispatch.
+        bench_passes:    Number of timed inference passes to run after each successful
+                         compile (2 warm-up first).  0 disables benchmarking.
+        bench_shapes:    Accepted for CLI compatibility with the forge worker; XLA ignores
+                         this flag because shape sweeping is not implemented for JAX.
     """
     import datetime
     from lib.expedition.bestiary import Bestiary
@@ -863,13 +1001,13 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
             continue
 
         # ── Compile + inference ──────────────────────────────────────────────
-        success, output, compile_time, error_str, compiled_bundle = _compile_model_xla(
+        success, output, compile_time, infer_time, error_str, compiled_bundle = _compile_model_xla(
             loader, device, chip_id, mesh_chips=item.mesh_chips
         )
         # Auto-install missing packages and retry once
         if not success and "No module named" in error_str:
             if _try_install_missing(error_str):
-                success, output, compile_time, error_str, compiled_bundle = _compile_model_xla(
+                success, output, compile_time, infer_time, error_str, compiled_bundle = _compile_model_xla(
                     loader, device, chip_id, mesh_chips=item.mesh_chips
                 )
         elapsed = time.time() - start
@@ -904,6 +1042,11 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
             )
             is_first_voice = bool(first_voice_text)
 
+            # Compute throughput from the second inference pass (infer_time).
+            throughput, throughput_unit = _compute_throughput_xla(
+                item.task, output, infer_time
+            )
+
             score = compute_score(success=True, is_first_ever=is_first_ever,
                                   rarity=rarity, newness=newness,
                                   streak=hud.state.streak,
@@ -911,8 +1054,17 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
                                   is_first_voice=is_first_voice)
             hud.record_success(item.model_id, score)
 
-            _print_success(item.model_id, compile_time, elapsed, artifact,
-                           score.pts, is_first_ever, hud.state.streak)
+            # Run bench passes if requested (warm-up + timed) using compiled bundle.
+            bench_stats: dict = {}
+            if bench_passes > 0 and compiled_bundle is not None:
+                bench_stats = _run_bench_passes_xla(compiled_bundle, item.task, bench_passes)
+
+            _print_success(
+                item.model_id, compile_time, infer_time, artifact,
+                score.pts, is_first_ever, hud.state.streak,
+                throughput=throughput, throughput_unit=throughput_unit,
+                bench_p50=bench_stats.get("infer_p50_s", 0.0),
+            )
 
             if is_first_voice and first_voice_sample:
                 print(f"    {GOLD}🗣 First Voice{RESET}  "
@@ -949,12 +1101,33 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
                 hf_created_at=item.hf_created_at,
                 artifact=first_voice_text if is_first_voice else artifact,
                 backend=BACKEND_LABEL,
+                compile_s=compile_time,
+                infer_s=infer_time,
+                throughput=throughput,
+                throughput_unit=throughput_unit,
             )
             bestiary.add_chip_points(chip=chip_id, pts=score.pts,
                                      first_ever=is_first_ever, streak=hud.state.streak)
+
+            # Write split timing and bench stats to the perf log.
+            perf_record: dict = {
+                "model_id":        item.model_id,
+                "run":             run_number,
+                "timestamp":       compiled_at,
+                "backend":         BACKEND_LABEL,
+                "chip":            chip_id,
+                "compile_s":       round(compile_time, 4),
+                "infer_s":         round(infer_time, 4),
+                "throughput":      round(throughput, 3),
+                "throughput_unit": throughput_unit,
+            }
+            perf_record.update(bench_stats)
+            bestiary.append_perf_record(perf_record)
+
             results.append({
                 "model": item.model_id, "status": "success",
                 "pts": score.pts, "compile_time": compile_time,
+                "infer_time": infer_time,
                 "artifact": first_voice_text if is_first_voice else artifact,
                 "first_ever": is_first_ever, "first_voice": is_first_voice,
                 "backend": BACKEND_LABEL,
@@ -1018,6 +1191,11 @@ if __name__ == "__main__":
                         help="Path to a single-model JSON file. Overrides --queue.")
     parser.add_argument("--results",    required=True,
                         help="Path to write the per-chip CSV results file.")
+    parser.add_argument("--bench-passes", type=int, default=0, metavar="N",
+                        help="Run 2 warm-up + N timed inference passes after each "
+                             "successful compile. Default 0 (disabled).")
+    parser.add_argument("--bench-shapes", action="store_true",
+                        help="Sweep alternative input shapes (forge-only; XLA ignores this flag).")
     args = parser.parse_args()
     if not args.queue and not args.model_json:
         parser.error("one of --queue or --model-json is required")
@@ -1031,4 +1209,6 @@ if __name__ == "__main__":
         queue_path=args.queue,
         model_json_path=args.model_json,
         results_path=args.results,
+        bench_passes=args.bench_passes,
+        bench_shapes=args.bench_shapes,
     )
