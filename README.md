@@ -297,6 +297,9 @@ bash scripts/record_demo.sh --auto-quit 45
 # Manual finish (press q on summary screen yourself)
 bash scripts/record_demo.sh --no-auto
 
+# Bench mode: 5 timed inference passes per model + stats table at end
+bash scripts/record_demo.sh --bench
+
 # Or drive it directly
 asciinema rec docs/demo_raw.cast --overwrite \
     --cols 220 --rows 58 \
@@ -335,6 +338,7 @@ lib/
 data/
   bestiary.json             compiled-model database (gitignored)
   bestiary.example.json     starter bestiary with real-world entries
+  perf_history.jsonl        append-only per-run perf timeseries (compile, infer, throughput)
   expeditions/              per-run journals (.md)
   artifacts/                first-voice output archives (.txt)
   runs/                     per-run metadata + example
@@ -345,6 +349,7 @@ docs/
 scripts/
   compress_cast.py          cast post-processor (max-idle + min-gap smoothing)
   record_demo.sh            one-command demo recorder (no tmux required)
+  show_perf_stats.py        display bench stats from perf_history.jsonl
 xla-venv/                   separate venv for JAX/PJRT dependencies
 requirements.txt            forge-mode dependencies
 ```
@@ -355,6 +360,7 @@ requirements.txt            forge-mode dependencies
 
 ```
 data/bestiary.json          all-time compiled model records + chip scores
+data/perf_history.jsonl     append-only per-run performance timeseries
 data/expeditions/run_NNN.md per-run journal with first-voice highlights
 data/artifacts/             saved first-voice text from notable compiles
 ```
@@ -362,6 +368,41 @@ data/artifacts/             saved first-voice text from notable compiles
 The bestiary persists across runs and is never overwritten — new compiles
 accumulate. It is the canonical record of what the hardware has proven it
 can compile.
+
+`perf_history.jsonl` is a separate append-only log: one JSON line per model
+per run, written whenever a model compiles successfully. It records
+`compile_s`, `infer_s`, `throughput`, `throughput_unit`, and optionally
+`bench_passes`, `infer_p50_s`, `infer_p95_s`, `throughput_p50`.
+
+---
+
+## Benchmarking
+
+Add `--bench-passes N` to any run to measure real inference throughput.
+After each successful compile, the worker runs 2 warm-up passes then N
+timed passes, computing p50/p95 latency and throughput:
+
+```bash
+# 5 bench passes per model (2 warm-up + 5 timed)
+python3 expedition.py run --tui --bench-passes 5
+
+# With input shape sweep (varies seq_len for LLMs, resolution for vision)
+python3 expedition.py run --tui --bench-passes 5 --bench-shapes
+
+# View stats from the last run
+python3 scripts/show_perf_stats.py
+
+# View a specific run
+python3 scripts/show_perf_stats.py --run 68
+```
+
+Throughput unit is automatically determined by model task:
+- **tokens/sec** — text-generation, masked-LM, text-classification
+- **ms/sample** — image-classification, embeddings, all others
+
+Results are appended to `data/perf_history.jsonl` and rolling-best values
+(`best_compile_s`, `best_infer_s`, `best_throughput`) are updated in the
+bestiary entry for each model.
 
 ---
 
