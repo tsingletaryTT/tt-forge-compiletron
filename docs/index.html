@@ -944,8 +944,8 @@ footer a { color: var(--teal); text-decoration: none; }
       <h3>🔥 Streak Multiplier</h3>
       <p>
         Each chip earns a streak for consecutive successful compiles. Streaks
-        unlock bonus points. Lose the streak on any failure. Chips compete
-        to maintain the longest run.
+        unlock bonus points and reset on any failure — a measure of how far
+        the hardware has run without interruption.
       </p>
     </div>
 
@@ -990,8 +990,8 @@ footer a { color: var(--teal); text-decoration: none; }
     <code>data/bestiary.json</code> is the permanent record: every model that
     has ever compiled on this hardware, with its artifact shape, compile time,
     First Voice text, chip, and run number. It accumulates across runs and is
-    never overwritten. The chip leaderboard inside tracks all-time point totals
-    per chip — chips compete across every expedition.
+    never overwritten. The chip history inside tracks all-time compilation
+    totals per chip — a running log of what each device has proven it can run.
   </p>
   <p>
     Per-run journals are written to <code>data/expeditions/run_NNN.md</code>
@@ -1180,28 +1180,28 @@ footer a { color: var(--teal); text-decoration: none; }
 
   </div>
 
-  <h3 style="margin-top:2.5rem;color:var(--teal2)">Chip Leaderboard &#8212; All Time</h3>
+  <h3 style="margin-top:2.5rem;color:var(--teal2)">Chip History &#8212; All Time</h3>
   <div class="chip-lb">
     <div class="chip-row">
-      <span class="chip-label">&#x1F947; C0</span>
+      <span class="chip-label">C0</span>
       <div class="chip-bar-wrap"><div class="chip-bar-fill" style="width:100%"></div></div>
       <span class="chip-pts">+14,773</span>
       <span class="chip-meta">10 first-ever &middot; &#x1F525;&#xD7;4</span>
     </div>
     <div class="chip-row">
-      <span class="chip-label">&#x1F948; C2</span>
+      <span class="chip-label">C2</span>
       <div class="chip-bar-wrap"><div class="chip-bar-fill" style="width:82%"></div></div>
       <span class="chip-pts">+12,150</span>
       <span class="chip-meta">11 first-ever &middot; &#x1F525;&#xD7;1</span>
     </div>
     <div class="chip-row">
-      <span class="chip-label">&#x1F949; C1</span>
+      <span class="chip-label">C1</span>
       <div class="chip-bar-wrap"><div class="chip-bar-fill" style="width:39%"></div></div>
       <span class="chip-pts">+5,690</span>
       <span class="chip-meta">4 first-ever &middot; &#x1F525;&#xD7;2</span>
     </div>
     <div class="chip-row">
-      <span class="chip-label">&nbsp;&nbsp;&nbsp;C3</span>
+      <span class="chip-label">C3</span>
       <div class="chip-bar-wrap"><div class="chip-bar-fill" style="width:14%"></div></div>
       <span class="chip-pts">+2,050</span>
       <span class="chip-meta">5 first-ever &middot; &#x1F525;&#xD7;1</span>
