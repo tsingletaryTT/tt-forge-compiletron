@@ -1889,6 +1889,9 @@ def main():
           f"{_DIM}· reattach:{_RST}  {_TEAL}tmux attach -t expedition{_RST}")
     print()
     script = PROJECT_DIR / "scripts" / "run_expedition.sh"
+    # NOTE: bench flags are forwarded via env vars to the shell path but
+    # run_expedition.sh does not yet read them; bench passes are only active
+    # in the Textual TUI path (expedition_tui.py dispatch sites).
     env = {**os.environ,
            "EXPEDITION_RUN":          str(run_number),
            "EXPEDITION_NUM_CHIPS":    str(num_chips),
