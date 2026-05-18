@@ -1,0 +1,94 @@
+name: "Bench Submission"
+description: "Submit your verified 5-pass bench results from Tenstorrent hardware"
+title: "[Bench] <model> · <system> · <N>-chip"
+labels: ["bench-submission"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Submit results from a `--bench-passes 5` run. The Action will validate
+        your JSON and open a PR for maintainer review. Results appear on the
+        [community benchmarks table](https://tsingletarytt.github.io/tt-forge-compiletron/#community)
+        once merged.
+
+  - type: dropdown
+    id: hardware_system
+    attributes:
+      label: "Tenstorrent system"
+      options: ["N150", "N300", "QB", "QB2", "LoudBox", "custom"]
+    validations:
+      required: true
+
+  - type: dropdown
+    id: chips_used
+    attributes:
+      label: "Chips used for this run"
+      description: "Number of chips active during the bench run (e.g. 1 for single-chip, 4 for RALLY)"
+      options: ["1", "2", "4", "8", "16", "32"]
+    validations:
+      required: true
+
+  - type: dropdown
+    id: chips_in_system
+    attributes:
+      label: "Total chips in system"
+      description: "Total chips installed in the box or cluster"
+      options: ["1", "2", "4", "8", "16", "32"]
+    validations:
+      required: true
+
+  - type: input
+    id: firmware_version
+    attributes:
+      label: "Firmware version"
+      description: "Run: `tt-smi -s | python3 -c \"import sys,json; d=json.load(sys.stdin); print(d['device_info'][0]['firmware_version'])\"`"
+      placeholder: "80.14.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: backend_version
+    attributes:
+      label: "Backend version"
+      description: |
+        forge → `pip show tt-forge | grep Version`
+        xla   → `pip show pjrt-plugin-tt | grep Version`
+        onnx  → `pip show tt-forge-onnx | grep Version`
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: tt_kmd_version
+    attributes:
+      label: "tt-kmd version (optional)"
+      description: "`modinfo tenstorrent | grep ^version`"
+      placeholder: "1.29"
+    validations:
+      required: false
+
+  - type: textarea
+    id: bench_json
+    attributes:
+      label: "Bench JSON"
+      description: |
+        Paste your `perf_history.jsonl` lines from a `--bench-passes 5` run,
+        or attach the file (rename to `.txt` if GitHub rejects `.jsonl`).
+        One JSON object per line.
+
+        Generate with:
+        ```
+        bash scripts/record_demo.sh --curated --bench-passes 5
+        # then copy the relevant lines from data/perf_history.jsonl
+        ```
+      placeholder: '{"model_id": "alexnet/pytorch", "backend": "forge", "compile_s": 2.98, "bench_passes": 5, ...}'
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: "Notes (optional)"
+      description: "Anything unusual: cooling setup, ambient temperature, other workloads running, firmware flashed mid-run, etc."
+    validations:
+      required: false
