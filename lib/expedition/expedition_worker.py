@@ -117,7 +117,218 @@ _NEWNESS_STYLE = {
 # Using a module-level constant (rather than results[0].keys()) prevents
 # ValueError when success rows and failure rows have different key sets.
 # extrasaction="ignore" in DictWriter allows both row shapes to coexist.
-_CSV_FIELDNAMES = ["model", "status", "pts", "compile_time", "artifact", "first_ever", "first_voice", "error"]
+_CSV_FIELDNAMES = [
+    "model", "status", "pts", "compile_time", "infer_time",
+    "artifact", "first_ever", "first_voice", "error",
+]
+
+# Tasks whose output tensor's seq dimension (axis 1) is meaningful as token
+# count.  For these tasks _compute_throughput reports tokens/sec; everything
+# else (CV, embeddings, QA, audio) reports ms/sample.
+_TOKEN_TASKS: frozenset[str] = frozenset({
+    "text-generation", "nlp_causal_lm", "nlp_masked_lm",
+    "fill-mask", "nlp_text_cls", "nlp_token_cls",
+})
+
+
+def _compute_throughput(task: str, output: Any, infer_s: float) -> tuple[float, str]:
+    """Compute throughput from a decoded inference output tensor.
+
+    For token-producing tasks (members of _TOKEN_TASKS), returns
+    (tokens_per_sec, "tokens/sec") using output.shape[1] as the sequence
+    length.  For all other tasks (CV, embeddings, QA, audio) returns
+    (ms_per_sample, "ms/sample").  Returns (0.0, "") when infer_s is zero,
+    output is None, or the output shape cannot be read (e.g. 1-D tensor for
+    a token task).
+
+    Args:
+        task:    HuggingFace pipeline task string (e.g. "text-generation").
+        output:  Raw inference output tensor (may be None on failure paths).
+        infer_s: Wall-clock seconds spent in the inference call.  Must be > 0.
+
+    Returns:
+        (throughput_value, throughput_unit) where unit is "tokens/sec",
+        "ms/sample", or "" (when measurement is not available).
+    """
+    if infer_s <= 0.0 or output is None:
+        return 0.0, ""
+    try:
+        if task in _TOKEN_TASKS:
+            seq_len = output.shape[1]
+            return round(seq_len / infer_s, 3), "tokens/sec"
+    except (AttributeError, IndexError):
+        # output has no .shape or shape has fewer than 2 dimensions — fall
+        # through to the ms/sample path rather than crashing.
+        pass
+    return round(infer_s * 1000.0, 3), "ms/sample"
+
+
+def _percentile(sorted_data: list[float], p: float) -> float:
+    """Return the p-th percentile (0–100) from a sorted list via linear interpolation.
+
+    Uses the same formula as numpy.percentile with interpolation='linear':
+    locate the fractional index, then linearly interpolate between the two
+    neighbouring values.  Works correctly for edge cases:
+      - Single element: returns that element regardless of p.
+      - p=0: returns sorted_data[0].
+      - p=100: returns sorted_data[-1].
+
+    Args:
+        sorted_data: Pre-sorted (ascending) list of float values.
+        p:           Percentile in the range [0, 100].
+
+    Returns:
+        Interpolated percentile value, or 0.0 for an empty list.
+    """
+    if not sorted_data:
+        return 0.0
+    idx = (p / 100.0) * (len(sorted_data) - 1)
+    lo = int(idx)
+    hi = min(lo + 1, len(sorted_data) - 1)
+    return sorted_data[lo] + (sorted_data[hi] - sorted_data[lo]) * (idx - lo)
+
+
+def _run_bench_passes(
+    compiled_module: Any,
+    sample_inputs: list,
+    n_passes: int,
+    task: str,
+) -> dict:
+    """Run warm-up + timed inference passes on a forge-compiled module.
+
+    Runs 2 warm-up passes (discarded) then n_passes timed passes.  Computes
+    p50 and p95 inference latency and derives throughput from each percentile.
+    Stops silently on error — returns partial results when some passes succeed,
+    and an empty dict when all passes fail or n_passes is 0 or fewer.
+
+    Args:
+        compiled_module: forge-compiled module from forge.compile().
+        sample_inputs:   Normalised input tensor list (as returned by _compile_model).
+        n_passes:        Number of timed passes.  0 or negative returns {}.
+        task:            HuggingFace task string — controls throughput unit via
+                         _compute_throughput (tokens/sec for token tasks, ms/sample
+                         for vision/audio/embeddings).
+
+    Returns:
+        A dict with keys:
+          bench_passes  — actual number of timed passes completed (may be < n_passes
+                          if the module crashed mid-way).
+          infer_p50_s   — p50 (median) inference latency in seconds (rounded to 4 dp).
+          infer_p95_s   — p95 inference latency in seconds (rounded to 4 dp).
+          throughput_p50 — throughput derived from p50 latency (rounded to 2 dp).
+          throughput_p95 — throughput derived from p95 latency (rounded to 2 dp).
+        Returns {} on failure (n_passes <= 0, warm-up crash, or zero timed passes).
+    """
+    if n_passes <= 0:
+        return {}
+
+    last_output = None
+
+    # Warm-up: 2 passes, not timed.  If the module crashes during warm-up we
+    # return {} immediately — there's nothing useful to measure.
+    for _ in range(2):
+        try:
+            compiled_module(*sample_inputs)
+        except Exception:
+            return {}
+
+    # Timed passes — stop at first exception so partial results are still useful.
+    times: list[float] = []
+    for _ in range(n_passes):
+        try:
+            t0 = time.time()
+            last_output = compiled_module(*sample_inputs)
+            times.append(time.time() - t0)
+        except Exception:
+            break
+
+    if not times:
+        return {}
+
+    times.sort()
+    p50 = _percentile(times, 50)
+    p95 = _percentile(times, 95)
+    throughput_p50, _ = _compute_throughput(task, last_output, p50)
+    throughput_p95, _ = _compute_throughput(task, last_output, p95)
+    return {
+        "bench_passes":    len(times),
+        "infer_p50_s":     round(p50, 4),
+        "infer_p95_s":     round(p95, 4),
+        "throughput_p50":  round(throughput_p50, 2),
+        "throughput_p95":  round(throughput_p95, 2),
+    }
+
+
+def _run_shape_sweep(
+    compiled_module: Any,
+    loader: Any,
+    task: str,
+    n_passes: int,
+) -> list[dict]:
+    """Run bench passes at alternative input shapes to characterise scaling.
+
+    For token tasks: sweeps sequence lengths [128, 512] at batch=1.
+    For vision or other tasks: sweeps image size 384×384 (typical when default
+    was 224).  Shape-level failures are silently skipped so one bad shape never
+    aborts the whole sweep.
+
+    Args:
+        compiled_module: forge-compiled module from forge.compile().
+        loader:          Original model loader — currently unused, reserved for
+                         loaders that expose a custom make_inputs(spec) method.
+        task:            HuggingFace pipeline task string — controls sweep shapes
+                         and throughput units.
+        n_passes:        Number of timed passes per shape (no warm-up).
+
+    Returns:
+        A list of dicts.  Each dict contains the shape spec key(s) plus:
+          infer_s    — median (p50) inference latency in seconds (rounded to 4 dp).
+          throughput — throughput derived from p50 latency (rounded to 2 dp).
+        Shapes that fail to run return no entry in the list.
+    """
+    import torch
+
+    if task in _TOKEN_TASKS:
+        sweep = [{"seq": 128}, {"seq": 512}]
+
+        def make_inputs(spec: dict) -> list:
+            return [torch.randint(0, 1000, (1, spec["seq"]))]
+    else:
+        sweep = [{"img_size": 384}]
+
+        def make_inputs(spec: dict) -> list:
+            return [torch.randn(1, 3, spec["img_size"], spec["img_size"])]
+
+    results: list[dict] = []
+    for spec in sweep:
+        try:
+            inputs = _normalise_inputs(make_inputs(spec))
+            times: list[float] = []
+            last_out = None
+
+            # Warm-up: 2 passes, discarded.
+            for _ in range(2):
+                compiled_module(*inputs)
+
+            # Timed passes.
+            for _ in range(n_passes):
+                t0 = time.time()
+                last_out = compiled_module(*inputs)
+                times.append(time.time() - t0)
+
+            if times:
+                times.sort()
+                p50 = _percentile(times, 50)
+                tput, _ = _compute_throughput(task, last_out, p50)
+                results.append({
+                    **spec,
+                    "infer_s":    round(p50, 4),
+                    "throughput": round(tput, 2),
+                })
+        except Exception:
+            pass  # skip shapes that fail — don't abort the whole sweep
+
+    return results
 
 
 class TimeoutException(Exception):
@@ -240,31 +451,45 @@ def _print_live_info(msg: str, ok: bool = True) -> None:
     print(f"    {marker} {msg}")
 
 
-def _print_success(model_id: str, compile_time: float, total_time: float,
-                   artifact: str, score_pts: int, is_first_ever: bool,
-                   streak: int) -> None:
+def _print_success(
+    model_id: str,
+    compile_time: float,
+    infer_time: float,
+    artifact: str,
+    score_pts: int,
+    is_first_ever: bool,
+    streak: int,
+    throughput: float = 0.0,
+    throughput_unit: str = "",
+    bench_p50: float = 0.0,
+) -> None:
     """Print the success summary line after a successful compile + inference.
 
-    Shows compile time, total elapsed, points, first-ever badge, and streak
-    emoji if the streak is 2 or longer. Also prints the first 120 chars of
-    the decoded artifact (the model's "voice").
-
     Args:
-        model_id:    Full model identifier (unused here; kept for symmetry with failure).
-        compile_time: Seconds spent in forge.compile().
-        total_time:   Total elapsed seconds including model loading.
-        artifact:    Decoded inference output string.
-        score_pts:   Points awarded for this compilation event.
-        is_first_ever: True if this was the first-ever successful compile.
-        streak:      Current consecutive success streak.
+        model_id:       HuggingFace model identifier.
+        compile_time:   Seconds spent in forge.compile().
+        infer_time:     Seconds spent on the first inference pass.
+        artifact:       Decoded inference output string.
+        score_pts:      Points awarded for this compilation event.
+        is_first_ever:  True if this is the model's first-ever compilation.
+        streak:         Current consecutive-success streak count.
+        throughput:     Throughput value (tokens/sec or ms/sample). 0 = not shown.
+        throughput_unit: "tokens/sec" or "ms/sample".
+        bench_p50:      p50 infer time from bench passes (0 = bench not run).
     """
+    streak_str = f"  {CYAN}🔥×{streak}{RESET}" if streak >= 3 else ""
+    first_str  = f"  {GOLD}★ FIRST{RESET}" if is_first_ever else ""
+    if bench_p50 > 0.0 and throughput_unit:
+        tput_str = f"  ~{throughput:.1f} {throughput_unit} (p50)"
+    elif throughput > 0.0 and throughput_unit:
+        tput_str = f"  {throughput:.1f} {throughput_unit}"
+    else:
+        tput_str = ""
     print(f"\n  {BOLD}{GREEN}✓ SUCCESS{RESET}")
-    print(f"    compile: {compile_time:.1f}s  total: {total_time:.1f}s  "
-          f"pts: {GOLD}{score_pts:+d}{RESET}"
-          + (f"  {GOLD}★ FIRST EVER{RESET}" if is_first_ever else "")
-          + (f"  🔥×{streak}" if streak >= 2 else ""))
-    if artifact:
-        print(f"    {CYAN}❝ {artifact}{RESET}")
+    print(f"    compile: {compile_time:.1f}s  infer: {infer_time:.2f}s"
+          f"{tput_str}  pts: {GOLD}{score_pts:+d}{RESET}"
+          f"{streak_str}{first_str}")
+    print(f"    {DIM}{artifact[:80]}{RESET}")
 
 
 def _print_failure(model_id: str, error: str, elapsed: float) -> None:
@@ -322,16 +547,18 @@ def _try_install_missing(error_str: str) -> str | None:
     return pkg
 
 
-def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool, Any, float, str, Any]:
+def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool, Any, float, float, str, Any, list]:
     """Run forge compile + inference for one model.
 
-    Returns a 5-tuple (success, output, compile_time, error_str, compiled):
-      - success:      True if both compile and inference completed without error.
-      - output:       The raw inference output tensor/list (None on failure).
-      - compile_time: Seconds spent in forge.compile() (0.0 on failure before compile).
-      - error_str:    Empty string on success; "TIMEOUT" or "ExcType: msg" on failure.
-      - compiled:     The forge-compiled module (None on failure); callers may run
-                      additional inference passes (First Voice) without recompiling.
+    Returns a 7-tuple (success, output, compile_time, infer_time, error_str, compiled, sample_inputs):
+      - success:       True if both compile and inference completed without error.
+      - output:        The raw inference output tensor/list (None on failure).
+      - compile_time:  Seconds spent in forge.compile() (0.0 on failure before compile).
+      - infer_time:    Seconds spent in the inference call (0.0 on failure or timeout).
+      - error_str:     Empty string on success; "TIMEOUT" or "ExcType: msg" on failure.
+      - compiled:      The forge-compiled module (None on failure); callers may run
+                       additional inference passes (First Voice) without recompiling.
+      - sample_inputs: List of input tensors used for compile/inference ([] on failure).
 
     Compile is attempted twice for models that fail with a tracer type-inference
     error.  HuggingFace causal-LM models commonly return a CausalLMOutputWithPast
@@ -473,7 +700,7 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
 
         if compile_error is not None:
             e = compile_error
-            return False, None, compile_time, f"{type(e).__name__}: {str(e)[:300]}", None
+            return False, None, compile_time, 0.0, f"{type(e).__name__}: {str(e)[:300]}", None, []
 
         _print_progress_step(3, 3, f"Running inference on chip {chip_id}...")
         # Use SIGALRM so that a hung inference doesn't stall the entire worker.
@@ -481,24 +708,26 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
         signal.alarm(timeout)
         try:
             infer_inputs = _normalise_inputs(sample_inputs)
+            infer_start = time.time()
             output = compiled(*infer_inputs)
+            infer_time = time.time() - infer_start
             signal.alarm(0)  # cancel the alarm on clean completion
         except TimeoutException:
             signal.alarm(0)
-            return False, None, compile_time, "TIMEOUT", None
+            return False, None, compile_time, 0.0, "TIMEOUT", None, []
 
         # Unwrap list outputs (forge sometimes returns [tensor]).
         if isinstance(output, list):
             output = output[0] if output else None
 
-        return True, output, compile_time, "", compiled
+        return True, output, compile_time, infer_time, "", compiled, list(sample_inputs)
 
     except TimeoutException as e:
         signal.alarm(0)
-        return False, None, 0.0, "TIMEOUT", None
+        return False, None, 0.0, 0.0, "TIMEOUT", None, []
     except Exception as e:
         signal.alarm(0)
-        return False, None, 0.0, f"{type(e).__name__}: {str(e)[:300]}", None
+        return False, None, 0.0, 0.0, f"{type(e).__name__}: {str(e)[:300]}", None, []
 
 
 def _attempt_first_voice(
@@ -750,7 +979,9 @@ def _build_loader(item: QueueItem):
 
 def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                queue_path: str | None, results_path: str,
-               model_json_path: str | None = None) -> None:
+               model_json_path: str | None = None,
+               bench_passes: int = 0,
+               bench_shapes: bool = False) -> None:
     """Main entry point for the per-chip worker.
 
     Loads the queue, iterates over every model, runs the full pipeline
@@ -771,6 +1002,10 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
         model_json_path: Optional path to a single-model JSON file (a flat dict rather
                          than a list). When provided, overrides queue_path and processes
                          exactly one model. The TUI uses this for per-model dispatch.
+        bench_passes:    Number of timed inference passes to run after each successful
+                         compile (preceded by 2 warm-up passes). 0 disables bench.
+        bench_shapes:    When True, also sweep alternative input shapes after bench
+                         passes. Requires bench_passes > 0 to have any effect.
     """
     import datetime
     from lib.expedition.bestiary import Bestiary
@@ -859,11 +1094,11 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             continue
 
         # ── Compile + inference ──────────────────────────────────────────────
-        success, output, compile_time, error_str, compiled_module = _compile_model(loader, chip_id)
+        success, output, compile_time, infer_time, error_str, compiled_module, sample_inputs = _compile_model(loader, chip_id)
         # Auto-install missing packages and retry once
         if not success and "No module named" in error_str:
             if _try_install_missing(error_str):
-                success, output, compile_time, error_str, compiled_module = _compile_model(loader, chip_id)
+                success, output, compile_time, infer_time, error_str, compiled_module, sample_inputs = _compile_model(loader, chip_id)
         elapsed = time.time() - start
 
         if success:
@@ -885,6 +1120,11 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             )
             is_first_voice = bool(first_voice_text)
 
+            # Compute throughput from the standard inference pass.
+            throughput, throughput_unit = _compute_throughput(
+                item.task, output, infer_time
+            )
+
             score = compute_score(success=True, is_first_ever=is_first_ever,
                                   rarity=rarity, newness=newness,
                                   streak=hud.state.streak,
@@ -892,8 +1132,19 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                                   is_first_voice=is_first_voice)
             hud.record_success(item.model_id, score)
 
-            _print_success(item.model_id, compile_time, elapsed, artifact,
-                           score.pts, is_first_ever, hud.state.streak)
+            # Optional bench passes (--bench-passes N).
+            bench_stats: dict = {}
+            if bench_passes > 0 and compiled_module is not None and sample_inputs:
+                bench_stats = _run_bench_passes(
+                    compiled_module, sample_inputs, bench_passes, item.task
+                )
+
+            _print_success(
+                item.model_id, compile_time, infer_time, artifact,
+                score.pts, is_first_ever, hud.state.streak,
+                throughput=throughput, throughput_unit=throughput_unit,
+                bench_p50=bench_stats.get("infer_p50_s", 0.0),
+            )
 
             # Print First Voice output if we got one.
             if is_first_voice and first_voice_sample:
@@ -940,7 +1191,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                 model_id=item.model_id,
                 chip=chip_id,
                 run=run_number,
-                time_s=compile_time,
+                time_s=compile_time + infer_time,
                 task=item.task,
                 source=item.source,
                 rarity=rarity.value,
@@ -949,6 +1200,10 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                 artifact=artifact,
                 backend="forge",
                 first_voice=first_voice_text if is_first_voice else "",
+                compile_s=compile_time,
+                infer_s=infer_time,
+                throughput=throughput,
+                throughput_unit=throughput_unit,
             )
             # Accumulate points into the per-chip all-time leaderboard entry.
             bestiary.add_chip_points(
@@ -957,10 +1212,37 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                 first_ever=is_first_ever,
                 streak=hud.state.streak,
             )
-            results.append({"model": item.model_id, "status": "success",
-                            "pts": score.pts, "compile_time": compile_time,
-                            "artifact": first_voice_text if is_first_voice else artifact,
-                            "first_ever": is_first_ever, "first_voice": is_first_voice})
+            # Build and append the perf history record.
+            perf_record: dict = {
+                "model_id":        item.model_id,
+                "run":             run_number,
+                "timestamp":       compiled_at,
+                "backend":         "forge",
+                "chip":            chip_id,
+                "compile_s":       round(compile_time, 4),
+                "infer_s":         round(infer_time, 4),
+                "throughput":      round(throughput, 3),
+                "throughput_unit": throughput_unit,
+            }
+            perf_record.update(bench_stats)
+            # Optional shape sweep (--bench-shapes requires --bench-passes > 0).
+            if bench_shapes and bench_passes > 0 and compiled_module is not None:
+                shapes = _run_shape_sweep(
+                    compiled_module, loader, item.task, bench_passes
+                )
+                if shapes:
+                    perf_record["shapes"] = shapes
+            bestiary.append_perf_record(perf_record)
+            results.append({
+                "model":        item.model_id,
+                "status":       "success",
+                "pts":          score.pts,
+                "compile_time": compile_time,
+                "infer_time":   infer_time,
+                "artifact":     first_voice_text if is_first_voice else artifact,
+                "first_ever":   is_first_ever,
+                "first_voice":  is_first_voice,
+            })
         else:
             # Compile or inference failed — record the failure and deduct points.
             _print_failure(item.model_id, error_str, elapsed)
@@ -1030,6 +1312,12 @@ if __name__ == "__main__":
                         help="Path to a single-model JSON file. Overrides --queue.")
     parser.add_argument("--results",    required=True,
                         help="Path to write the per-chip CSV results file.")
+    parser.add_argument("--bench-passes", type=int, default=0, metavar="N",
+                        help="Run 2 warm-up + N timed inference passes after each "
+                             "successful compile. Default 0 (disabled).")
+    parser.add_argument("--bench-shapes", action="store_true",
+                        help="Sweep alternative input shapes after bench passes. "
+                             "Requires --bench-passes > 0.")
     args = parser.parse_args()
     if not args.queue and not args.model_json:
         parser.error("one of --queue or --model-json is required")
@@ -1043,4 +1331,6 @@ if __name__ == "__main__":
         queue_path=args.queue,
         model_json_path=args.model_json,
         results_path=args.results,
+        bench_passes=args.bench_passes,
+        bench_shapes=args.bench_shapes,
     )

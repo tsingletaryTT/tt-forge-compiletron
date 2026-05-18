@@ -1269,6 +1269,11 @@ class RunScreen(Screen):
                 "--model-json", model_json_path,
                 "--results",    results_path,
             ]
+            # Forward inline bench flags when enabled.
+            if self.app.bench_passes > 0:
+                cmd += ["--bench-passes", str(self.app.bench_passes)]
+            if self.app.bench_shapes:
+                cmd.append("--bench-shapes")
             with self.app.suspend():
                 subprocess.run(cmd, env=env, stdin=subprocess.DEVNULL)
             self._rally_in_progress = False
@@ -1301,6 +1306,13 @@ class RunScreen(Screen):
         # can get the model name without reading the status file.
         self._run_state.set_current(chip_id, model.get("model_id", ""))
 
+        # Build optional bench args to append to the worker command.
+        _bench_args: list[str] = []
+        if self.app.bench_passes > 0:
+            _bench_args += ["--bench-passes", str(self.app.bench_passes)]
+        if self.app.bench_shapes:
+            _bench_args.append("--bench-shapes")
+
         proc = await asyncio.create_subprocess_exec(
             python_exe,
             worker_path,
@@ -1309,6 +1321,7 @@ class RunScreen(Screen):
             "--bestiary",   str(self._project_dir / "data" / "bestiary.json"),
             "--model-json", model_json_path,
             "--results",    results_path,
+            *_bench_args,
             env=env,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
@@ -1403,6 +1416,13 @@ class RunScreen(Screen):
         # Tell RunState which side quest model is about to compile.
         self._run_state.set_current(chip_id, model.get("model_id", ""))
 
+        # Build optional bench args for side quest workers (same flags as main dispatch).
+        _sq_bench_args: list[str] = []
+        if self.app.bench_passes > 0:
+            _sq_bench_args += ["--bench-passes", str(self.app.bench_passes)]
+        if self.app.bench_shapes:
+            _sq_bench_args.append("--bench-shapes")
+
         proc = await asyncio.create_subprocess_exec(
             python_exe, worker_path,
             "--chip",       str(chip_id),
@@ -1410,6 +1430,7 @@ class RunScreen(Screen):
             "--bestiary",   str(self._project_dir / "data" / "bestiary.json"),
             "--model-json", model_json_path,
             "--results",    results_path,
+            *_sq_bench_args,
             env=env,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
@@ -2157,6 +2178,8 @@ class ExpeditionTUI(App[None]):
         backend:                str   = "auto",
         auto_quit_secs:         int   = 0,
         confirm:                bool  = False,
+        bench_passes:           int   = 0,
+        bench_shapes:           bool  = False,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -2182,6 +2205,9 @@ class ExpeditionTUI(App[None]):
         self.backend              = backend
         self.auto_quit_secs       = auto_quit_secs
         self.confirm              = confirm
+        # Inline benchmark flags forwarded to worker subprocesses.
+        self.bench_passes         = bench_passes
+        self.bench_shapes         = bench_shapes
 
     def on_mount(self) -> None:
         # Purge stale forge shared-memory segments and TT device handles from any

@@ -145,6 +145,82 @@ class TestBestiaryPersistence:
         assert "chip_totals" in data
 
 
+class TestBestiaryPerfFields:
+    def _make_success(self, b, model_id="m", compile_s=5.0, infer_s=0.5,
+                      throughput=12.0, throughput_unit="tokens/sec"):
+        b.record_success(
+            model_id=model_id, chip=0, run=1, time_s=compile_s + infer_s,
+            task="text-generation", source="hf", rarity="common",
+            hf_downloads=None, hf_created_at=None, artifact="x",
+            compile_s=compile_s, infer_s=infer_s,
+            throughput=throughput, throughput_unit=throughput_unit,
+        )
+
+    def test_first_success_stores_perf_fields(self, tmp_bestiary):
+        self._make_success(tmp_bestiary)
+        e = tmp_bestiary.compiled["m"]
+        assert e["best_compile_s"] == 5.0
+        assert e["best_infer_s"] == 0.5
+        assert e["best_throughput"] == 12.0
+        assert e["throughput_unit"] == "tokens/sec"
+
+    def test_tokens_per_sec_higher_is_better(self, tmp_bestiary):
+        self._make_success(tmp_bestiary, throughput=10.0, throughput_unit="tokens/sec")
+        self._make_success(tmp_bestiary, throughput=15.0, throughput_unit="tokens/sec")
+        assert tmp_bestiary.compiled["m"]["best_throughput"] == 15.0
+
+    def test_ms_per_sample_lower_is_better(self, tmp_bestiary):
+        self._make_success(tmp_bestiary, throughput=100.0, throughput_unit="ms/sample")
+        self._make_success(tmp_bestiary, throughput=80.0, throughput_unit="ms/sample")
+        assert tmp_bestiary.compiled["m"]["best_throughput"] == 80.0
+
+    def test_best_compile_s_tracks_minimum(self, tmp_bestiary):
+        self._make_success(tmp_bestiary, compile_s=8.0)
+        self._make_success(tmp_bestiary, compile_s=5.0)
+        self._make_success(tmp_bestiary, compile_s=6.0)
+        assert tmp_bestiary.compiled["m"]["best_compile_s"] == 5.0
+
+    def test_zero_values_not_stored(self, tmp_bestiary):
+        b = tmp_bestiary
+        b.record_success(
+            model_id="x", chip=0, run=1, time_s=10.0,
+            task="t", source="s", rarity="common",
+            hf_downloads=None, hf_created_at=None, artifact="a",
+        )
+        assert "best_compile_s" not in b.compiled["x"]
+        assert "best_infer_s" not in b.compiled["x"]
+        assert "best_throughput" not in b.compiled["x"]
+
+    def test_existing_tests_still_pass_without_new_args(self, tmp_bestiary):
+        tmp_bestiary.record_success(
+            model_id="legacy", chip=0, run=1, time_s=30.0,
+            task="t", source="s", rarity="common",
+            hf_downloads=None, hf_created_at=None, artifact="a",
+        )
+        assert "legacy" in tmp_bestiary.compiled
+
+
+class TestAppendPerfRecord:
+    def test_appends_jsonl_line(self, tmp_bestiary):
+        record = {"model_id": "gpt2/pytorch", "run": 1, "compile_s": 10.2,
+                  "infer_s": 2.3, "throughput": 13.9, "throughput_unit": "tokens/sec"}
+        tmp_bestiary.append_perf_record(record)
+        perf_path = tmp_bestiary.path.parent / "perf_history.jsonl"
+        assert perf_path.exists()
+        lines = perf_path.read_text().strip().split("\n")
+        assert len(lines) == 1
+        loaded = json.loads(lines[0])
+        assert loaded["model_id"] == "gpt2/pytorch"
+        assert loaded["compile_s"] == 10.2
+
+    def test_appends_multiple_records(self, tmp_bestiary):
+        for i in range(3):
+            tmp_bestiary.append_perf_record({"run": i})
+        perf_path = tmp_bestiary.path.parent / "perf_history.jsonl"
+        lines = perf_path.read_text().strip().split("\n")
+        assert len(lines) == 3
+
+
 class TestBestiaryArtifacts:
     def test_save_artifact_creates_file(self, tmp_path, tmp_bestiary):
         out = tmp_bestiary.save_artifact(

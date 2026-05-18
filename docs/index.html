@@ -592,6 +592,47 @@ footer a { color: var(--teal); text-decoration: none; }
 .chip-pts { color: var(--gold); text-align: right; }
 .chip-meta { color: var(--muted); font-size: 0.72rem; }
 
+/* ── Performance benchmark table ──────────────────────────────────────── */
+.perf-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  margin-top: 1rem;
+}
+.perf-table th {
+  text-align: right;
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--dim);
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.perf-table th:first-child { text-align: left; }
+.perf-table td {
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  text-align: right;
+  vertical-align: middle;
+}
+.perf-table td:first-child { text-align: left; color: var(--teal2); }
+.perf-table tr:last-child td { border-bottom: none; }
+.pt-compile { color: var(--gold); }
+.pt-infer   { color: var(--text); }
+.pt-tput    { color: var(--green); }
+.pt-chip    { color: var(--muted); }
+.pt-none    { color: var(--dim); }
+.bcard-perf {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--green);
+  border-top: 1px solid var(--dim);
+  padding-top: 0.4rem;
+  margin-top: auto;
+}
+
 /* ── Demo video switcher ───────────────────────────────────────────────── */
 .demo-switcher {
   display: flex;
@@ -631,6 +672,7 @@ footer a { color: var(--teal); text-decoration: none; }
   <a href="#roguelike">Roguelike</a>
   <a href="#side-quests">Side Quests</a>
   <a href="#bestiary">Bestiary</a>
+  <a href="#perf">Perf</a>
   <a href="#quickstart">Quick Start</a>
   <div class="spacer"></div>
   <a class="gh-link" href="https://github.com/tsingletaryTT/tt-forge-compiletron" target="_blank">GitHub ↗</a>
@@ -1068,6 +1110,7 @@ footer a { color: var(--teal); text-decoration: none; }
       <div class="bcard-time">1.065<span>s compile</span></div>
       <div class="bcard-dl">14.2M downloads</div>
       <div class="bcard-voice">&#8594; The (10%) | A (3%) | &#8220; (3%)</div>
+      <div class="bcard-perf">&#128293; p50 infer 539ms &middot; 538.8 tok/s &middot; QB2 c1</div>
     </div>
 
     <div class="bcard r-legendary">
@@ -1092,6 +1135,7 @@ footer a { color: var(--teal); text-decoration: none; }
       </div>
       <div class="bcard-time">2.791<span>s compile</span></div>
       <div class="bcard-dl">tt-forge-models seed</div>
+      <div class="bcard-perf">&#128293; p50 infer 29.7ms &middot; 29.7 ms/smp &middot; QB2 c0</div>
     </div>
 
     <div class="bcard r-familiar">
@@ -1105,6 +1149,7 @@ footer a { color: var(--teal); text-decoration: none; }
       <div class="bcard-time">9.863<span>s compile</span></div>
       <div class="bcard-dl">tt-forge-models seed</div>
       <div class="bcard-voice">&#8594; class_850 4.76 | class_568 4.66 | class_523 4.63</div>
+      <div class="bcard-perf">&#128293; p50 infer 339ms &middot; 338.8 ms/smp &middot; QB2 c0</div>
     </div>
 
     <div class="bcard r-familiar">
@@ -1130,6 +1175,7 @@ footer a { color: var(--teal); text-decoration: none; }
       <div class="bcard-time">10.48<span>s compile</span></div>
       <div class="bcard-dl">tt-forge-models seed &middot; 3 runs</div>
       <div class="bcard-voice">&#8594; class_642 7.13 | class_579 7.01 | class_420 6.77</div>
+      <div class="bcard-perf">&#128293; p50 infer 382ms &middot; 381.6 ms/smp &middot; QB2 c3</div>
     </div>
 
   </div>
@@ -1192,6 +1238,112 @@ footer a { color: var(--teal); text-decoration: none; }
 
 <div class="section-divider"></div>
 
+<!-- ── Performance Benchmarks ────────────────────────────────────────── -->
+<section id="perf" class="wide">
+  <h2>Performance Benchmarks &#8212; Tenstorrent QB2</h2>
+
+  <p>
+    Measured on a Tenstorrent QB2 (4&times; Blackhole) during Expedition #068 using
+    <code>--bench-passes 5</code>: two warm-up passes followed by five timed inference
+    passes per model. Compile time is wall-clock for <code>forge.compile()</code>.
+    p50 infer is the median of the five timed passes.
+    Throughput is <strong>tokens/sec</strong> for language models and
+    <strong>ms/sample</strong> for vision/embedding models.
+  </p>
+
+  <table class="perf-table">
+    <thead>
+      <tr>
+        <th>Model</th>
+        <th>Compile</th>
+        <th>p50 infer</th>
+        <th>p50 throughput</th>
+        <th>Backend</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>alexnet/pytorch</td>
+        <td class="pt-compile">4.59s</td>
+        <td class="pt-infer">29.7ms</td>
+        <td class="pt-tput">29.7 ms/smp</td>
+        <td class="pt-chip">forge c0</td>
+      </tr>
+      <tr>
+        <td>gpt2/pytorch</td>
+        <td class="pt-compile">33.32s</td>
+        <td class="pt-infer">539ms</td>
+        <td class="pt-tput">538.8 tok/s</td>
+        <td class="pt-chip">forge c1</td>
+      </tr>
+      <tr>
+        <td>mobilenetv2/pytorch</td>
+        <td class="pt-compile">10.45s</td>
+        <td class="pt-infer">382ms</td>
+        <td class="pt-tput">381.6 ms/smp</td>
+        <td class="pt-chip">forge c3</td>
+      </tr>
+      <tr>
+        <td>deit/pytorch</td>
+        <td class="pt-compile">12.52s</td>
+        <td class="pt-infer">339ms</td>
+        <td class="pt-tput">338.8 ms/smp</td>
+        <td class="pt-chip">forge c0</td>
+      </tr>
+      <tr>
+        <td>beit/pytorch</td>
+        <td class="pt-compile">44.57s</td>
+        <td class="pt-infer">333ms</td>
+        <td class="pt-tput">332.7 ms/smp</td>
+        <td class="pt-chip">forge c2</td>
+      </tr>
+      <tr>
+        <td>resnet/pytorch</td>
+        <td class="pt-compile">12.43s</td>
+        <td class="pt-infer">287ms</td>
+        <td class="pt-tput">286.6 ms/smp</td>
+        <td class="pt-chip">forge c1</td>
+      </tr>
+      <tr>
+        <td>efficientnet_lite/pytorch</td>
+        <td class="pt-compile">12.94s</td>
+        <td class="pt-infer">1231ms</td>
+        <td class="pt-tput">1231.5 ms/smp</td>
+        <td class="pt-chip">forge c2</td>
+      </tr>
+      <tr>
+        <td>googlenet/pytorch</td>
+        <td class="pt-compile">11.53s</td>
+        <td class="pt-infer">146ms</td>
+        <td class="pt-tput">146.1 ms/smp</td>
+        <td class="pt-chip">forge c0</td>
+      </tr>
+      <tr>
+        <td>ghostnet/pytorch</td>
+        <td class="pt-compile">22.89s</td>
+        <td class="pt-infer">399ms</td>
+        <td class="pt-tput">398.6 ms/smp</td>
+        <td class="pt-chip">forge c3</td>
+      </tr>
+      <tr>
+        <td>bloom/causal_lm/jax</td>
+        <td class="pt-compile">34.34s</td>
+        <td class="pt-none">&#8212;</td>
+        <td class="pt-none">&#8212;</td>
+        <td class="pt-chip">xla c0</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p style="margin-top:1.5rem;font-size:0.88rem;color:var(--muted)">
+    Raw data: <code>data/perf_history.jsonl</code> &middot;
+    View with: <code>python3 scripts/show_perf_stats.py</code> &middot;
+    Regenerate: <code>bash scripts/record_demo.sh --bench</code>
+  </p>
+</section>
+
+<div class="section-divider"></div>
+
 <!-- ── Architecture ───────────────────────────────────────────────────── -->
 <section id="arch">
   <h2>Architecture</h2>
@@ -1218,10 +1370,12 @@ footer a { color: var(--teal); text-decoration: none; }
   <span class="file">notes.py</span>               <span class="note"># expedition journal writer</span>
 <span class="hi">data/</span>
   <span class="file">bestiary.json</span>          <span class="note"># all-time compiled model records</span>
+  <span class="file">perf_history.jsonl</span>     <span class="note"># append-only per-run perf timeseries (compile, infer, throughput)</span>
   <span class="file">expeditions/</span>           <span class="note"># per-run markdown journals</span>
 <span class="hi">scripts/</span>
   <span class="file">record_demo.sh</span>         <span class="note"># asciinema recording with tmux automation</span>
   <span class="file">gen_demo_cast.py</span>       <span class="note"># scripted demo cast generator</span>
+  <span class="file">show_perf_stats.py</span>     <span class="note"># display bench stats from perf_history.jsonl</span>
   </div>
 
   <div class="card-grid" style="margin-top:1.5rem">
@@ -1277,7 +1431,14 @@ footer a { color: var(--teal); text-decoration: none; }
 <span class="prompt">$</span> <span class="cmd">python3 expedition.py run --tui --staples --limit 8</span>
 
 <span class="comment"># High-quality frontier: min 1000 downloads, max 7B params</span>
-<span class="prompt">$</span> <span class="cmd">python3 expedition.py run --tui --min-downloads 1000 --max-model-params 7</span></pre>
+<span class="prompt">$</span> <span class="cmd">python3 expedition.py run --tui --min-downloads 1000 --max-model-params 7</span>
+
+<span class="comment"># Benchmark mode: 5 timed inference passes per model (p50/p95 stats)</span>
+<span class="prompt">$</span> <span class="cmd">python3 expedition.py run --tui --bench-passes 5</span>
+<span class="comment"># With shape sweep (varies seq_len for LLMs, resolution for vision)</span>
+<span class="prompt">$</span> <span class="cmd">python3 expedition.py run --tui --bench-passes 5 --bench-shapes</span>
+<span class="comment"># View bench results from the last run</span>
+<span class="prompt">$</span> <span class="cmd">python3 scripts/show_perf_stats.py</span></pre>
 
   <h3 style="margin-top:2rem">XLA Environment Setup</h3>
   <pre><span class="comment"># The XLA worker uses ~/tt-xla/venv — set it up once:</span>
@@ -1289,6 +1450,8 @@ footer a { color: var(--teal); text-decoration: none; }
   <h3 style="margin-top:2rem">Record a Demo</h3>
   <pre><span class="comment"># Capture a live expedition run as an asciinema cast</span>
 <span class="prompt">$</span> <span class="cmd">bash scripts/record_demo.sh</span>
+<span class="comment"># Capture a bench run (5 passes per model) — stats shown at end</span>
+<span class="prompt">$</span> <span class="cmd">bash scripts/record_demo.sh --bench</span>
 <span class="comment"># Outputs docs/demo.cast — embed with the asciinema player above</span>
 
 <span class="comment"># Or regenerate the scripted placeholder (no hardware required)</span>
