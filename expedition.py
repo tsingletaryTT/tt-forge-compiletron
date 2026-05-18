@@ -1815,9 +1815,6 @@ def main():
     # SetupScreen handles discovery, queue building, and pre-download;
     # RunScreen handles chip workers; SummaryScreen replaces _print_run_summary.
     if getattr(args, "tui", False):
-        if getattr(args, "xla_mesh", 1) > 1:
-            print(f"Warning: --xla-mesh {args.xla_mesh} has no effect with --tui (not yet implemented). "
-                  "Run without --tui or use the non-TUI path.", flush=True)
         from expedition_tui import ExpeditionTUI
         app = ExpeditionTUI(
             num_chips=num_chips,
@@ -1846,6 +1843,7 @@ def main():
             parallel_downloads=args.parallel_downloads,
             bench_passes=getattr(args, "bench_passes", 0),
             bench_shapes=getattr(args, "bench_shapes", False),
+            xla_mesh=getattr(args, "xla_mesh", 1),
         )
         app.run()
         return   # everything handled inside TUI screens

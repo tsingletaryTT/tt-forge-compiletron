@@ -496,6 +496,7 @@ class SetupScreen(Screen):
         self._staples      = False  # True → include already-compiled seed models
         self._curated      = False  # True → use hand-curated showcase demo queue
         self._backend      = "auto"   # auto | forge | xla | mixed
+        self._xla_mesh     = 1        # Number of chips for JAX/XLA shard_map dispatch
         self._discovering  = False  # True while HF discovery / queue-build is running
         self._setup_done   = False  # True once queues are built (no re-run)
         self._autostart_secs = 4   # Countdown seconds before auto-start (0 = auto-fire immediately)
@@ -518,6 +519,7 @@ class SetupScreen(Screen):
         self._staples              = app.staples
         self._curated              = getattr(app, "curated", False)
         self._backend              = getattr(app, "backend", "auto")
+        self._xla_mesh             = getattr(app, "xla_mesh", 1)
         confirm                    = getattr(app, "confirm", False)
         # confirm=False (default): fire immediately; confirm=True: 4s countdown + Enter.
         if not confirm:
@@ -757,7 +759,7 @@ class SetupScreen(Screen):
                 else "⚙ Scanning tt-forge-models library..."
             _log(f"[cyan]{label}[/]")
             seed_items = _scan_forge_models(compiled_ids, include_all=self._staples,
-                                            framework=scan_fw)
+                                            framework=scan_fw, xla_mesh=self._xla_mesh)
             _log(f"[green]✓ {len(seed_items)} seed model(s) found[/]")
             for item in seed_items:
                 mid  = item.get("model_id", "?")
@@ -767,7 +769,8 @@ class SetupScreen(Screen):
             # Canary injection: if all forge-models are already compiled,
             # pick one random one anyway so we always have ≥1 model to run.
             if not seed_items and not self._staples:
-                all_seeds = _scan_forge_models(set(), include_all=True, framework=scan_fw)
+                all_seeds = _scan_forge_models(set(), include_all=True, framework=scan_fw,
+                                               xla_mesh=self._xla_mesh)
                 if all_seeds:
                     import random as _random
                     canary = dict(_random.choice(all_seeds))
@@ -2180,6 +2183,7 @@ class ExpeditionTUI(App[None]):
         confirm:                bool  = False,
         bench_passes:           int   = 0,
         bench_shapes:           bool  = False,
+        xla_mesh:               int   = 1,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -2208,6 +2212,8 @@ class ExpeditionTUI(App[None]):
         # Inline benchmark flags forwarded to worker subprocesses.
         self.bench_passes         = bench_passes
         self.bench_shapes         = bench_shapes
+        # Number of chips for JAX/XLA multi-chip shard_map dispatch.
+        self.xla_mesh             = xla_mesh
 
     def on_mount(self) -> None:
         # Purge stale forge shared-memory segments and TT device handles from any
