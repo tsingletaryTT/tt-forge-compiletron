@@ -363,6 +363,7 @@ def _compile_model_xla(
     chip_id: int,
     timeout: int = 300,
     mesh_chips: int = 1,
+    meta: "Optional[_LoaderMeta]" = None,
 ) -> tuple[bool, Any, float, float, str, Any]:
     """Run JAX JIT compile + inference for one Flax model.
 
@@ -387,6 +388,7 @@ def _compile_model_xla(
     across all chips and the input batch is sharded evenly across devices.
     This is genuine multi-chip computation — each device runs 1/N of the batch
     simultaneously and XLA handles cross-device communication automatically.
+    Type A (Linen) models route through shard_map when meta.use_shard_map is True.
 
     Args:
         model_loader: Callable returning (flax_model, params, tokenizer, input_fn).
@@ -395,6 +397,8 @@ def _compile_model_xla(
         chip_id:      Zero-based chip index (for logging).
         timeout:      SIGALRM timeout in seconds for the compile+run step.
         mesh_chips:   Number of chips to use.  >1 triggers data-parallel sharding.
+        meta:         Routing metadata from _build_loader_xla. Controls whether to
+                      use shard_map (Type A Linen) or jit(in_shardings=...) (Type B).
     """
     try:
         import jax
@@ -438,73 +442,150 @@ def _compile_model_xla(
                 return out
 
         if mesh_chips > 1:
-            # ── Data-parallel multi-chip path ────────────────────────────────
-            # Params are replicated across all N chips; the input batch (size N)
-            # is sharded so each chip processes exactly one example.  XLA JIT
-            # generates a single program that runs on all chips in parallel.
+            # ── Multi-chip path ───────────────────────────────────────────────
+            # Two sub-paths based on loader type (from _LoaderMeta):
+            #   Type A (use_shard_map=True):  shard_map with named axis "X"
+            #   Type B (use_shard_map=False): jax.jit(in_shardings=...) data-parallel
+            # Both achieve data parallelism; shard_map positions Type A for future
+            # tensor-parallel work via load_multichip_model().
             all_devices = jax.devices()
             n = min(mesh_chips, len(all_devices))
             if n < mesh_chips:
                 _print_live_info(
                     f"Only {n} TT device(s) visible — using {n}-chip data-parallel"
                 )
-            mesh       = Mesh(np.array(all_devices[:n]), axis_names=("batch",))
-            replicated = NamedSharding(mesh, PartitionSpec())
-            batched    = NamedSharding(mesh, PartitionSpec("batch",))
 
-            _print_live_info(
-                f"★ {n}-CHIP MESH ACTIVE: {[str(d) for d in all_devices[:n]]} "
-                f"(batch={n}, one example per chip)"
-            )
+            use_shard_map = meta is not None and meta.use_shard_map
+            axis = meta.axis_name if meta is not None else "batch"
 
-            sharded_params = jax.device_put(flax_params, replicated)
+            if use_shard_map:
+                # ── Type A: Linen model — shard_map data-parallel ────────────
+                # Uses shard_map instead of jit(in_shardings=...) to provide a
+                # named collective axis context matching the loader's axis_name="X".
+                # Both paths achieve data-parallel; shard_map positions this code
+                # for future tensor-parallel work via load_multichip_model().
+                from jax.experimental.shard_map import shard_map as _shard_map
 
-            # Build a batch of n identical inputs (one element per device).
-            # Use Mapping (not dict) — BatchEncoding inherits from UserDict, not dict.
-            single = make_input(all_devices[0])
-            if isinstance(single, _Mapping):
-                dummy_inputs = {k: jnp.concatenate([v] * n, axis=0) for k, v in single.items()}
+                mesh       = Mesh(np.array(all_devices[:n]), axis_names=(axis,))
+                replicated = NamedSharding(mesh, PartitionSpec())
+                sharded    = NamedSharding(mesh, PartitionSpec(axis,))
+
+                _print_live_info(
+                    f"★ {n}-CHIP SHARD_MAP ACTIVE (Type A, axis={axis!r}): "
+                    f"{[str(d) for d in all_devices[:n]]}"
+                )
+
+                single = make_input(device)
+                if isinstance(single, _Mapping):
+                    dummy_inputs = {k: jnp.concatenate([v] * n, axis=0)
+                                    for k, v in single.items()}
+                else:
+                    dummy_inputs = jnp.concatenate([single] * n, axis=0)
+
+                sharded_params = jax.device_put(flax_params, replicated)
+                sharded_inputs = jax.device_put(dummy_inputs, sharded)
+
+                compiled_fn = jax.jit(_shard_map(
+                    forward,
+                    mesh=mesh,
+                    in_specs=(PartitionSpec(), PartitionSpec(axis)),
+                    out_specs=PartitionSpec(axis),
+                    check_rep=False,
+                ))
+
+                _print_live_info(
+                    f"Input shape: {jax.tree_util.tree_map(lambda x: x.shape, dummy_inputs)}"
+                )
+                _print_progress_step(2, 3, f"Compiling via shard_map across {n} chips (Type A)...")
+                compile_start = time.time()
+
+                signal.signal(signal.SIGALRM, _timeout_handler)
+                signal.alarm(timeout)
+                try:
+                    output = compiled_fn(sharded_params, sharded_inputs)
+                    output.block_until_ready()
+                    signal.alarm(0)
+                except TimeoutException:
+                    signal.alarm(0)
+                    return False, None, time.time() - compile_start, 0.0, "TIMEOUT", None
+
+                compile_time = time.time() - compile_start
+                _print_progress_step(3, 3,
+                    f"Output shape: {output.shape}  ({compile_time:.1f}s — {n} chips shard_map)")
+
+                infer_s = 0.0
+                try:
+                    infer_start = time.time()
+                    _ = compiled_fn(sharded_params, sharded_inputs)
+                    _.block_until_ready()
+                    infer_s = time.time() - infer_start
+                except Exception:
+                    pass
+
+                return True, output, compile_time, infer_s, "", (compiled_fn, sharded_params, all_devices[0])
+
             else:
-                dummy_inputs = jnp.concatenate([single] * n, axis=0)
-            sharded_inputs = jax.device_put(dummy_inputs, batched)
+                # ── Type B: existing data-parallel jit path ──────────────────
+                # Params are replicated across all N chips; the input batch (size N)
+                # is sharded so each chip processes exactly one example.  XLA JIT
+                # generates a single program that runs on all chips in parallel.
+                mesh       = Mesh(np.array(all_devices[:n]), axis_names=(axis,))
+                replicated = NamedSharding(mesh, PartitionSpec())
+                batched    = NamedSharding(mesh, PartitionSpec(axis,))
 
-            compiled_fn = jax.jit(
-                forward,
-                in_shardings=(replicated, batched),
-                out_shardings=batched,
-            )
+                _print_live_info(
+                    f"★ {n}-CHIP MESH ACTIVE (Type B, axis={axis!r}): {[str(d) for d in all_devices[:n]]} "
+                    f"(batch={n}, one example per chip)"
+                )
 
-            _print_live_info(
-                f"Input shape: {jax.tree_util.tree_map(lambda x: x.shape, dummy_inputs)}"
-            )
-            _print_progress_step(2, 3, f"Compiling via JAX JIT across {n} chips (data-parallel)...")
-            compile_start = time.time()
+                sharded_params = jax.device_put(flax_params, replicated)
 
-            signal.signal(signal.SIGALRM, _timeout_handler)
-            signal.alarm(timeout)
-            try:
-                output = compiled_fn(sharded_params, sharded_inputs)
-                output.block_until_ready()
-                signal.alarm(0)
-            except TimeoutException:
-                signal.alarm(0)
-                return False, None, time.time() - compile_start, 0.0, "TIMEOUT", None
+                # Build a batch of n identical inputs (one element per device).
+                # Use Mapping (not dict) — BatchEncoding inherits from UserDict, not dict.
+                single = make_input(all_devices[0])
+                if isinstance(single, _Mapping):
+                    dummy_inputs = {k: jnp.concatenate([v] * n, axis=0) for k, v in single.items()}
+                else:
+                    dummy_inputs = jnp.concatenate([single] * n, axis=0)
+                sharded_inputs = jax.device_put(dummy_inputs, batched)
 
-            compile_time = time.time() - compile_start
-            _print_progress_step(3, 3, f"Output shape: {output.shape}  ({compile_time:.1f}s — {n} chips)")
+                compiled_fn = jax.jit(
+                    forward,
+                    in_shardings=(replicated, batched),
+                    out_shardings=batched,
+                )
 
-            # Second pass for pure infer_s measurement (JIT already done).
-            infer_s = 0.0
-            try:
-                infer_start = time.time()
-                _ = compiled_fn(sharded_params, sharded_inputs)
-                _.block_until_ready()
-                infer_s = time.time() - infer_start
-            except Exception:
-                pass
+                _print_live_info(
+                    f"Input shape: {jax.tree_util.tree_map(lambda x: x.shape, dummy_inputs)}"
+                )
+                _print_progress_step(2, 3, f"Compiling via JAX JIT across {n} chips (data-parallel)...")
+                compile_start = time.time()
 
-            # Return the lead device's bundle for optional First Voice and bench passes.
-            return True, output, compile_time, infer_s, "", (compiled_fn, sharded_params, all_devices[0])
+                signal.signal(signal.SIGALRM, _timeout_handler)
+                signal.alarm(timeout)
+                try:
+                    output = compiled_fn(sharded_params, sharded_inputs)
+                    output.block_until_ready()
+                    signal.alarm(0)
+                except TimeoutException:
+                    signal.alarm(0)
+                    return False, None, time.time() - compile_start, 0.0, "TIMEOUT", None
+
+                compile_time = time.time() - compile_start
+                _print_progress_step(3, 3, f"Output shape: {output.shape}  ({compile_time:.1f}s — {n} chips data-parallel)")
+
+                # Second pass for pure infer_s measurement (JIT already done).
+                infer_s = 0.0
+                try:
+                    infer_start = time.time()
+                    _ = compiled_fn(sharded_params, sharded_inputs)
+                    _.block_until_ready()
+                    infer_s = time.time() - infer_start
+                except Exception:
+                    pass
+
+                # Return the lead device's bundle for optional First Voice and bench passes.
+                return True, output, compile_time, infer_s, "", (compiled_fn, sharded_params, all_devices[0])
 
         else:
             # ── Single-chip path ─────────────────────────────────────────────
@@ -667,6 +748,23 @@ class QueueItem:
     model_type: Optional[str] = None
 
 
+@dataclass
+class _LoaderMeta:
+    """Routing metadata returned alongside a loader callable from _build_loader_xla.
+
+    use_shard_map=True: Type A Linen loader (has load_multichip_model).
+      _compile_model_xla uses jax.experimental.shard_map with axis_name.
+    use_shard_map=False: Type B EasyDel/NNX loader (or single-chip).
+      _compile_model_xla uses jax.jit(in_shardings=...) data-parallel path.
+    axis_name: mesh axis label. "X" for Type A, "batch" for Type B.
+
+    TODO: when CPU mesh init is available, Type A should call load_multichip_model()
+    for the tensor-parallel Linen module instead of load_model().
+    """
+    use_shard_map: bool = False
+    axis_name: str = "batch"
+
+
 def _load_queue(queue_path: str) -> list[QueueItem]:
     """Deserialize the chip queue JSON into a list of QueueItem dataclasses.
 
@@ -759,7 +857,7 @@ def _build_loader_xla(item: QueueItem):
 
             return model, params, tokenizer, make_input
 
-        return loader
+        return loader, _LoaderMeta()
 
     else:
         # Seed model from tt-forge-models JAX loader.
@@ -790,6 +888,17 @@ def _build_loader_xla(item: QueueItem):
             variant = None
 
         instance = cls(variant=variant) if variant is not None else cls()
+
+        # Detect Type A: has load_multichip_model (Linen tensor-parallel model).
+        # When mesh_chips > 1, use shard_map path in _compile_model_xla.
+        # NOTE: the loader still calls load_model() (not load_multichip_model()) because
+        # initializing the multichip Linen module requires a CPU mesh context not
+        # available in the TT XLA worker. True tensor-parallelism is a follow-on task.
+        _is_type_a = (
+            item.mesh_chips > 1
+            and hasattr(instance, "load_multichip_model")
+        )
+        meta = _LoaderMeta(use_shard_map=True, axis_name="X") if _is_type_a else _LoaderMeta()
 
         def loader():
             import jax.numpy as jnp
@@ -864,7 +973,7 @@ def _build_loader_xla(item: QueueItem):
 
             return model, params, tokenizer, make_input
 
-        return loader
+        return loader, meta
 
 
 # ── Main worker loop ──────────────────────────────────────────────────────────
@@ -987,7 +1096,7 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
 
         # ── Loader construction ──────────────────────────────────────────────
         try:
-            loader = _build_loader_xla(item)
+            loader, _meta = _build_loader_xla(item)
         except Exception as e:
             elapsed = time.time() - start
             _print_failure(item.model_id, str(e), elapsed)
@@ -1002,13 +1111,13 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
 
         # ── Compile + inference ──────────────────────────────────────────────
         success, output, compile_time, infer_time, error_str, compiled_bundle = _compile_model_xla(
-            loader, device, chip_id, mesh_chips=item.mesh_chips
+            loader, device, chip_id, mesh_chips=item.mesh_chips, meta=_meta
         )
         # Auto-install missing packages and retry once
         if not success and "No module named" in error_str:
             if _try_install_missing(error_str):
                 success, output, compile_time, infer_time, error_str, compiled_bundle = _compile_model_xla(
-                    loader, device, chip_id, mesh_chips=item.mesh_chips
+                    loader, device, chip_id, mesh_chips=item.mesh_chips, meta=_meta
                 )
         elapsed = time.time() - start
 
@@ -1056,7 +1165,7 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
 
             # Run bench passes if requested (warm-up + timed) using compiled bundle.
             bench_stats: dict = {}
-            if bench_passes > 0 and compiled_bundle is not None:
+            if bench_passes > 0 and compiled_bundle is not None and item.mesh_chips == 1:
                 bench_stats = _run_bench_passes_xla(compiled_bundle, item.task, bench_passes)
 
             _print_success(
