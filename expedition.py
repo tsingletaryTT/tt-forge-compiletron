@@ -1741,6 +1741,12 @@ def main():
     run_p.add_argument("--confirm",              action="store_true",
                        help="Pause on setup screen and wait for ENTER before starting "
                             "(default: auto-start immediately)")
+    run_p.add_argument("--bench-passes", type=int, default=0, metavar="N",
+                       help="Inline bench: run 2 warm-up + N timed inference passes "
+                            "after each successful compile. Default 0 (disabled).")
+    run_p.add_argument("--bench-shapes", action="store_true",
+                       help="Also sweep input shapes after bench passes. "
+                            "Requires --bench-passes > 0.")
 
     sub.add_parser("summary", help="Print bestiary summary")
 
@@ -1772,6 +1778,8 @@ def main():
         args.max_cache_gb = 0.0
         args.session_download_max = 0.0
         args.parallel_downloads = 4
+        args.bench_passes = 0
+        args.bench_shapes = False
 
     # ── Hardware detection ────────────────────────────────────────────────────
     from lib.hardware import detect_hardware, get_hardware_summary
@@ -1819,6 +1827,8 @@ def main():
             max_cache_gb=args.max_cache_gb,
             session_download_max=args.session_download_max,
             parallel_downloads=args.parallel_downloads,
+            bench_passes=getattr(args, "bench_passes", 0),
+            bench_shapes=getattr(args, "bench_shapes", False),
         )
         app.run()
         return   # everything handled inside TUI screens
@@ -1879,8 +1889,12 @@ def main():
           f"{_DIM}· reattach:{_RST}  {_TEAL}tmux attach -t expedition{_RST}")
     print()
     script = PROJECT_DIR / "scripts" / "run_expedition.sh"
-    env = {**os.environ, "EXPEDITION_RUN": str(run_number),
-           "EXPEDITION_NUM_CHIPS": str(num_chips)}
+    env = {**os.environ,
+           "EXPEDITION_RUN":          str(run_number),
+           "EXPEDITION_NUM_CHIPS":    str(num_chips),
+           "EXPEDITION_BENCH_PASSES": str(getattr(args, "bench_passes", 0)),
+           "EXPEDITION_BENCH_SHAPES": "1" if getattr(args, "bench_shapes", False) else "0",
+           }
     cmd = ["bash", str(script), "--chips", str(num_chips),
            "--run", str(run_number)]
     if args.monitor:
