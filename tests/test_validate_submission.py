@@ -101,3 +101,15 @@ def test_invalid_backend():
     result = validate(_jsonl([bad]), GOOD_HW)
     assert not result.valid
     assert any("backend" in e for e in result.errors)
+
+def test_records_empty_on_invalid():
+    bad = {**GOOD_RECORD, "bench_passes": 2}
+    result = validate(_jsonl([bad]), GOOD_HW)
+    assert not result.valid
+    assert result.records == []
+
+def test_empty_firmware_version_whitespace():
+    hw = {**GOOD_HW, "firmware_version": "   "}
+    result = validate(_jsonl([GOOD_RECORD]), hw)
+    assert not result.valid
+    assert any("firmware_version" in e for e in result.errors)

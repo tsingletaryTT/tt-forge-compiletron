@@ -85,6 +85,13 @@ def _validate_record(record: dict, line_num: int) -> list[str]:
 
     if record["bench_passes"] < 5:
         errors.append(f"{p}: bench_passes must be >= 5, got {record['bench_passes']}")
+    if record["chips_used"] < 1:
+        errors.append(f"{p}: chips_used must be >= 1, got {record['chips_used']}")
+    if record["chips_in_system"] < 1:
+        errors.append(f"{p}: chips_in_system must be >= 1, got {record['chips_in_system']}")
+    for perf_field in ("compile_s", "infer_p50_s", "throughput_p50"):
+        if record[perf_field] < 0:
+            errors.append(f"{p}: {perf_field} must be >= 0, got {record[perf_field]}")
     if record["chips_used"] > record["chips_in_system"]:
         errors.append(f"{p}: chips_used ({record['chips_used']}) > chips_in_system ({record['chips_in_system']})")
     if record["hardware_system"] not in VALID_HARDWARE:
@@ -114,7 +121,15 @@ def main() -> None:
     ap.add_argument("--issue",             default=0, type=int)
     args = ap.parse_args()
 
-    text = sys.stdin.read() if args.jsonl_file == "-" else open(args.jsonl_file).read()
+    if args.jsonl_file == "-":
+        text = sys.stdin.read()
+    else:
+        try:
+            with open(args.jsonl_file) as f:
+                text = f.read()
+        except FileNotFoundError:
+            print(f"✗ File not found: {args.jsonl_file}", file=sys.stderr)
+            sys.exit(1)
 
     hardware = {
         "hardware_system":  args.system,
