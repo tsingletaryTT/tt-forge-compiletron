@@ -132,10 +132,11 @@ _TOKEN_TASKS: frozenset[str] = frozenset({
 })
 
 
-def _compute_throughput_xla(task: str, output: Any, infer_s: float) -> tuple[float, str]:
+def _compute_throughput_xla(task: str, output: Any, infer_s: float, batch: int = 1) -> tuple[float, str]:
     """Compute throughput for XLA output (JAX arrays).
 
     Same logic as the forge worker but handles JAX array shapes.
+    batch > 1 for multi-chip runs where N examples are processed simultaneously.
     Returns (tokens_per_sec, "tokens/sec") for token tasks,
     (ms_per_sample, "ms/sample") otherwise.  Returns (0.0, "") on failure.
     """
@@ -144,10 +145,10 @@ def _compute_throughput_xla(task: str, output: Any, infer_s: float) -> tuple[flo
     try:
         if task in _TOKEN_TASKS:
             seq_len = output.shape[1]
-            return round(seq_len / infer_s, 3), "tokens/sec"
+            return round(batch * seq_len / infer_s, 3), "tokens/sec"
     except (AttributeError, IndexError):
         pass
-    return round(infer_s * 1000.0, 3), "ms/sample"
+    return round(infer_s * 1000.0 / max(batch, 1), 3), "ms/sample"
 
 
 def _percentile_xla(sorted_data: list[float], p: float) -> float:
@@ -167,7 +168,9 @@ def _run_bench_passes_xla(
 ) -> dict:
     """Run warm-up + timed inference passes using a JAX compiled bundle.
 
-    compiled_bundle is (compiled_fn, params, device) from _compile_model_xla.
+    compiled_bundle is (compiled_fn, params, device, (n_chips, dummy_inputs)).
+    n_chips > 1 means multi-chip: skip jax.default_device and use the already-sharded
+    dummy_inputs directly.  n_chips == 1 uses the single-device context path.
     Warm-up: 2 passes. Then n_passes timed.  Stops on error.
     Returns dict with bench_passes, infer_p50_s, infer_p95_s,
     throughput_p50, throughput_p95.  Empty dict on failure or n_passes <= 0.
@@ -175,32 +178,40 @@ def _run_bench_passes_xla(
     if n_passes <= 0 or compiled_bundle is None:
         return {}
     try:
-        compiled_fn, params, device = compiled_bundle
-        # Reconstruct dummy inputs — XLA bench uses the same shape as the JIT run.
+        compiled_fn, params, device, bench_info = compiled_bundle
+        n_chips, dummy = bench_info
         import jax, jax.numpy as jnp
-        dummy = jnp.ones((1, 32), dtype=jnp.int32)
-        with jax.default_device(device):
-            for _ in range(2):  # warm-up
-                out = compiled_fn(params, dummy)
-                out.block_until_ready()
+
+        def _infer(inputs):
+            if n_chips > 1:
+                # Multi-chip: compiled_fn has mesh-based dispatch; no device context.
+                out = compiled_fn(params, inputs)
+            else:
+                with jax.default_device(device):
+                    out = compiled_fn(params, inputs)
+            out.block_until_ready()
+            return out
+
+        for _ in range(2):  # warm-up
+            _infer(dummy)
+
         times: list[float] = []
         last_out = None
-        with jax.default_device(device):
-            for _ in range(n_passes):
-                try:
-                    t0 = time.time()
-                    last_out = compiled_fn(params, dummy)
-                    last_out.block_until_ready()
-                    times.append(time.time() - t0)
-                except Exception:
-                    break
+        for _ in range(n_passes):
+            try:
+                t0 = time.time()
+                last_out = _infer(dummy)
+                times.append(time.time() - t0)
+            except Exception:
+                break
+
         if not times:
             return {}
         times.sort()
         p50 = _percentile_xla(times, 50)
         p95 = _percentile_xla(times, 95)
-        tput_p50, _ = _compute_throughput_xla(task, last_out, p50)
-        tput_p95, _ = _compute_throughput_xla(task, last_out, p95)
+        tput_p50, _ = _compute_throughput_xla(task, last_out, p50, batch=n_chips)
+        tput_p95, _ = _compute_throughput_xla(task, last_out, p95, batch=n_chips)
         return {
             "bench_passes":   len(times),
             "infer_p50_s":    round(p50, 4),
@@ -375,8 +386,8 @@ def _compile_model_xla(
                         pure inference latency without compilation overhead.  0.0 if the
                         second pass was skipped or raised an exception.
       - error_str:      Empty on success; "TIMEOUT" or "ExcType: msg" on failure.
-      - compiled_bundle: (compiled_fn, params, lead_device) tuple for bench passes and
-                        First Voice re-use.  None on failure.
+      - compiled_bundle: (compiled_fn, params, lead_device, (n_chips, dummy_inputs)) tuple
+                        for bench passes and First Voice re-use.  None on failure.
 
     Unlike forge, there is no explicit "compile then run" step — jax.jit
     traces lazily and compiles on the first call. The compile_time reported
@@ -523,7 +534,7 @@ def _compile_model_xla(
                 except Exception:
                     pass
 
-                return True, output, compile_time, infer_s, "", (compiled_fn, sharded_params, all_devices[0])
+                return True, output, compile_time, infer_s, "", (compiled_fn, sharded_params, all_devices[0], (n, sharded_inputs))
 
             else:
                 # ── Type B: existing data-parallel jit path ──────────────────
@@ -586,7 +597,7 @@ def _compile_model_xla(
                     pass
 
                 # Return the lead device's bundle for optional First Voice and bench passes.
-                return True, output, compile_time, infer_s, "", (compiled_fn, sharded_params, all_devices[0])
+                return True, output, compile_time, infer_s, "", (compiled_fn, sharded_params, all_devices[0], (n, sharded_inputs))
 
         else:
             # ── Single-chip path ─────────────────────────────────────────────
@@ -623,7 +634,7 @@ def _compile_model_xla(
             except Exception:
                 pass
 
-            return True, output, compile_time, infer_s, "", (compiled_fn, flax_params, device)
+            return True, output, compile_time, infer_s, "", (compiled_fn, flax_params, device, (1, dummy_inputs))
 
     except TimeoutException:
         signal.alarm(0)
@@ -642,12 +653,12 @@ def _attempt_first_voice_xla(
 ) -> tuple[str, dict | None]:
     """Run a themed First Voice pass using the XLA compiled function.
 
-    compiled_bundle is (compiled_fn, params, device) returned by _compile_model_xla.
+    compiled_bundle is (compiled_fn, params, device, ...) returned by _compile_model_xla.
     """
     if compiled_bundle is None:
         return "", None
 
-    compiled_fn, params, device = compiled_bundle
+    compiled_fn, params, device = compiled_bundle[:3]
 
     try:
         import jax
@@ -1154,7 +1165,7 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
 
             # Compute throughput from the second inference pass (infer_time).
             throughput, throughput_unit = _compute_throughput_xla(
-                item.task, output, infer_time
+                item.task, output, infer_time, batch=item.mesh_chips
             )
 
             score = compute_score(success=True, is_first_ever=is_first_ever,
@@ -1166,7 +1177,7 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
 
             # Run bench passes if requested (warm-up + timed) using compiled bundle.
             bench_stats: dict = {}
-            if bench_passes > 0 and compiled_bundle is not None and item.mesh_chips == 1:
+            if bench_passes > 0 and compiled_bundle is not None:
                 bench_stats = _run_bench_passes_xla(compiled_bundle, item.task, bench_passes)
 
             _print_success(

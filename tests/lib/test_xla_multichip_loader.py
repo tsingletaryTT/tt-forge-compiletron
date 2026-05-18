@@ -166,11 +166,14 @@ def test_build_loader_xla_frontier_multichip_still_uses_default_meta():
     )
 
 
-def test_bench_passes_guard_in_run_worker_xla():
-    """run_worker_xla must have 'item.mesh_chips == 1' guard for bench_passes."""
+def test_bench_passes_runs_for_all_chip_counts():
+    """run_worker_xla must NOT guard bench_passes by mesh_chips — multi-chip bench is supported."""
     import inspect
     import lib.expedition.expedition_worker_xla as worker
     source = inspect.getsource(worker.run_worker_xla)
-    assert "item.mesh_chips == 1" in source, (
-        "run_worker_xla must guard bench_passes with 'item.mesh_chips == 1'"
+    # The old single-chip-only guard must be gone.
+    assert "item.mesh_chips == 1" not in source, (
+        "run_worker_xla must not restrict bench_passes to mesh_chips == 1"
     )
+    # The bench call must still exist.
+    assert "_run_bench_passes_xla" in source
