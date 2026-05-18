@@ -142,6 +142,30 @@ def test_seed_type_a_single_chip_uses_default_meta():
     assert meta.use_shard_map is False
 
 
+def test_build_loader_xla_frontier_multichip_still_uses_default_meta():
+    """Frontier model with mesh_chips=4 must NOT use shard_map — always _LoaderMeta()."""
+    from lib.expedition.expedition_worker_xla import _build_loader_xla, _LoaderMeta, QueueItem
+
+    item = QueueItem(
+        model_id="org/gpt2-large",
+        display_name="GPT2 Large",
+        task="text-generation",
+        source="huggingface",
+        rarity="uncommon",
+        hf_downloads=100000,
+        hf_created_at=None,
+        mesh_chips=4,  # multi-chip, but frontier always data-parallel
+        loader_module=None,
+        loader_class=None,
+        is_frontier=True,
+    )
+
+    _, meta = _build_loader_xla(item)
+    assert meta.use_shard_map is False, (
+        "Frontier models always use data-parallel regardless of mesh_chips"
+    )
+
+
 def test_bench_passes_guard_in_run_worker_xla():
     """run_worker_xla must have 'item.mesh_chips == 1' guard for bench_passes."""
     import inspect

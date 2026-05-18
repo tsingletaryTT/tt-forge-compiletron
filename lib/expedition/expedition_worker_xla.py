@@ -472,10 +472,11 @@ def _compile_model_xla(
 
                 _print_live_info(
                     f"★ {n}-CHIP SHARD_MAP ACTIVE (Type A, axis={axis!r}): "
-                    f"{[str(d) for d in all_devices[:n]]}"
+                    f"{[str(d) for d in all_devices[:n]]} "
+                    f"(batch={n}, one example per chip)"
                 )
 
-                single = make_input(device)
+                single = make_input(all_devices[0])
                 if isinstance(single, _Mapping):
                     dummy_inputs = {k: jnp.concatenate([v] * n, axis=0)
                                     for k, v in single.items()}
