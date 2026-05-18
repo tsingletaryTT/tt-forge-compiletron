@@ -27,6 +27,7 @@ class ModelResult:
         status:       "success" or "failed".
         pts:          Points awarded (positive for success, negative for failure).
         compile_time: Wall-clock compile time in seconds (0.0 on failure).
+        infer_time:   Wall-clock inference time in seconds (0.0 when not measured).
         artifact:     Human-readable inference output summary, or "".
         first_ever:   True if this is the first successful compile of this model.
         first_voice:  True if the model produced decoded text output this run.
@@ -41,6 +42,7 @@ class ModelResult:
     status: str
     pts: int
     compile_time: float
+    infer_time: float
     artifact: str
     first_ever: bool
     first_voice: bool
@@ -73,6 +75,7 @@ class ModelResult:
             status=row.get("status", "failed"),
             pts=int(row.get("pts") or 0),
             compile_time=float(row.get("compile_time") or 0.0),
+            infer_time=float(row.get("infer_time") or 0.0),
             artifact=row.get("artifact", ""),
             first_ever=row.get("first_ever") == "True",
             first_voice=row.get("first_voice") == "True",
