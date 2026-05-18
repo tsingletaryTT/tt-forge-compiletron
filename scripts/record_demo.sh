@@ -34,9 +34,43 @@ CURATED=0      # use curated demo queue (hand-picked showcase models)
 TUI=1          # 1=TUI mode, 0=scrolling terminal mode
 BENCH_PASSES=0 # 0 = no bench; N = run N timed inference passes per model
 
-# Allow --models N, --auto-quit N, --curated, --bench, --no-tui overrides
+usage() {
+    cat <<EOF
+Usage: bash scripts/record_demo.sh [OPTIONS]
+
+Record a live tt-forge-compiletron expedition demo with asciinema.
+
+Options:
+  --curated              Use the hand-curated showcase queue:
+                           AlexNet → GPT-2 → BEiT → DenseUNet FAIL → BLOOM 4-chip finale
+                         (default: random seed models, MODELS_PER_CHIP per chip)
+  --models N             Models per chip for the random queue (default: ${MODELS_PER_CHIP})
+  --bench                Enable benchmarking: 5 timed inference passes per model
+  --bench-passes N       Set exact number of bench passes (implies --bench)
+  --no-tui               Scrolling terminal output instead of TUI
+  --auto-quit N          Seconds to linger on summary before auto-exit (default: ${AUTO_QUIT})
+  --no-auto              Disable auto-quit; press q manually on the summary screen
+  -h, --help             Show this help and exit
+
+Output files:
+  TUI mode:              docs/demo_raw.cast
+  --no-tui:              docs/demo_scroll_raw.cast
+  --bench / --bench-passes: docs/demo_bench_raw.cast
+
+Post-processing (run after recording):
+  python3 scripts/compress_cast.py docs/demo_raw.cast docs/demo.cast --max-idle 1.2 --min-gap 0.02
+
+Common invocations:
+  bash scripts/record_demo.sh --curated --bench     # showcase + benchmarks (recommended)
+  bash scripts/record_demo.sh --curated             # showcase, no bench
+  bash scripts/record_demo.sh --models 6            # 6 random models per chip
+  bash scripts/record_demo.sh --no-tui --curated    # scrolling output for debugging
+EOF
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        -h|--help)      usage; exit 0 ;;
         --models)       MODELS_PER_CHIP="$2"; shift 2 ;;
         --auto-quit)    AUTO_QUIT="$2";       shift 2 ;;
         --no-auto)      AUTO_QUIT=0;          shift   ;;
@@ -44,7 +78,7 @@ while [[ $# -gt 0 ]]; do
         --bench)        BENCH_PASSES=5;       shift   ;;
         --bench-passes) BENCH_PASSES="$2";    shift 2 ;;
         --no-tui)       TUI=0;                shift   ;;
-        *) echo "Unknown arg: $1"; exit 1 ;;
+        *) echo "Unknown arg: $1"; echo "Run with --help for usage."; exit 1 ;;
     esac
 done
 
