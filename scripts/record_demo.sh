@@ -32,21 +32,25 @@ MODELS_PER_CHIP=${MODELS_PER_CHIP:-4}
 AUTO_QUIT=30   # seconds to linger on summary screen before auto-exit
 CURATED=0      # use curated demo queue (hand-picked showcase models)
 TUI=1          # 1=TUI mode, 0=scrolling terminal mode
+BENCH_PASSES=0 # 0 = no bench; N = run N timed inference passes per model
 
-# Allow --models N, --auto-quit N, --curated, --no-tui overrides
+# Allow --models N, --auto-quit N, --curated, --bench, --no-tui overrides
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --models)    MODELS_PER_CHIP="$2"; shift 2 ;;
-        --auto-quit) AUTO_QUIT="$2";       shift 2 ;;
-        --no-auto)   AUTO_QUIT=0;          shift   ;;
-        --curated)   CURATED=1;            shift   ;;
-        --no-tui)    TUI=0;                shift   ;;
+        --models)       MODELS_PER_CHIP="$2"; shift 2 ;;
+        --auto-quit)    AUTO_QUIT="$2";       shift 2 ;;
+        --no-auto)      AUTO_QUIT=0;          shift   ;;
+        --curated)      CURATED=1;            shift   ;;
+        --bench)        BENCH_PASSES=5;       shift   ;;
+        --bench-passes) BENCH_PASSES="$2";    shift 2 ;;
+        --no-tui)       TUI=0;                shift   ;;
         *) echo "Unknown arg: $1"; exit 1 ;;
     esac
 done
 
-# Use separate output file for scrolling mode
+# Use separate output files for scrolling / bench modes
 [[ "$TUI" -eq 0 ]] && CAST="docs/demo_scroll_raw.cast"
+[[ "$BENCH_PASSES" -gt 0 ]] && CAST="docs/demo_bench_raw.cast"
 
 TOTAL=$(( CHIPS * MODELS_PER_CHIP ))
 
@@ -85,6 +89,9 @@ else
     RUN_DESC="--seed-only --limit ${TOTAL} --chips ${CHIPS} --no-predownload (${MODELS_PER_CHIP} models per chip)"
 fi
 
+BENCH_LABEL=""
+[[ "$BENCH_PASSES" -gt 0 ]] && BENCH_LABEL="--bench-passes ${BENCH_PASSES}  (2 warm-up + ${BENCH_PASSES} timed passes per model)"
+
 MODE_LABEL=$([[ "$TUI" -eq 1 ]] && echo "TUI" || echo "Scrolling (no TUI)")
 echo "╔══════════════════════════════════════════════════════════════"
 echo "║  TT-Forge Compiletron — Demo Recording"
@@ -92,6 +99,7 @@ echo "║"
 echo "║  Terminal: ${COLS}×${ROWS}   Mode: ${MODE_LABEL}"
 echo "║  Output:   $CAST"
 echo "║  Run:      ${RUN_DESC}"
+[[ -n "$BENCH_LABEL" ]] && echo "║  Bench:    ${BENCH_LABEL}"
 echo "║  Finish:   ${AUTO_QUIT_LABEL}"
 echo "╚══════════════════════════════════════════════════════════════"
 echo ""
@@ -113,22 +121,33 @@ AUTO_QUIT_FLAG=""
 TUI_FLAG=""
 [[ "$TUI" -eq 1 ]] && TUI_FLAG="--tui"
 
+BENCH_FLAG=""
+[[ "$BENCH_PASSES" -gt 0 ]] && BENCH_FLAG="--bench-passes ${BENCH_PASSES}"
+
 if [[ "$CURATED" -eq 1 ]]; then
-    EXPEDITION_CMD="python3 expedition.py run ${TUI_FLAG} --curated ${AUTO_QUIT_FLAG}"
+    EXPEDITION_CMD="python3 expedition.py run ${TUI_FLAG} --curated ${AUTO_QUIT_FLAG} ${BENCH_FLAG}"
 else
     EXPEDITION_CMD="python3 expedition.py run ${TUI_FLAG} \
         --seed-only \
         --limit ${TOTAL} \
         --chips ${CHIPS} \
         --no-predownload \
-        ${AUTO_QUIT_FLAG}"
+        ${AUTO_QUIT_FLAG} ${BENCH_FLAG}"
+fi
+
+# When bench passes are enabled, show stats inside the recording after the run.
+if [[ "$BENCH_PASSES" -gt 0 ]]; then
+    STATS_CMD="python3 scripts/show_perf_stats.py"
+    FULL_CMD="${EXPEDITION_CMD} ; ${STATS_CMD}"
+else
+    FULL_CMD="${EXPEDITION_CMD}"
 fi
 
 asciinema rec "$CAST" \
     --overwrite \
     --title "TT-Forge Compiletron — Expedition Demo" \
     --cols "$COLS" --rows "$ROWS" \
-    --command "${EXPEDITION_CMD}"
+    --command "bash -c '${FULL_CMD}'"
 
 echo ""
 COMPRESSED="${CAST/_raw/}"
