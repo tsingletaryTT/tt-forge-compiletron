@@ -117,7 +117,10 @@ _NEWNESS_STYLE = {
 # Using a module-level constant (rather than results[0].keys()) prevents
 # ValueError when success rows and failure rows have different key sets.
 # extrasaction="ignore" in DictWriter allows both row shapes to coexist.
-_CSV_FIELDNAMES = ["model", "status", "pts", "compile_time", "artifact", "first_ever", "first_voice", "error"]
+_CSV_FIELDNAMES = [
+    "model", "status", "pts", "compile_time", "infer_time",
+    "artifact", "first_ever", "first_voice", "error",
+]
 
 # Tasks whose output tensor's seq dimension (axis 1) is meaningful as token
 # count.  For these tasks _compute_throughput reports tokens/sec; everything
@@ -448,31 +451,45 @@ def _print_live_info(msg: str, ok: bool = True) -> None:
     print(f"    {marker} {msg}")
 
 
-def _print_success(model_id: str, compile_time: float, total_time: float,
-                   artifact: str, score_pts: int, is_first_ever: bool,
-                   streak: int) -> None:
+def _print_success(
+    model_id: str,
+    compile_time: float,
+    infer_time: float,
+    artifact: str,
+    score_pts: int,
+    is_first_ever: bool,
+    streak: int,
+    throughput: float = 0.0,
+    throughput_unit: str = "",
+    bench_p50: float = 0.0,
+) -> None:
     """Print the success summary line after a successful compile + inference.
 
-    Shows compile time, total elapsed, points, first-ever badge, and streak
-    emoji if the streak is 2 or longer. Also prints the first 120 chars of
-    the decoded artifact (the model's "voice").
-
     Args:
-        model_id:    Full model identifier (unused here; kept for symmetry with failure).
-        compile_time: Seconds spent in forge.compile().
-        total_time:   Total elapsed seconds including model loading.
-        artifact:    Decoded inference output string.
-        score_pts:   Points awarded for this compilation event.
-        is_first_ever: True if this was the first-ever successful compile.
-        streak:      Current consecutive success streak.
+        model_id:       HuggingFace model identifier.
+        compile_time:   Seconds spent in forge.compile().
+        infer_time:     Seconds spent on the first inference pass.
+        artifact:       Decoded inference output string.
+        score_pts:      Points awarded for this compilation event.
+        is_first_ever:  True if this is the model's first-ever compilation.
+        streak:         Current consecutive-success streak count.
+        throughput:     Throughput value (tokens/sec or ms/sample). 0 = not shown.
+        throughput_unit: "tokens/sec" or "ms/sample".
+        bench_p50:      p50 infer time from bench passes (0 = bench not run).
     """
+    streak_str = f"  {CYAN}🔥×{streak}{RESET}" if streak >= 3 else ""
+    first_str  = f"  {GOLD}★ FIRST{RESET}" if is_first_ever else ""
+    if bench_p50 > 0.0 and throughput_unit:
+        tput_str = f"  ~{throughput:.1f} {throughput_unit} (p50)"
+    elif throughput > 0.0 and throughput_unit:
+        tput_str = f"  {throughput:.1f} {throughput_unit}"
+    else:
+        tput_str = ""
     print(f"\n  {BOLD}{GREEN}✓ SUCCESS{RESET}")
-    print(f"    compile: {compile_time:.1f}s  total: {total_time:.1f}s  "
-          f"pts: {GOLD}{score_pts:+d}{RESET}"
-          + (f"  {GOLD}★ FIRST EVER{RESET}" if is_first_ever else "")
-          + (f"  🔥×{streak}" if streak >= 2 else ""))
-    if artifact:
-        print(f"    {CYAN}❝ {artifact}{RESET}")
+    print(f"    compile: {compile_time:.1f}s  infer: {infer_time:.2f}s"
+          f"{tput_str}  pts: {GOLD}{score_pts:+d}{RESET}"
+          f"{streak_str}{first_str}")
+    print(f"    {DIM}{artifact[:80]}{RESET}")
 
 
 def _print_failure(model_id: str, error: str, elapsed: float) -> None:
@@ -962,7 +979,9 @@ def _build_loader(item: QueueItem):
 
 def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                queue_path: str | None, results_path: str,
-               model_json_path: str | None = None) -> None:
+               model_json_path: str | None = None,
+               bench_passes: int = 0,
+               bench_shapes: bool = False) -> None:
     """Main entry point for the per-chip worker.
 
     Loads the queue, iterates over every model, runs the full pipeline
@@ -983,6 +1002,10 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
         model_json_path: Optional path to a single-model JSON file (a flat dict rather
                          than a list). When provided, overrides queue_path and processes
                          exactly one model. The TUI uses this for per-model dispatch.
+        bench_passes:    Number of timed inference passes to run after each successful
+                         compile (preceded by 2 warm-up passes). 0 disables bench.
+        bench_shapes:    When True, also sweep alternative input shapes after bench
+                         passes. Requires bench_passes > 0 to have any effect.
     """
     import datetime
     from lib.expedition.bestiary import Bestiary
@@ -1097,6 +1120,11 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             )
             is_first_voice = bool(first_voice_text)
 
+            # Compute throughput from the standard inference pass.
+            throughput, throughput_unit = _compute_throughput(
+                item.task, output, infer_time
+            )
+
             score = compute_score(success=True, is_first_ever=is_first_ever,
                                   rarity=rarity, newness=newness,
                                   streak=hud.state.streak,
@@ -1104,8 +1132,19 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                                   is_first_voice=is_first_voice)
             hud.record_success(item.model_id, score)
 
-            _print_success(item.model_id, compile_time, elapsed, artifact,
-                           score.pts, is_first_ever, hud.state.streak)
+            # Optional bench passes (--bench-passes N).
+            bench_stats: dict = {}
+            if bench_passes > 0 and compiled_module is not None and sample_inputs:
+                bench_stats = _run_bench_passes(
+                    compiled_module, sample_inputs, bench_passes, item.task
+                )
+
+            _print_success(
+                item.model_id, compile_time, infer_time, artifact,
+                score.pts, is_first_ever, hud.state.streak,
+                throughput=throughput, throughput_unit=throughput_unit,
+                bench_p50=bench_stats.get("infer_p50_s", 0.0),
+            )
 
             # Print First Voice output if we got one.
             if is_first_voice and first_voice_sample:
@@ -1152,7 +1191,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                 model_id=item.model_id,
                 chip=chip_id,
                 run=run_number,
-                time_s=compile_time,
+                time_s=compile_time + infer_time,
                 task=item.task,
                 source=item.source,
                 rarity=rarity.value,
@@ -1161,6 +1200,10 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                 artifact=artifact,
                 backend="forge",
                 first_voice=first_voice_text if is_first_voice else "",
+                compile_s=compile_time,
+                infer_s=infer_time,
+                throughput=throughput,
+                throughput_unit=throughput_unit,
             )
             # Accumulate points into the per-chip all-time leaderboard entry.
             bestiary.add_chip_points(
@@ -1169,10 +1212,37 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                 first_ever=is_first_ever,
                 streak=hud.state.streak,
             )
-            results.append({"model": item.model_id, "status": "success",
-                            "pts": score.pts, "compile_time": compile_time,
-                            "artifact": first_voice_text if is_first_voice else artifact,
-                            "first_ever": is_first_ever, "first_voice": is_first_voice})
+            # Build and append the perf history record.
+            perf_record: dict = {
+                "model_id":        item.model_id,
+                "run":             run_number,
+                "timestamp":       compiled_at,
+                "backend":         "forge",
+                "chip":            chip_id,
+                "compile_s":       round(compile_time, 4),
+                "infer_s":         round(infer_time, 4),
+                "throughput":      round(throughput, 3),
+                "throughput_unit": throughput_unit,
+            }
+            perf_record.update(bench_stats)
+            # Optional shape sweep (--bench-shapes requires --bench-passes > 0).
+            if bench_shapes and bench_passes > 0 and compiled_module is not None:
+                shapes = _run_shape_sweep(
+                    compiled_module, loader, item.task, bench_passes
+                )
+                if shapes:
+                    perf_record["shapes"] = shapes
+            bestiary.append_perf_record(perf_record)
+            results.append({
+                "model":        item.model_id,
+                "status":       "success",
+                "pts":          score.pts,
+                "compile_time": compile_time,
+                "infer_time":   infer_time,
+                "artifact":     first_voice_text if is_first_voice else artifact,
+                "first_ever":   is_first_ever,
+                "first_voice":  is_first_voice,
+            })
         else:
             # Compile or inference failed — record the failure and deduct points.
             _print_failure(item.model_id, error_str, elapsed)
@@ -1242,6 +1312,12 @@ if __name__ == "__main__":
                         help="Path to a single-model JSON file. Overrides --queue.")
     parser.add_argument("--results",    required=True,
                         help="Path to write the per-chip CSV results file.")
+    parser.add_argument("--bench-passes", type=int, default=0, metavar="N",
+                        help="Run 2 warm-up + N timed inference passes after each "
+                             "successful compile. Default 0 (disabled).")
+    parser.add_argument("--bench-shapes", action="store_true",
+                        help="Sweep alternative input shapes after bench passes. "
+                             "Requires --bench-passes > 0.")
     args = parser.parse_args()
     if not args.queue and not args.model_json:
         parser.error("one of --queue or --model-json is required")
@@ -1255,4 +1331,6 @@ if __name__ == "__main__":
         queue_path=args.queue,
         model_json_path=args.model_json,
         results_path=args.results,
+        bench_passes=args.bench_passes,
+        bench_shapes=args.bench_shapes,
     )
