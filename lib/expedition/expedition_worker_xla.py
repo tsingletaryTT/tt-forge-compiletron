@@ -126,6 +126,17 @@ _CSV_FIELDNAMES = [
 
 BACKEND_LABEL = "xla"
 
+# Minimum sequence length for compilation and benchmarking.  Loaders that
+# produce shorter inputs (e.g. BLOOM tokenising a 4-token sentence) are padded
+# up to this length so timing numbers reflect a realistic workload.
+_BENCH_SEQ_LEN = 32
+# Sample text injected into loaders that expose a sample_text attribute.
+# Long enough to hit _BENCH_SEQ_LEN on most tokenisers.
+_BENCH_SAMPLE_TEXT = (
+    "The quick brown fox jumps over the lazy dog. "
+    "In the beginning was the word, and the word was with God."
+)
+
 _TOKEN_TASKS: frozenset[str] = frozenset({
     "text-generation", "nlp_causal_lm", "nlp_masked_lm",
     "fill-mask", "nlp_text_cls", "nlp_token_cls",
@@ -960,12 +971,40 @@ def _build_loader_xla(item: QueueItem):
             # Prefer the loader's own load_inputs() for sample data — custom Linen
             # models (e.g. AlexNet) use positional raw arrays, not HF-style dicts.
             # Fall back to task-name heuristics for loaders without load_inputs().
+
+            # Inject a longer sample text so text models compile/bench with a
+            # realistic sequence length instead of whatever short string the loader
+            # uses by default (e.g. BLOOM's 4-token "Hello there fellow traveler").
+            if hasattr(instance, "sample_text"):
+                instance.sample_text = _BENCH_SAMPLE_TEXT
+
             _sample_inputs = None
             if hasattr(instance, "load_inputs"):
                 try:
                     _sample_inputs = instance.load_inputs()
                 except Exception:
                     pass
+
+            # Pad short text sequences up to _BENCH_SEQ_LEN.  Only applies to
+            # 2-D dict inputs with an input_ids key; image/audio shapes are left alone.
+            if (
+                _sample_inputs is not None
+                and isinstance(_sample_inputs, _Mapping)
+                and "input_ids" in _sample_inputs
+            ):
+                _ids = _sample_inputs["input_ids"]
+                if hasattr(_ids, "shape") and _ids.ndim == 2 and _ids.shape[1] < _BENCH_SEQ_LEN:
+                    _pad_len = _BENCH_SEQ_LEN - _ids.shape[1]
+                    _padded = {}
+                    for _k, _v in _sample_inputs.items():
+                        if hasattr(_v, "shape") and _v.ndim == 2 and _v.shape[1] == _ids.shape[1]:
+                            # attention_mask: 0 = ignore padding; input_ids: 1 (generic pad id)
+                            _pval = 0 if _k == "attention_mask" else 1
+                            _pad = jnp.full((_v.shape[0], _pad_len), _pval, dtype=_v.dtype)
+                            _padded[_k] = jnp.concatenate([_v, _pad], axis=1)
+                        else:
+                            _padded[_k] = _v
+                    _sample_inputs = _padded
 
             if _sample_inputs is not None:
                 def make_input(device, _si=_sample_inputs):
@@ -1078,6 +1117,7 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
 
     results: list[dict] = []
     last_artifact = ""
+    max_mesh_chips = 1  # track highest chip-count seen; drives closing banner
 
     for idx, item in enumerate(queue, 1):
         hud.set_current(item.model_id, idx)
@@ -1091,6 +1131,7 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
             f"  ✓{s.successes} ✗{s.failures}  {s.pts}pts"
         )
 
+        max_mesh_chips = max(max_mesh_chips, item.mesh_chips)
         is_first_ever = not bestiary.is_compiled(item.model_id)
         rarity = compute_rarity(item.hf_downloads)
         newness = compute_newness(item.hf_created_at, is_first_ever)
@@ -1272,7 +1313,10 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
     hud.mark_done()
     hud.write_status()
     s = hud.state
-    _set_pane_title(f"C{chip_id}·XLA DONE  ✓{s.successes} ✗{s.failures}  {s.pts}pts")
+    _chip_label = (
+        f"{max_mesh_chips}-CHIP RALLY" if max_mesh_chips > 1 else f"CHIP {chip_id}"
+    )
+    _set_pane_title(f"XLA {_chip_label} DONE  ✓{s.successes} ✗{s.failures}  {s.pts}pts")
 
     # Opened in append mode so that per-model TUI dispatch (multiple subprocess
     # calls for the same chip) accumulates rows rather than overwriting them.
@@ -1288,7 +1332,7 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
             writer.writerows(results)
 
     print(f"\n{BOLD}{TEAL}{'═'*80}{RESET}")
-    print(f"{BOLD}XLA CHIP {chip_id} DONE{RESET}  pts:{GOLD}{s.pts}{RESET}  "
+    print(f"{BOLD}XLA {_chip_label} DONE{RESET}  pts:{GOLD}{s.pts}{RESET}  "
           f"✓{s.successes} ✗{s.failures}  best streak: 🔥×{s.best_streak}")
     print(f"{BOLD}{TEAL}{'═'*80}{RESET}")
     try:
