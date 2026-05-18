@@ -160,6 +160,174 @@ def _compute_throughput(task: str, output: Any, infer_s: float) -> tuple[float, 
     return round(infer_s * 1000.0, 3), "ms/sample"
 
 
+def _percentile(sorted_data: list[float], p: float) -> float:
+    """Return the p-th percentile (0–100) from a sorted list via linear interpolation.
+
+    Uses the same formula as numpy.percentile with interpolation='linear':
+    locate the fractional index, then linearly interpolate between the two
+    neighbouring values.  Works correctly for edge cases:
+      - Single element: returns that element regardless of p.
+      - p=0: returns sorted_data[0].
+      - p=100: returns sorted_data[-1].
+
+    Args:
+        sorted_data: Pre-sorted (ascending) list of float values.
+        p:           Percentile in the range [0, 100].
+
+    Returns:
+        Interpolated percentile value, or 0.0 for an empty list.
+    """
+    if not sorted_data:
+        return 0.0
+    idx = (p / 100.0) * (len(sorted_data) - 1)
+    lo = int(idx)
+    hi = min(lo + 1, len(sorted_data) - 1)
+    return sorted_data[lo] + (sorted_data[hi] - sorted_data[lo]) * (idx - lo)
+
+
+def _run_bench_passes(
+    compiled_module: Any,
+    sample_inputs: list,
+    n_passes: int,
+    task: str,
+) -> dict:
+    """Run warm-up + timed inference passes on a forge-compiled module.
+
+    Runs 2 warm-up passes (discarded) then n_passes timed passes.  Computes
+    p50 and p95 inference latency and derives throughput from each percentile.
+    Stops silently on error — returns partial results when some passes succeed,
+    and an empty dict when all passes fail or n_passes is 0 or fewer.
+
+    Args:
+        compiled_module: forge-compiled module from forge.compile().
+        sample_inputs:   Normalised input tensor list (as returned by _compile_model).
+        n_passes:        Number of timed passes.  0 or negative returns {}.
+        task:            HuggingFace task string — controls throughput unit via
+                         _compute_throughput (tokens/sec for token tasks, ms/sample
+                         for vision/audio/embeddings).
+
+    Returns:
+        A dict with keys:
+          bench_passes  — actual number of timed passes completed (may be < n_passes
+                          if the module crashed mid-way).
+          infer_p50_s   — p50 (median) inference latency in seconds (rounded to 4 dp).
+          infer_p95_s   — p95 inference latency in seconds (rounded to 4 dp).
+          throughput_p50 — throughput derived from p50 latency (rounded to 2 dp).
+          throughput_p95 — throughput derived from p95 latency (rounded to 2 dp).
+        Returns {} on failure (n_passes <= 0, warm-up crash, or zero timed passes).
+    """
+    if n_passes <= 0:
+        return {}
+
+    last_output = None
+
+    # Warm-up: 2 passes, not timed.  If the module crashes during warm-up we
+    # return {} immediately — there's nothing useful to measure.
+    for _ in range(2):
+        try:
+            compiled_module(*sample_inputs)
+        except Exception:
+            return {}
+
+    # Timed passes — stop at first exception so partial results are still useful.
+    times: list[float] = []
+    for _ in range(n_passes):
+        try:
+            t0 = time.time()
+            last_output = compiled_module(*sample_inputs)
+            times.append(time.time() - t0)
+        except Exception:
+            break
+
+    if not times:
+        return {}
+
+    times.sort()
+    p50 = _percentile(times, 50)
+    p95 = _percentile(times, 95)
+    throughput_p50, _ = _compute_throughput(task, last_output, p50)
+    throughput_p95, _ = _compute_throughput(task, last_output, p95)
+    return {
+        "bench_passes":    len(times),
+        "infer_p50_s":     round(p50, 4),
+        "infer_p95_s":     round(p95, 4),
+        "throughput_p50":  round(throughput_p50, 2),
+        "throughput_p95":  round(throughput_p95, 2),
+    }
+
+
+def _run_shape_sweep(
+    compiled_module: Any,
+    loader: Any,
+    task: str,
+    n_passes: int,
+) -> list[dict]:
+    """Run bench passes at alternative input shapes to characterise scaling.
+
+    For token tasks: sweeps sequence lengths [128, 512] at batch=1.
+    For vision or other tasks: sweeps image size 384×384 (typical when default
+    was 224).  Shape-level failures are silently skipped so one bad shape never
+    aborts the whole sweep.
+
+    Args:
+        compiled_module: forge-compiled module from forge.compile().
+        loader:          Original model loader — currently unused, reserved for
+                         loaders that expose a custom make_inputs(spec) method.
+        task:            HuggingFace pipeline task string — controls sweep shapes
+                         and throughput units.
+        n_passes:        Number of timed passes per shape (no warm-up).
+
+    Returns:
+        A list of dicts.  Each dict contains the shape spec key(s) plus:
+          infer_s    — median (p50) inference latency in seconds (rounded to 4 dp).
+          throughput — throughput derived from p50 latency (rounded to 2 dp).
+        Shapes that fail to run return no entry in the list.
+    """
+    import torch
+
+    if task in _TOKEN_TASKS:
+        sweep = [{"seq": 128}, {"seq": 512}]
+
+        def make_inputs(spec: dict) -> list:
+            return [torch.randint(0, 1000, (1, spec["seq"]))]
+    else:
+        sweep = [{"img_size": 384}]
+
+        def make_inputs(spec: dict) -> list:
+            return [torch.randn(1, 3, spec["img_size"], spec["img_size"])]
+
+    results: list[dict] = []
+    for spec in sweep:
+        try:
+            inputs = _normalise_inputs(make_inputs(spec))
+            times: list[float] = []
+            last_out = None
+
+            # Warm-up: 2 passes, discarded.
+            for _ in range(2):
+                compiled_module(*inputs)
+
+            # Timed passes.
+            for _ in range(n_passes):
+                t0 = time.time()
+                last_out = compiled_module(*inputs)
+                times.append(time.time() - t0)
+
+            if times:
+                times.sort()
+                p50 = _percentile(times, 50)
+                tput, _ = _compute_throughput(task, last_out, p50)
+                results.append({
+                    **spec,
+                    "infer_s":    round(p50, 4),
+                    "throughput": round(tput, 2),
+                })
+        except Exception:
+            pass  # skip shapes that fail — don't abort the whole sweep
+
+    return results
+
+
 class TimeoutException(Exception):
     """Raised by the SIGALRM handler when a compile/inference step hangs."""
     pass
