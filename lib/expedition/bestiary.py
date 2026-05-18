@@ -282,6 +282,10 @@ class Bestiary:
         artifact: str,
         backend: str = "forge",
         first_voice: str = "",
+        compile_s: float = 0.0,
+        infer_s: float = 0.0,
+        throughput: float = 0.0,
+        throughput_unit: str = "",
     ) -> None:
         """Record a successful compilation.
 
@@ -310,6 +314,15 @@ class Bestiary:
             backend:       Compilation backend used: "forge" (default) or "xla".
             first_voice:   Decoded first-voice text (real sample input → decoded output).
                            Empty string when first voice was not attempted or failed.
+            compile_s:     Wall-clock seconds spent in forge.compile() / jax.jit(). Zero
+                           means not measured; zero values are ignored for rolling-best.
+            infer_s:       Wall-clock seconds for the post-compile inference call. Zero
+                           means not measured; zero values are ignored for rolling-best.
+            throughput:    Numeric throughput value. Interpretation depends on
+                           throughput_unit: "tokens/sec" (higher is better) or
+                           "ms/sample" (lower is better). Zero means not measured.
+            throughput_unit: Unit string for throughput, e.g. "tokens/sec" or
+                           "ms/sample". Empty string when throughput is not measured.
         """
         now = datetime.now(timezone.utc).isoformat()
         if model_id not in self._data["compiled"]:
@@ -336,6 +349,28 @@ class Bestiary:
         # Track the fastest compilation time across all chips/runs.
         if time_s < entry["best_time_s"]:
             entry["best_time_s"] = time_s
+        # Update split timing and throughput rolling bests.
+        # Zero values mean "not measured" and are skipped so legacy callers
+        # that omit these params don't overwrite real data with zeros.
+        if compile_s > 0.0:
+            if "best_compile_s" not in entry or compile_s < entry["best_compile_s"]:
+                entry["best_compile_s"] = compile_s
+        if infer_s > 0.0:
+            if "best_infer_s" not in entry or infer_s < entry["best_infer_s"]:
+                entry["best_infer_s"] = infer_s
+        if throughput > 0.0:
+            # Always keep throughput_unit in sync with the latest non-zero measurement.
+            entry["throughput_unit"] = throughput_unit
+            if "best_throughput" not in entry:
+                entry["best_throughput"] = throughput
+            elif throughput_unit == "tokens/sec":
+                # Higher throughput is better for token-rate metrics.
+                if throughput > entry["best_throughput"]:
+                    entry["best_throughput"] = throughput
+            else:
+                # Lower is better for latency metrics such as ms/sample.
+                if throughput < entry["best_throughput"]:
+                    entry["best_throughput"] = throughput
         # Always update artifact so the bestiary reflects the most recent output.
         entry["artifact"] = artifact
         # Update first_voice if we got a non-empty result (never clobber with "").
@@ -497,6 +532,24 @@ class Bestiary:
         header = f"{model_id} · {task} · {compiled_at} · chip-{chip} · run-{run}"
         path.write_text(f"{header}\n{artifact_text}", encoding="utf-8")
         return path
+
+    def append_perf_record(self, record: dict) -> None:
+        """Append one performance record line to the sibling perf_history.jsonl file.
+
+        The file is stored alongside bestiary.json as data/perf_history.jsonl.
+        Each line is a self-contained JSON object — one per model per run.
+        The parent directory is created if it does not already exist, so this
+        method is safe to call before save() has ever been invoked.
+
+        Args:
+            record: Arbitrary dict of performance fields for one run. Callers
+                    typically include at minimum: model_id, run, compile_s,
+                    infer_s, throughput, throughput_unit.
+        """
+        perf_path = self.path.parent / "perf_history.jsonl"
+        perf_path.parent.mkdir(parents=True, exist_ok=True)
+        with perf_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
 
     def load_artifact(
         self,
