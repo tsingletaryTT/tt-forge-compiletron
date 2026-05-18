@@ -82,6 +82,11 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Warn about flags that are ignored in curated mode
+if [[ "$CURATED" -eq 1 && "$MODELS_PER_CHIP" -ne 4 ]]; then
+    echo "NOTE: --models is ignored in --curated mode (queue is hand-picked)."
+fi
+
 # Use separate output files for scrolling / bench modes
 [[ "$TUI" -eq 0 ]] && CAST="docs/demo_scroll_raw.cast"
 [[ "$BENCH_PASSES" -gt 0 ]] && CAST="docs/demo_bench_raw.cast"
