@@ -119,6 +119,46 @@ _NEWNESS_STYLE = {
 # extrasaction="ignore" in DictWriter allows both row shapes to coexist.
 _CSV_FIELDNAMES = ["model", "status", "pts", "compile_time", "artifact", "first_ever", "first_voice", "error"]
 
+# Tasks whose output tensor's seq dimension (axis 1) is meaningful as token
+# count.  For these tasks _compute_throughput reports tokens/sec; everything
+# else (CV, embeddings, QA, audio) reports ms/sample.
+_TOKEN_TASKS: frozenset[str] = frozenset({
+    "text-generation", "nlp_causal_lm", "nlp_masked_lm",
+    "fill-mask", "nlp_text_cls", "nlp_token_cls",
+})
+
+
+def _compute_throughput(task: str, output: Any, infer_s: float) -> tuple[float, str]:
+    """Compute throughput from a decoded inference output tensor.
+
+    For token-producing tasks (members of _TOKEN_TASKS), returns
+    (tokens_per_sec, "tokens/sec") using output.shape[1] as the sequence
+    length.  For all other tasks (CV, embeddings, QA, audio) returns
+    (ms_per_sample, "ms/sample").  Returns (0.0, "") when infer_s is zero,
+    output is None, or the output shape cannot be read (e.g. 1-D tensor for
+    a token task).
+
+    Args:
+        task:    HuggingFace pipeline task string (e.g. "text-generation").
+        output:  Raw inference output tensor (may be None on failure paths).
+        infer_s: Wall-clock seconds spent in the inference call.  Must be > 0.
+
+    Returns:
+        (throughput_value, throughput_unit) where unit is "tokens/sec",
+        "ms/sample", or "" (when measurement is not available).
+    """
+    if infer_s <= 0.0 or output is None:
+        return 0.0, ""
+    try:
+        if task in _TOKEN_TASKS:
+            seq_len = output.shape[1]
+            return round(seq_len / infer_s, 3), "tokens/sec"
+    except (AttributeError, IndexError):
+        # output has no .shape or shape has fewer than 2 dimensions — fall
+        # through to the ms/sample path rather than crashing.
+        pass
+    return round(infer_s * 1000.0, 3), "ms/sample"
+
 
 class TimeoutException(Exception):
     """Raised by the SIGALRM handler when a compile/inference step hangs."""
@@ -322,16 +362,18 @@ def _try_install_missing(error_str: str) -> str | None:
     return pkg
 
 
-def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool, Any, float, str, Any]:
+def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool, Any, float, float, str, Any, list]:
     """Run forge compile + inference for one model.
 
-    Returns a 5-tuple (success, output, compile_time, error_str, compiled):
-      - success:      True if both compile and inference completed without error.
-      - output:       The raw inference output tensor/list (None on failure).
-      - compile_time: Seconds spent in forge.compile() (0.0 on failure before compile).
-      - error_str:    Empty string on success; "TIMEOUT" or "ExcType: msg" on failure.
-      - compiled:     The forge-compiled module (None on failure); callers may run
-                      additional inference passes (First Voice) without recompiling.
+    Returns a 7-tuple (success, output, compile_time, infer_time, error_str, compiled, sample_inputs):
+      - success:       True if both compile and inference completed without error.
+      - output:        The raw inference output tensor/list (None on failure).
+      - compile_time:  Seconds spent in forge.compile() (0.0 on failure before compile).
+      - infer_time:    Seconds spent in the inference call (0.0 on failure or timeout).
+      - error_str:     Empty string on success; "TIMEOUT" or "ExcType: msg" on failure.
+      - compiled:      The forge-compiled module (None on failure); callers may run
+                       additional inference passes (First Voice) without recompiling.
+      - sample_inputs: List of input tensors used for compile/inference ([] on failure).
 
     Compile is attempted twice for models that fail with a tracer type-inference
     error.  HuggingFace causal-LM models commonly return a CausalLMOutputWithPast
@@ -473,7 +515,7 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
 
         if compile_error is not None:
             e = compile_error
-            return False, None, compile_time, f"{type(e).__name__}: {str(e)[:300]}", None
+            return False, None, compile_time, 0.0, f"{type(e).__name__}: {str(e)[:300]}", None, []
 
         _print_progress_step(3, 3, f"Running inference on chip {chip_id}...")
         # Use SIGALRM so that a hung inference doesn't stall the entire worker.
@@ -481,24 +523,26 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
         signal.alarm(timeout)
         try:
             infer_inputs = _normalise_inputs(sample_inputs)
+            infer_start = time.time()
             output = compiled(*infer_inputs)
+            infer_time = time.time() - infer_start
             signal.alarm(0)  # cancel the alarm on clean completion
         except TimeoutException:
             signal.alarm(0)
-            return False, None, compile_time, "TIMEOUT", None
+            return False, None, compile_time, 0.0, "TIMEOUT", None, []
 
         # Unwrap list outputs (forge sometimes returns [tensor]).
         if isinstance(output, list):
             output = output[0] if output else None
 
-        return True, output, compile_time, "", compiled
+        return True, output, compile_time, infer_time, "", compiled, list(sample_inputs)
 
     except TimeoutException as e:
         signal.alarm(0)
-        return False, None, 0.0, "TIMEOUT", None
+        return False, None, 0.0, 0.0, "TIMEOUT", None, []
     except Exception as e:
         signal.alarm(0)
-        return False, None, 0.0, f"{type(e).__name__}: {str(e)[:300]}", None
+        return False, None, 0.0, 0.0, f"{type(e).__name__}: {str(e)[:300]}", None, []
 
 
 def _attempt_first_voice(
@@ -859,11 +903,11 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             continue
 
         # ── Compile + inference ──────────────────────────────────────────────
-        success, output, compile_time, error_str, compiled_module = _compile_model(loader, chip_id)
+        success, output, compile_time, infer_time, error_str, compiled_module, sample_inputs = _compile_model(loader, chip_id)
         # Auto-install missing packages and retry once
         if not success and "No module named" in error_str:
             if _try_install_missing(error_str):
-                success, output, compile_time, error_str, compiled_module = _compile_model(loader, chip_id)
+                success, output, compile_time, infer_time, error_str, compiled_module, sample_inputs = _compile_model(loader, chip_id)
         elapsed = time.time() - start
 
         if success:
