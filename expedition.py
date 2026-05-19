@@ -895,6 +895,7 @@ def build_queues(
             "loader_missing",       # no loader implementation available
             "missing_dependency",   # optional package not installed (mamba-ssm, etc.)
             "unsupported_backend",  # paddle/ONNX/other backend we don't support
+            "xla_runtime_error",    # XLA runtime failure (e.g. bigbird/jax, bart/jax)
             "api_mismatch",         # JAX/Flax API incompatibility in our worker
             "shape_mismatch",       # tensor shape incompatibility in model forward pass
         }
