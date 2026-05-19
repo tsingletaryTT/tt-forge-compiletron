@@ -1,0 +1,671 @@
+{
+  "compiled": {
+    "nsega/distilbert-base-uncased-finetuned-squad-d5716d28": {
+      "first_compiled": "2026-04-27T20:10:58.837359+00:00",
+      "first_chip": 0,
+      "run": 1,
+      "best_time_s": 5.6564247608184814,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "fill-mask",
+      "rarity": "common",
+      "hf_downloads": 48,
+      "hf_created_at": "2026-04-26T16:33:06+00:00",
+      "artifact": "shape=(1, 32, 30522) dtype=torch.float32 range=[-6.59, 3.97]"
+    },
+    "lumasik/quark-1-248m-base": {
+      "first_compiled": "2026-04-27T20:22:22.880015+00:00",
+      "first_chip": 0,
+      "run": 1,
+      "best_time_s": 13.461943626403809,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "text-generation",
+      "rarity": "common",
+      "hf_downloads": 380,
+      "hf_created_at": "2026-04-25T22:01:31+00:00",
+      "artifact": "shape=(1, 32, 32000) dtype=torch.float32 range=[-26.88, 11.49]"
+    },
+    "OpceanAI/Yuuki-RxG-nano": {
+      "first_compiled": "2026-04-28T00:27:10.247397+00:00",
+      "first_chip": 0,
+      "run": 1,
+      "best_time_s": 48.43316459655762,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "text-generation",
+      "rarity": "common",
+      "hf_downloads": 128,
+      "hf_created_at": "2026-04-26T14:45:03+00:00",
+      "artifact": "shape=(1, 32, 151936) dtype=torch.float32 range=[-8.04, 12.91]"
+    },
+    "Xerv-AI/Ada": {
+      "first_compiled": "2026-04-28T21:09:46.521452+00:00",
+      "first_chip": 2,
+      "run": 6,
+      "best_time_s": 43.143832206726074,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "text-generation",
+      "rarity": "common",
+      "hf_downloads": 439,
+      "hf_created_at": "2026-04-25T04:04:11+00:00",
+      "artifact": "shape=(1, 32, 151936) dtype=torch.float32 range=[-17.10, 26.14]"
+    },
+    "ULTR0N/SentienceTrial1": {
+      "first_compiled": "2026-04-28T21:50:00.311940+00:00",
+      "first_chip": 3,
+      "run": 6,
+      "best_time_s": 11.849815368652344,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "text-generation",
+      "rarity": "common",
+      "hf_downloads": 477,
+      "hf_created_at": "2026-04-25T01:54:26+00:00",
+      "artifact": "\u00e9l volnas\u00e1g,adonkor,,,\u00e9j:\u00e1rae\u00e9nenk\u00e9nt,.\u00e1ra,\u00e9nenk\u00e9ntunk,,\u00e1nak\u00e1ny,,AAAA"
+    },
+    "snehangshu511/gpt2-medium-instruct": {
+      "first_compiled": "2026-04-28T22:09:08.226913+00:00",
+      "first_chip": 2,
+      "run": 6,
+      "best_time_s": 24.09934091567993,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "text-generation",
+      "rarity": "common",
+      "hf_downloads": 614,
+      "hf_created_at": "2026-04-25T12:11:45+00:00",
+      "artifact": "shape=(1, 32, 50257) dtype=torch.float32 range=[-56.02, -1.71]"
+    },
+    "itstechuse/akeno-mergedv8": {
+      "first_compiled": "2026-04-28T22:57:09.557947+00:00",
+      "first_chip": 3,
+      "run": 6,
+      "best_time_s": 71.85558843612671,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "text-generation",
+      "rarity": "common",
+      "hf_downloads": 230,
+      "hf_created_at": "2026-04-26T09:10:51+00:00",
+      "artifact": "shape=(1, 32, 32000) dtype=torch.float32 range=[-11.92, 12.83]"
+    },
+    "abubakaraabi786/tinyllama-peft-merged": {
+      "first_compiled": "2026-04-28T23:07:31.570796+00:00",
+      "first_chip": 2,
+      "run": 6,
+      "best_time_s": 33.81943893432617,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "text-generation",
+      "rarity": "common",
+      "hf_downloads": 465,
+      "hf_created_at": "2026-04-26T09:23:33+00:00",
+      "artifact": "shape=(1, 32, 32000) dtype=torch.float32 range=[-15.00, 18.60]"
+    },
+    "OvercastLab/Quark-50m-Instruct": {
+      "first_compiled": "2026-04-28T23:08:31.227991+00:00",
+      "first_chip": 2,
+      "run": 6,
+      "best_time_s": 39.8749680519104,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "text-generation",
+      "rarity": "common",
+      "hf_downloads": 2397,
+      "hf_created_at": "2026-04-22T18:58:49+00:00",
+      "artifact": "shape=(1, 32, 49152) dtype=torch.float32 range=[-12.61, 14.51]"
+    },
+    "openai-community/gpt2": {
+      "first_compiled": "2026-04-29T03:19:36.163216+00:00",
+      "first_chip": 0,
+      "run": 999,
+      "best_time_s": 1.0653059482574463,
+      "successes": 7,
+      "source": "huggingface",
+      "task": "text-generation",
+      "rarity": "legendary",
+      "hf_downloads": 10000000,
+      "hf_created_at": null,
+      "artifact": "\u2192 would (40%) | could (13%) | was (12%)",
+      "backends_succeeded": [
+        "forge"
+      ]
+    },
+    "albert/question_answering/pytorch": {
+      "first_compiled": "2026-05-07T23:40:43.691972+00:00",
+      "first_chip": 2,
+      "run": 13,
+      "best_time_s": 9.697202444076538,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_qa",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32) dtype=torch.float32 range=[-1.01, -0.48]",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ]
+    },
+    "albert/sequence_classification/pytorch": {
+      "first_compiled": "2026-05-11T18:05:33.339948+00:00",
+      "first_chip": 3,
+      "run": 14,
+      "best_time_s": 9.413544654846191,
+      "successes": 3,
+      "source": "huggingface",
+      "task": "nlp_text_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 2) dtype=torch.float32 range=[0.08, 0.58]",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ]
+    },
+    "allam/causal_lm/pytorch": {
+      "first_compiled": "2026-05-11T18:27:23.602651+00:00",
+      "first_chip": 1,
+      "run": 15,
+      "best_time_s": 55.80251598358154,
+      "successes": 2,
+      "source": "huggingface",
+      "task": "nlp_causal_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 64000) dtype=torch.float32 range=[-23.56, 10.82]",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ]
+    },
+    "albert/token_classification/pytorch": {
+      "first_compiled": "2026-05-11T21:50:15.461686+00:00",
+      "first_chip": 2,
+      "run": 16,
+      "best_time_s": 9.970369815826416,
+      "successes": 2,
+      "source": "huggingface",
+      "task": "nlp_token_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 2) dtype=torch.float32 range=[-0.25, 0.90]",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ]
+    },
+    "bloom/pytorch": {
+      "first_compiled": "2026-05-11T22:01:23.135275+00:00",
+      "first_chip": 0,
+      "run": 16,
+      "best_time_s": 27.08126211166382,
+      "successes": 3,
+      "source": "huggingface",
+      "task": "nlp_causal_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 250880) dtype=torch.float32 range=[-11.48, 18.88]",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ]
+    },
+    "alexnet/pytorch": {
+      "first_compiled": "2026-05-11T22:12:08.672757+00:00",
+      "first_chip": 0,
+      "run": 17,
+      "best_time_s": 2.7909421920776367,
+      "successes": 24,
+      "source": "torchvision",
+      "task": "cv_image_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "top-3: class_281 11.08, class_285 9.83, class_187 9.06",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "best_compile_s": 2.982311487197876,
+      "best_infer_s": 0.16930723190307617,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 169.307,
+      "first_voice": "top-3: class_420 7.84, class_870 6.90, class_889 6.89"
+    },
+    "beit/pytorch": {
+      "first_compiled": "2026-05-11T22:12:53.777160+00:00",
+      "first_chip": 2,
+      "run": 17,
+      "best_time_s": 22.46720242500305,
+      "successes": 19,
+      "source": "huggingface",
+      "task": "cv_image_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "top-3: class_21 5.90, class_22 5.25, class_23 5.04",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "first_voice": "top-3: class_812 2.44, class_51 2.11, class_488 1.97",
+      "best_compile_s": 40.04952621459961,
+      "best_infer_s": 14.017484903335571,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 14017.485
+    },
+    "bge_1_5/embedding_generation/pytorch": {
+      "first_compiled": "2026-05-11T22:29:16.734555+00:00",
+      "first_chip": 3,
+      "run": 18,
+      "best_time_s": 19.956746339797974,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_embed_gen",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 1024) dtype=torch.float32 range=[-1.93, 4.91]",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ]
+    },
+    "albert/masked_lm/pytorch": {
+      "first_compiled": "2026-05-12T00:44:25.619591+00:00",
+      "first_chip": 0,
+      "run": 99,
+      "best_time_s": 9.272822856903076,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_masked_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 30000) dtype=torch.float32 range=[-32.28, 16.52]",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ]
+    },
+    "microsoft/resnet-50": {
+      "first_compiled": "2026-05-12T17:01:08.112704+00:00",
+      "first_chip": 2,
+      "run": 24,
+      "best_time_s": 10.408241271972656,
+      "successes": 8,
+      "source": "huggingface",
+      "task": "image-classification",
+      "rarity": "legendary",
+      "hf_downloads": 12000000,
+      "hf_created_at": "2023-01-01T00:00:00Z",
+      "artifact": "top-3: class_980 7.73, class_117 -3.70, class_577 -3.77",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ]
+    },
+    "alexnet/image_classification/onnx": {
+      "first_compiled": "2026-05-12T22:35:28.022047+00:00",
+      "first_chip": 2,
+      "run": 39,
+      "best_time_s": 3.627490997314453,
+      "successes": 1,
+      "source": "torchvision",
+      "task": "cv_image_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-3.84, 5.82]",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ]
+    },
+    "googlenet/pytorch": {
+      "first_compiled": "2026-05-13T16:21:52.876391+00:00",
+      "first_chip": 2,
+      "run": 47,
+      "best_time_s": 11.52592945098877,
+      "successes": 2,
+      "source": "tt-forge-models",
+      "task": "image-classification",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "top-3: class_642 7.83, class_401 7.66, class_420 5.54",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ]
+    },
+    "densenet/pytorch": {
+      "first_compiled": "2026-05-13T16:23:28.165779+00:00",
+      "first_chip": 2,
+      "run": 47,
+      "best_time_s": 40.65670371055603,
+      "successes": 4,
+      "source": "tt-forge-models",
+      "task": "image-classification",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "top-3: class_281 13.65, class_285 11.66, class_282 11.58",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "first_voice": "top-3: class_281 13.86, class_285 13.00, class_282 11.57"
+    },
+    "bloom/causal_lm/jax": {
+      "first_compiled": "2026-05-13T16:52:05.685765+00:00",
+      "first_chip": 0,
+      "run": 50,
+      "best_time_s": 2.621619462966919,
+      "successes": 20,
+      "source": "tt-forge-models",
+      "task": "text-generation",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(4, 32, 250880)  max=20.889  mean=-1.991",
+      "backend": "xla",
+      "backends_succeeded": [
+        "xla"
+      ],
+      "first_voice": "",
+      "best_compile_s": 3.2763772010803223,
+      "best_infer_s": 0.03319525718688965,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 3855.973
+    },
+    "mobilenetv2/pytorch": {
+      "first_compiled": "2026-05-13T17:08:16.205140+00:00",
+      "first_chip": 3,
+      "run": 51,
+      "best_time_s": 10.482332468032837,
+      "successes": 6,
+      "source": "tt-forge-models",
+      "task": "image-classification",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "top-3: class_281 17.22, class_282 15.69, class_285 15.40",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "first_voice": "top-3: class_568 8.72, class_523 7.36, class_697 7.18",
+      "best_compile_s": 10.453450679779053,
+      "best_infer_s": 0.48430562019348145,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 484.306
+    },
+    "resnet/pytorch": {
+      "first_compiled": "2026-05-13T18:38:17.189603+00:00",
+      "first_chip": 0,
+      "run": 56,
+      "best_time_s": 10.45112681388855,
+      "successes": 4,
+      "source": "tt-forge-models",
+      "task": "image-classification",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "top-3: class_282 1.74, class_281 -1.60, class_761 -4.70",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "first_voice": "top-3: class_516 -0.88, class_669 -1.96, class_419 -2.39",
+      "best_compile_s": 10.825481414794922,
+      "best_infer_s": 0.34203243255615234,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 342.032
+    },
+    "ghostnet/pytorch": {
+      "first_compiled": "2026-05-13T18:38:46.863567+00:00",
+      "first_chip": 0,
+      "run": 56,
+      "best_time_s": 20.11131525039673,
+      "successes": 12,
+      "source": "tt-forge-models",
+      "task": "image-classification",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "top-3: class_281 10.27, class_282 8.02, class_285 7.82",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "first_voice": "top-3: class_568 6.49, class_434 5.83, class_593 5.71",
+      "best_compile_s": 22.89322566986084,
+      "best_infer_s": 48.110865354537964,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 48110.865
+    },
+    "gpt2/pytorch": {
+      "first_compiled": "2026-05-13T20:17:30.956245+00:00",
+      "first_chip": 1,
+      "run": 60,
+      "best_time_s": 12.501453399658203,
+      "successes": 2,
+      "source": "tt-forge-models",
+      "task": "text-generation",
+      "rarity": "legendary",
+      "hf_downloads": 30000000,
+      "hf_created_at": "2023-01-01T00:00:00Z",
+      "artifact": "shape=(1, 256, 50257) dtype=torch.float32 range=[-130.25, -38.52]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ]
+    },
+    "deit/pytorch": {
+      "first_compiled": "2026-05-13T22:24:03.211581+00:00",
+      "first_chip": 1,
+      "run": 67,
+      "best_time_s": 9.863290786743164,
+      "successes": 1,
+      "source": "tt-forge-models",
+      "task": "image-classification",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "top-3: class_281 6.20, class_282 5.27, class_285 4.77",
+      "first_voice": "top-3: class_850 4.76, class_568 4.66, class_523 4.63",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ]
+    },
+    "efficientnet_lite/pytorch": {
+      "first_compiled": "2026-05-13T22:24:26.673659+00:00",
+      "first_chip": 1,
+      "run": 67,
+      "best_time_s": 11.869760036468506,
+      "successes": 3,
+      "source": "tt-forge-models",
+      "task": "image-classification",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "top-3: class_281 11.45, class_282 10.53, class_285 9.68",
+      "first_voice": "top-3: class_401 6.02, class_887 5.69, class_400 4.96",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "best_compile_s": 11.973581075668335,
+      "best_infer_s": 1.173384428024292,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 1173.384
+    }
+  },
+  "failed": {
+    "gyaudhw/gptbert-extra-baseline-2026-strictsmall": {
+      "run_first_failed": 5,
+      "attempts": 6,
+      "last_error": "AttributeError: 'DWAModules' object has no attribute '_initialize_weights'",
+      "error_category": "model_bug"
+    },
+    "Ethangou/attention-residuals-100M-block": {
+      "run_first_failed": 5,
+      "attempts": 2,
+      "last_error": "ValueError: The checkpoint you are trying to load has model type `qwen3_attnres` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.\n\nYou can update Transformers with the command `pip install --upgr",
+      "error_category": "unsupported_arch"
+    },
+    "Ethangou/attention-residuals-0.6B-baseline": {
+      "run_first_failed": 5,
+      "attempts": 4,
+      "last_error": "RuntimeError: Tracer cannot infer type of (tensor([[[ 3.2961,  3.6585, -0.4105,  ..., -2.7312, -3.5659, -3.4601],\n         [ 0.9121,  4.0974, -0.4148,  ..., -4.2875, -4.5448, -4.6930],\n         [ 2.1911,  4.3066, -0.6773,  ..., -3.3366, -3.3635, -3.1226],\n         ...,\n         [ 1.0273,  1.2560,  4.3667,  ..., -",
+      "error_category": "tracer_output_type"
+    },
+    "hirundo-io/NVIDIA-Nemotron-3-Nano-4B-BF16": {
+      "run_first_failed": 6,
+      "attempts": 1,
+      "last_error": "ImportError: mamba-ssm is required by the Mamba model but cannot be imported",
+      "error_category": "missing_dependency"
+    },
+    "Supbatomic/moss-tts-nano-100m-model": {
+      "run_first_failed": 6,
+      "attempts": 1,
+      "last_error": "Cannot build dynamic loader for Supbatomic/moss-tts-nano-100m-model",
+      "error_category": "loader_missing"
+    },
+    "Yosua69/blt-moe-distilled": {
+      "run_first_failed": 6,
+      "attempts": 5,
+      "last_error": "ValueError: The checkpoint you are trying to load has model type `BLT-MoE` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.\n\nYou can update Transformers with the command `pip install --upgrade tr",
+      "error_category": "unsupported_arch"
+    },
+    "LiamCarter/icl-pruning-wanda-sparsity-0.5": {
+      "run_first_failed": 6,
+      "attempts": 1,
+      "last_error": "RuntimeError: Tracer cannot infer type of (tensor([[[  0.6309,   2.5360,   5.0195,  ...,   3.7928,   1.0704,   2.2058],\n         [ -9.5215, -12.2350,   0.3415,  ...,  -0.5769,  -0.4915,  -0.4239],\n         [-13.2838, -15.1983,  -1.9681,  ...,  -8.0744, -10.0151, -11.6863],\n         ...,\n         [-12.4239, -13.55",
+      "error_category": "tracer_output_type"
+    },
+    "Ethangou/attention-residuals-100M-baseline": {
+      "run_first_failed": 6,
+      "attempts": 1,
+      "last_error": "RuntimeError: Tracer cannot infer type of (tensor([[[ 0.3062, -0.0219,  0.1891,  ..., -5.7554, -6.1495, -5.7909],\n         [ 0.7483,  1.5187, -0.1387,  ..., -4.5352, -4.7962, -4.4901],\n         [ 0.7166,  1.8507,  0.5659,  ..., -4.7620, -4.9342, -4.7121],\n         ...,\n         [ 0.8575,  1.8723,  1.0266,  ..., -",
+      "error_category": "tracer_output_type"
+    },
+    "KKHYA/llavaqwen2.5-0.5b-finetune-dyn-col-mask-moe-sparse-4e-2k-sp0.9-r64_20260422_030205": {
+      "run_first_failed": 6,
+      "attempts": 1,
+      "last_error": "ValueError: The checkpoint you are trying to load has model type `dyn_col_mask_moe_llava_qwen2` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.\n\nYou can update Transformers with the command `pip",
+      "error_category": "unsupported_arch"
+    },
+    "albert/masked_lm/jax": {
+      "run_first_failed": 12,
+      "attempts": 9,
+      "last_error": "AttributeError: ",
+      "error_category": "other"
+    },
+    "alexnet/image_classification/jax": {
+      "run_first_failed": 15,
+      "attempts": 5,
+      "last_error": "ScopeCollectionNotFound: Tried to access \"kernel\" from collection \"params\" in \"/Conv_0\" but the collection is empty. (https://flax.readthedocs.io/en/latest/api_reference/flax.errors.html#flax.errors.ScopeCollectionNotFound)",
+      "error_category": "other"
+    },
+    "attention_denseunet/pytorch": {
+      "run_first_failed": 16,
+      "attempts": 5,
+      "last_error": "AssertionError: Setting a tensor value of incorrect shape: (1, 1024, 64, 32) vs torch.Size([1, 1024, 32, 32])",
+      "error_category": "shape_mismatch"
+    },
+    "beit/image_classification/jax": {
+      "run_first_failed": 16,
+      "attempts": 2,
+      "last_error": "AttributeError: ",
+      "error_category": "other"
+    },
+    "bi_lstm_crf/pytorch": {
+      "run_first_failed": 16,
+      "attempts": 1,
+      "last_error": "IndexError: index out of range in self",
+      "error_category": "forge_internal"
+    },
+    "bigbird/causal_lm/jax": {
+      "run_first_failed": 16,
+      "attempts": 2,
+      "last_error": "XlaRuntimeError: INTERNAL: Error code: 13",
+      "error_category": "xla_runtime_error"
+    },
+    "blip/vision_language/paddlepaddle": {
+      "run_first_failed": 16,
+      "attempts": 2,
+      "last_error": "ValueError: `forward()` requires `pixel_values` arguments, but not found in input `args`: [InputSpec(shape=(1, 32), dtype=paddle.int64, name=None, stop_gradient=False)] and `kwargs`: {}.",
+      "error_category": "unsupported_backend"
+    },
+    "autoencoder/pytorch": {
+      "run_first_failed": 17,
+      "attempts": 1,
+      "last_error": "RuntimeError: mat1 and mat2 shapes cannot be multiplied (672x224 and 784x128)",
+      "error_category": "shape_mismatch"
+    },
+    "bart/pytorch": {
+      "run_first_failed": 18,
+      "attempts": 1,
+      "last_error": "IndexError: index -1 is out of bounds for dimension 1 with size 0",
+      "error_category": "forge_internal"
+    },
+    "bart/causal_lm/jax": {
+      "run_first_failed": 22,
+      "attempts": 2,
+      "last_error": "XlaRuntimeError: INTERNAL: Error code: 13",
+      "error_category": "xla_runtime_error"
+    },
+    "bevformer/pytorch": {
+      "run_first_failed": 40,
+      "attempts": 1,
+      "last_error": "ValueError: IRD_LF_CACHE environment variable is not set. Please set it to the address of the IRD LF cache.",
+      "error_category": "missing_dependency"
+    },
+    "musicgen_small/pytorch": {
+      "run_first_failed": 57,
+      "attempts": 3,
+      "last_error": "TypeError: ones_like(): argument 'input' (position 1) must be Tensor, not NoneType",
+      "error_category": "other"
+    },
+    "yolos_small/pytorch": {
+      "run_first_failed": 57,
+      "attempts": 2,
+      "last_error": "AssertionError: Resize2d op only support nearest and bilinear mode for now",
+      "error_category": "other"
+    }
+  },
+  "chip_totals": {
+    "0": {
+      "pts": 15977,
+      "first_evers": 10,
+      "best_streak": 4
+    },
+    "2": {
+      "pts": 12450,
+      "first_evers": 11,
+      "best_streak": 1
+    },
+    "3": {
+      "pts": 2650,
+      "first_evers": 5,
+      "best_streak": 1
+    },
+    "1": {
+      "pts": 5990,
+      "first_evers": 4,
+      "best_streak": 2
+    }
+  }
+}
