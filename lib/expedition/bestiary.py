@@ -189,6 +189,18 @@ _ERROR_RULES: list[tuple[str, str, str, str]] = [
      "wrong_backend",
      "Wrong backend (PyTorch→XLA)",
      "fix: router now guards library=pytorch from XLA routing; re-run to confirm"),
+    # Tensor stride conflict during an op — layout incompatibility between tensors
+    ("stride mismatch",                "shape_mismatch",    "Stride mismatch",               "tensor stride conflict during op"),
+    # Flax/JAX module used before init() was called — common in XLA worker setup
+    ("ScopeCollectionNotFound",        "flax_scope_error",  "Flax scope not found",          "Flax module not initialized; call init() first"),
+    # numpy/JAX ndarray expected but torch tensor passed — framework boundary leak
+    ("concatenate requires ndarray",   "api_mismatch",      "JAX concat type error",         "numpy/jax ndarray expected, got torch tensor"),
+    # Forge has no Resize2d implementation; needs operator decomposition
+    ("Resize2d op",                    "forge_missing_op",  "Missing Resize2d op",           "forge does not support Resize2d; needs decomp"),
+    # Model output tuple wider than unpacking target expects
+    ("too many values to unpack",      "api_mismatch",      "Unpack arity mismatch",         "model output tuple wider than expected"),
+    # Encoder-decoder model called without decoder_input_ids — None passed as tensor
+    ("must be Tensor, not NoneType",   "api_mismatch",      "None passed as Tensor",         "encoder-decoder input missing decoder_input_ids"),
 ]
 
 _CATEGORY_OTHER = ("other", "Other", "investigate manually")
