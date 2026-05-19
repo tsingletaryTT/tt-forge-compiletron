@@ -663,9 +663,9 @@ def _build_curated_queue(num_chips: int) -> tuple[list[list[dict]], list[dict]]:
             "mesh_chips": 1,
             "library": "custom",
             "model_type": "llama",
-            "loader_module": "midi_model.pytorch.loader",
-            "loader_class": None,
-            "is_frontier": True,
+            "loader_module": f"{_FORGEMS}.midi_model.pytorch.loader",
+            "loader_class": "ModelLoader",
+            "is_frontier": False,
         },
     ]
 

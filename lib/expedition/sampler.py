@@ -57,9 +57,16 @@ def _audio_paths() -> list[str]:
     return [str(p) for p in sorted(_AUDIO_DIR.iterdir()) if p.suffix.lower() in exts]
 
 
+def _midi_paths() -> list[str]:
+    """Return a list of absolute paths to sample MIDI files."""
+    if not _AUDIO_DIR.exists():
+        return []
+    return [str(p) for p in sorted(_AUDIO_DIR.glob("*.mid"))]
+
+
 # Maps HF pipeline_tag → which sample pool to draw from.
 # "text" tasks draw a prompt string; "image" tasks draw an image path;
-# "audio" tasks draw an audio file path.
+# "audio" tasks draw an audio file path; "midi" tasks draw a MIDI file path.
 _TASK_INPUT_TYPE: dict[str, str] = {
     "text-generation":              "text",
     "text2text-generation":         "text",
@@ -75,6 +82,7 @@ _TASK_INPUT_TYPE: dict[str, str] = {
     "image-captioning":             "image",
     "automatic-speech-recognition": "audio",
     "audio-classification":         "audio",
+    "midi-generation":              "midi",
 }
 
 
@@ -127,6 +135,14 @@ def get_sample(task: str) -> dict | None:
         description = os.path.basename(chosen).replace("_", " ").rsplit(".", 1)[0]
         return {"input_type": "audio", "data": chosen, "description": description}
 
+    if input_type == "midi":
+        paths = _midi_paths()
+        if not paths:
+            return None
+        chosen = random.choice(paths)
+        description = os.path.basename(chosen).replace("_", " ").rsplit(".", 1)[0]
+        return {"input_type": "midi", "data": chosen, "description": description}
+
     return None
 
 
@@ -154,6 +170,8 @@ def make_tensor_input(sample: dict, seq_len: int = 32, tokenizer=None):
         return _image_tensor(sample["data"])
     if sample["input_type"] == "audio":
         return _audio_tensor(sample["data"])
+    if sample["input_type"] == "midi":
+        return _midi_tensor(sample["data"], seq_len)
     return None, "unknown input type"
 
 
@@ -216,3 +234,24 @@ def _audio_tensor(path: str):
         return waveform, os.path.basename(path)
     except Exception:
         return torch.randn(1, 16000), "random fallback"
+
+
+def _midi_tensor(path: str, seq_len: int):
+    """Build a float embeddings-shaped tensor from a MIDI file for midi-generation models.
+
+    midi-generation models (e.g. skytnt/midi-model) take inputs_embeds rather than
+    input_ids.  We load the model's hidden_size and return a zeros tensor of shape
+    (1, seq_len, hidden_size) — the same shape used during forge.compile.  The MIDI
+    file is used as a description label only; the model generates unconditionally.
+    """
+    import torch
+    try:
+        import sys
+        sys.path.insert(0, "/home/ttuser/code/tt-forge-models")
+        sys.path.insert(0, "/home/ttuser/code/tt-midi-maker")
+        from midi_model.pytorch.loader import load
+        _, sample_inputs = load()
+        tensor = sample_inputs[0]
+        return tensor, os.path.basename(path)
+    except Exception:
+        return torch.zeros(1, seq_len, 1024), "zeros fallback (hidden_size=1024)"

@@ -510,6 +510,28 @@
       "best_infer_s": 1.173384428024292,
       "throughput_unit": "ms/sample",
       "best_throughput": 1173.384
+    },
+    "skytnt/midi-model": {
+      "first_compiled": "2026-05-19T23:39:55.358325+00:00",
+      "first_chip": 0,
+      "run": 999,
+      "best_time_s": 16.60564923286438,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "midi-generation",
+      "rarity": "legendary",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 64, 1024) dtype=torch.float32 range=[0.00, 0.00]",
+      "first_voice": "shape=(1, 64, 1024) dtype=torch.float32 range=[0.00, 0.00]",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "best_compile_s": 14.09697699546814,
+      "best_infer_s": 2.5086722373962402,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 2508.672
     }
   },
   "failed": {
@@ -577,7 +599,7 @@
       "run_first_failed": 15,
       "attempts": 5,
       "last_error": "ScopeCollectionNotFound: Tried to access \"kernel\" from collection \"params\" in \"/Conv_0\" but the collection is empty. (https://flax.readthedocs.io/en/latest/api_reference/flax.errors.html#flax.errors.ScopeCollectionNotFound)",
-      "error_category": "other"
+      "error_category": "flax_scope_error"
     },
     "attention_denseunet/pytorch": {
       "run_first_failed": 16,
@@ -637,19 +659,19 @@
       "run_first_failed": 57,
       "attempts": 3,
       "last_error": "TypeError: ones_like(): argument 'input' (position 1) must be Tensor, not NoneType",
-      "error_category": "other"
+      "error_category": "api_mismatch"
     },
     "yolos_small/pytorch": {
       "run_first_failed": 57,
       "attempts": 2,
       "last_error": "AssertionError: Resize2d op only support nearest and bilinear mode for now",
-      "error_category": "other"
+      "error_category": "forge_missing_op"
     }
   },
   "chip_totals": {
     "0": {
-      "pts": 15977,
-      "first_evers": 10,
+      "pts": 16227,
+      "first_evers": 11,
       "best_streak": 4
     },
     "2": {
