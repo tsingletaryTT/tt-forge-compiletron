@@ -622,6 +622,10 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
                 cfg.use_cache = False
             if hasattr(cfg, 'return_dict'):
                 cfg.return_dict = False
+            if hasattr(cfg, 'output_attentions'):
+                cfg.output_attentions = False
+            if hasattr(cfg, 'output_hidden_states'):
+                cfg.output_hidden_states = False
 
         # Determine the input shape from the loader's optional _input_type hint.
         if hasattr(model_loader, "_input_type"):
@@ -648,7 +652,19 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
                 sample_inputs = []
 
         if not sample_inputs:
-            if itype == "text":
+            is_enc_dec = (hasattr(model, 'config') and
+                          getattr(model.config, 'is_encoder_decoder', False))
+            if is_enc_dec:
+                # Encoder-decoder models (e.g. MusicGen, T5, BART) need both
+                # input_ids for the encoder and decoder_input_ids for the decoder.
+                # Providing only input_ids leaves decoder_input_ids=None and
+                # causes forge to crash: "ones_like() argument must be Tensor,
+                # not NoneType".
+                sample_inputs = [
+                    torch.randint(0, 1000, (1, 32)),   # input_ids
+                    torch.randint(0, 1000, (1, 32)),   # decoder_input_ids
+                ]
+            elif itype == "text":
                 # Minimal tokenized sequence: batch=1, seq_len=32, vocab_size=1000
                 sample_inputs = [torch.randint(0, 1000, (1, 32))]
             elif itype == "audio":
