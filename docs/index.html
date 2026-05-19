@@ -1496,6 +1496,15 @@ footer a { color: var(--teal); text-decoration: none; }
 
 <script>
 (async function loadCommunity() {
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   var OWNER  = 'tsingletaryTT';
   var REPO   = 'tt-forge-compiletron';
   var BRANCH = 'main';
@@ -1582,37 +1591,45 @@ footer a { color: var(--teal); text-decoration: none; }
       var modelRows = entry[1];
 
       // Sort by throughput: best first for tokens/sec (higher=better), best first for ms/sample (lower=better)
+      // Rows with missing throughput_p50 sort to the end regardless of direction.
+      var INF = group.bestFirst ? -Infinity : Infinity;
       var sorted = modelRows.slice().sort(function(a, b) {
-        return group.bestFirst
-          ? b.throughput_p50 - a.throughput_p50
-          : a.throughput_p50 - b.throughput_p50;
+        var av = a.throughput_p50 != null ? a.throughput_p50 : INF;
+        var bv = b.throughput_p50 != null ? b.throughput_p50 : INF;
+        return group.bestFirst ? bv - av : av - bv;
       });
 
-      html += '<div style="margin:1.25rem 0 0.35rem;font-weight:600;font-family:var(--mono);color:var(--fg)">' + modelId + '</div>';
+      html += '<div style="margin:1.25rem 0 0.35rem;font-weight:600;font-family:var(--mono);color:var(--fg)">' + esc(modelId) + '</div>';
       html += '<table class="perf-table"><thead><tr>' +
         '<th>System</th><th>Chips</th><th>Compile</th>' +
         '<th>p50 Infer</th><th>Throughput</th><th>Backend</th><th>By</th>' +
         '</tr></thead><tbody>';
 
       sorted.forEach(function(r) {
+        // Guard numeric fields — missing values render as an em-dash instead of crashing.
+        var infer_compile = r.compile_s != null ? r.compile_s.toFixed(2) + 's' : '&mdash;';
+        var infer = r.infer_p50_s != null ? (r.infer_p50_s * 1000).toFixed(0) + 'ms' : '&mdash;';
+        var tput  = r.throughput_p50 != null
+          ? (r.throughput_unit === 'tokens/sec'
+              ? r.throughput_p50.toLocaleString() + ' tok/s'
+              : r.throughput_p50.toFixed(1) + ' ms/smp')
+          : '&mdash;';
+        // Sanitise the issue number so it can never inject HTML into the href.
+        var issueNum = parseInt(r.submission_issue, 10);
         var byCell = r.submitter === 'maintainer'
           ? 'maintainer'
           : '<a href="https://github.com/tsingletaryTT/tt-forge-compiletron/issues/' +
-            r.submission_issue + '" style="color:var(--teal)">@' + r.submitter + ' &#8599;</a>';
-        var infer = (r.infer_p50_s * 1000).toFixed(0) + 'ms';
-        var tput  = r.throughput_unit === 'tokens/sec'
-          ? r.throughput_p50.toLocaleString() + ' tok/s'
-          : r.throughput_p50.toFixed(1) + ' ms/smp';
+            (issueNum > 0 ? issueNum : '#') + '" style="color:var(--teal)">@' + esc(r.submitter) + ' &#8599;</a>';
         var title = r.firmware_version
-          ? ' title="fw: ' + r.firmware_version + ' · backend: ' + r.backend_version + '"'
+          ? ' title="fw: ' + esc(r.firmware_version) + ' · backend: ' + esc(r.backend_version) + '"'
           : '';
         html += '<tr' + title + '>' +
-          '<td class="pt-chip">'    + r.hardware_system + '</td>' +
-          '<td>'                    + r.chips_used + '-chip</td>' +
-          '<td class="pt-compile">' + r.compile_s.toFixed(2) + 's</td>' +
+          '<td class="pt-chip">'    + esc(r.hardware_system) + '</td>' +
+          '<td>'                    + esc(r.chips_used) + '-chip</td>' +
+          '<td class="pt-compile">' + infer_compile + '</td>' +
           '<td class="pt-infer">'   + infer + '</td>' +
           '<td class="pt-tput">'    + tput + '</td>' +
-          '<td class="pt-chip">'    + r.backend + '</td>' +
+          '<td class="pt-chip">'    + esc(r.backend) + '</td>' +
           '<td>'                    + byCell + '</td>' +
           '</tr>';
       });
