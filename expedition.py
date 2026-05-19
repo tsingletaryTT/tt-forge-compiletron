@@ -647,6 +647,28 @@ def _build_curated_queue(num_chips: int) -> tuple[list[list[dict]], list[dict]]:
         },
     ]
 
+    # --- Round 3: specialty models — one extra entry showcasing custom loaders ---
+    round3: list[dict] = [
+        # C0: MIDI Model — custom LlamaModel backbone for MIDI generation.
+        # Uses a bespoke tt-midi-maker loader; net_token head stays on CPU.
+        # Only model.net (12-layer, ~350 M params) is forge-compiled.
+        {
+            "model_id": "skytnt/midi-model",
+            "display_name": "MIDI Model",
+            "task": "midi-generation",
+            "source": "huggingface",
+            "rarity": "legendary",
+            "hf_downloads": None,
+            "hf_created_at": None,
+            "mesh_chips": 1,
+            "library": "custom",
+            "model_type": "llama",
+            "loader_module": "midi_model.pytorch.loader",
+            "loader_class": None,
+            "is_frontier": True,
+        },
+    ]
+
     # Finale: BLOOM-1.1B via JAX — genuine 4-chip data-parallel inference.
     # The XLA worker shards a batch of 4 inputs across all chips simultaneously,
     # with params replicated via NamedSharding.  This is real multi-chip compute.
@@ -666,12 +688,15 @@ def _build_curated_queue(num_chips: int) -> tuple[list[list[dict]], list[dict]]:
         "is_frontier": False,
     }
 
-    # Build per-chip queues: round1 one-per-chip, then round2 one-per-chip,
-    # then BLOOM finale on chip 0 (held until all chips free by RunScreen).
+    # Build per-chip queues: round1 one-per-chip, round2 one-per-chip,
+    # round3 one-per-chip (specialty/frontier), then BLOOM finale on chip 0
+    # (held until all chips free by RunScreen).
     chip_queues: list[list[dict]] = [[] for _ in range(num_chips)]
     for i, item in enumerate(round1):
         chip_queues[i % num_chips].append(item)
     for i, item in enumerate(round2):
+        chip_queues[i % num_chips].append(item)
+    for i, item in enumerate(round3):
         chip_queues[i % num_chips].append(item)
     chip_queues[0].append(finale)
     return chip_queues, _build_side_quest_pool(num_chips)
