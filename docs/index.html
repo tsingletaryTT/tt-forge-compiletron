@@ -673,6 +673,7 @@ footer a { color: var(--teal); text-decoration: none; }
   <a href="#side-quests">Side Quests</a>
   <a href="#bestiary">Bestiary</a>
   <a href="#perf">Perf</a>
+  <a href="#community">Community</a>
   <a href="#quickstart">Quick Start</a>
   <div class="spacer"></div>
   <a class="gh-link" href="https://github.com/tsingletaryTT/tt-forge-compiletron" target="_blank">GitHub ↗</a>
@@ -1346,6 +1347,27 @@ footer a { color: var(--teal); text-decoration: none; }
 
 <div class="section-divider"></div>
 
+<!-- ── Community ─────────────────────────────────────────────────────── -->
+<section id="community" class="wide">
+  <h2>Community Benchmarks &#8212; Players at Home</h2>
+
+  <p>
+    Verified 5-pass bench results from the community on their own Tenstorrent
+    hardware. Each entry was reviewed and merged by a maintainer.
+    <a href="https://github.com/tsingletaryTT/tt-forge-compiletron/issues/new?template=bench-submission.yml"
+       style="color:var(--teal)">Submit your results &rarr;</a>
+  </p>
+
+  <div id="community-summary"
+       style="color:var(--muted);font-size:0.88rem;margin-bottom:1.25rem">
+    Loading community data&hellip;
+  </div>
+
+  <div id="community-table"></div>
+</section>
+
+<div class="section-divider"></div>
+
 <!-- ── Architecture ───────────────────────────────────────────────────── -->
 <section id="arch">
   <h2>Architecture</h2>
@@ -1471,6 +1493,137 @@ footer a { color: var(--teal); text-decoration: none; }
     tt-forge · pjrt-plugin-tt · JAX · Flax · Textual · HuggingFace Hub
   </p>
 </footer>
+
+<script>
+(async function loadCommunity() {
+  var OWNER  = 'tsingletaryTT';
+  var REPO   = 'tt-forge-compiletron';
+  var BRANCH = 'main';
+  var RAW    = 'https://raw.githubusercontent.com/' + OWNER + '/' + REPO + '/' + BRANCH;
+  var API    = 'https://api.github.com/repos/' + OWNER + '/' + REPO;
+
+  async function fetchJsonl(url) {
+    try {
+      var text = await fetch(url).then(function(r) { return r.ok ? r.text() : ''; });
+      return text.trim().split('\n').filter(function(l) { return l.trim(); }).map(function(l) {
+        try { return JSON.parse(l); } catch(e) { return null; }
+      }).filter(Boolean);
+    } catch(e) { return []; }
+  }
+
+  // Maintainer baseline — inject QB2 4-chip hardware fields
+  var maintainerRaw = await fetchJsonl(RAW + '/data/perf_history.jsonl');
+  var maintainerMap = {};
+  maintainerRaw.forEach(function(r) {
+    if (!maintainerMap[r.model_id] || r.timestamp > maintainerMap[r.model_id].timestamp)
+      maintainerMap[r.model_id] = r;
+  });
+  var maintainerRows = Object.values(maintainerMap).map(function(r) {
+    return Object.assign({}, r, {
+      hardware_system: 'QB2', chips_used: 4, chips_in_system: 4,
+      submitter: 'maintainer', submission_issue: null,
+      firmware_version: '', backend_version: ''
+    });
+  });
+
+  // Community files
+  var communityRows = [];
+  var files = await fetch(API + '/contents/data/community')
+    .then(function(r) { return r.ok ? r.json() : []; }).catch(function() { return []; });
+  if (Array.isArray(files)) {
+    for (var i = 0; i < files.length; i++) {
+      if (!files[i].name.endsWith('.jsonl')) continue;
+      var records = await fetchJsonl(files[i].download_url);
+      communityRows = communityRows.concat(records);
+    }
+  }
+
+  // Summary line
+  var summaryEl = document.getElementById('community-summary');
+  if (communityRows.length === 0) {
+    summaryEl.innerHTML = 'No community submissions yet &mdash; <a href="https://github.com/tsingletaryTT/tt-forge-compiletron/issues/new?template=bench-submission.yml" style="color:var(--teal)">be the first!</a>';
+  } else {
+    var submitters  = new Set(communityRows.map(function(r) { return r.submitter; }));
+    var platforms   = new Set(communityRows.map(function(r) { return r.hardware_system; }));
+    var modelIds    = new Set([].concat(maintainerRows, communityRows).map(function(r) { return r.model_id; }));
+    summaryEl.textContent = communityRows.length + ' submission(s) · ' +
+      submitters.size + ' contributor(s) · ' +
+      platforms.size + ' hardware platform(s) · ' +
+      modelIds.size + ' unique model(s)';
+  }
+
+  // Render: group by throughput_unit (language vs vision), then model, then hardware
+  var allRows = maintainerRows.concat(communityRows);
+  var GROUPS = [
+    { label: 'Language Models',           unit: 'tokens/sec',  bestFirst: true  },
+    { label: 'Vision / Embedding Models', unit: 'ms/sample',   bestFirst: false },
+  ];
+
+  var html = '';
+  GROUPS.forEach(function(group) {
+    var rows = allRows.filter(function(r) { return r.throughput_unit === group.unit; });
+    if (!rows.length) return;
+
+    var byModel = {};
+    rows.forEach(function(r) {
+      if (!byModel[r.model_id]) byModel[r.model_id] = [];
+      byModel[r.model_id].push(r);
+    });
+
+    // Sort models: most submissions first
+    var sortedModels = Object.entries(byModel).sort(function(a, b) {
+      return b[1].length - a[1].length;
+    });
+
+    html += '<h3 style="margin-top:2rem;color:var(--teal2)">' + group.label + '</h3>';
+
+    sortedModels.forEach(function(entry) {
+      var modelId   = entry[0];
+      var modelRows = entry[1];
+
+      // Sort by throughput: best first for tokens/sec (higher=better), best first for ms/sample (lower=better)
+      var sorted = modelRows.slice().sort(function(a, b) {
+        return group.bestFirst
+          ? b.throughput_p50 - a.throughput_p50
+          : a.throughput_p50 - b.throughput_p50;
+      });
+
+      html += '<div style="margin:1.25rem 0 0.35rem;font-weight:600;font-family:var(--mono);color:var(--fg)">' + modelId + '</div>';
+      html += '<table class="perf-table"><thead><tr>' +
+        '<th>System</th><th>Chips</th><th>Compile</th>' +
+        '<th>p50 Infer</th><th>Throughput</th><th>Backend</th><th>By</th>' +
+        '</tr></thead><tbody>';
+
+      sorted.forEach(function(r) {
+        var byCell = r.submitter === 'maintainer'
+          ? 'maintainer'
+          : '<a href="https://github.com/tsingletaryTT/tt-forge-compiletron/issues/' +
+            r.submission_issue + '" style="color:var(--teal)">@' + r.submitter + ' &#8599;</a>';
+        var infer = (r.infer_p50_s * 1000).toFixed(0) + 'ms';
+        var tput  = r.throughput_unit === 'tokens/sec'
+          ? r.throughput_p50.toLocaleString() + ' tok/s'
+          : r.throughput_p50.toFixed(1) + ' ms/smp';
+        var title = r.firmware_version
+          ? ' title="fw: ' + r.firmware_version + ' · backend: ' + r.backend_version + '"'
+          : '';
+        html += '<tr' + title + '>' +
+          '<td class="pt-chip">'    + r.hardware_system + '</td>' +
+          '<td>'                    + r.chips_used + '-chip</td>' +
+          '<td class="pt-compile">' + r.compile_s.toFixed(2) + 's</td>' +
+          '<td class="pt-infer">'   + infer + '</td>' +
+          '<td class="pt-tput">'    + tput + '</td>' +
+          '<td class="pt-chip">'    + r.backend + '</td>' +
+          '<td>'                    + byCell + '</td>' +
+          '</tr>';
+      });
+
+      html += '</tbody></table>';
+    });
+  });
+
+  document.getElementById('community-table').innerHTML = html;
+})();
+</script>
 
 </body>
 </html>
