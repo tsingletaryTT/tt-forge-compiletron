@@ -51,8 +51,8 @@ def parse_issue_body(body: str) -> dict:
 
     return {
         "hardware_system":  get("Tenstorrent system"),
-        "chips_used":       int(get("Chips used for this run", "0") or "0"),
-        "chips_in_system":  int(get("Total chips in system", "0") or "0"),
+        "chips_used":       _parse_int(get("Chips used for this run")),
+        "chips_in_system":  _parse_int(get("Total chips in system")),
         "firmware_version": get("Firmware version"),
         "backend_version":  get("Backend version"),
         "tt_kmd_version":   get("tt-kmd version (optional)"),
@@ -61,19 +61,33 @@ def parse_issue_body(body: str) -> dict:
     }
 
 
+def _parse_int(s: str) -> int:
+    """Parse an integer from a form field value; returns 0 on non-numeric input."""
+    try:
+        return int(s)
+    except (ValueError, TypeError):
+        return 0
+
+
 def set_output(name: str, value: str) -> None:
     gho = os.environ.get("GITHUB_OUTPUT")
     if gho:
+        delimiter = f"GHADELIM_{name}"
         with open(gho, "a") as f:
-            f.write(f"{name}={value}\n")
+            f.write(f"{name}<<{delimiter}\n{value}\n{delimiter}\n")
     else:
-        print(f"::set-output name={name}::{value}")
+        # Legacy fallback — GITHUB_OUTPUT is always set on modern runners
+        print(f"::set-output name={name}::{value}", file=sys.stderr)
 
 
 def main() -> None:
-    issue_body   = os.environ["ISSUE_BODY"]
-    issue_number = int(os.environ["ISSUE_NUMBER"])
-    submitter    = os.environ["SUBMITTER"]
+    issue_body   = os.environ.get("ISSUE_BODY", "")
+    issue_number_str = os.environ.get("ISSUE_NUMBER", "")
+    submitter    = os.environ.get("SUBMITTER", "")
+    if not issue_body or not issue_number_str or not submitter:
+        print("✗ Required env vars missing: ISSUE_BODY, ISSUE_NUMBER, SUBMITTER", file=sys.stderr)
+        sys.exit(1)
+    issue_number = int(issue_number_str)
 
     parsed = parse_issue_body(issue_body)
     hardware = {
@@ -106,7 +120,6 @@ def main() -> None:
     # Create branch → commit → push → open PR
     branch     = f"community/{submitter}-{issue_number}"
     n          = len(result.records)
-    model_list = ", ".join(sorted({r["model_id"] for r in result.records}))
     pr_title   = f"[Community] {submitter} · {hardware['hardware_system']} · {hardware['chips_used']}-chip · {n} model(s)"
 
     pr_body = (
@@ -122,9 +135,15 @@ def main() -> None:
         + f"\n\nCloses #{issue_number}\n"
     )
 
-    subprocess.run(["git", "config", "user.email", "action@github.com"], check=True)
-    subprocess.run(["git", "config", "user.name", "github-actions[bot]"], check=True)
-    subprocess.run(["git", "checkout", "-b", branch], check=True)
+    subprocess.run(["git", "config", "--local", "user.email", "action@github.com"], check=True)
+    subprocess.run(["git", "config", "--local", "user.name", "github-actions[bot]"], check=True)
+    # If branch already exists (re-trigger on issue edit), reset it
+    existing = subprocess.run(["git", "branch", "--list", branch], capture_output=True, text=True)
+    if existing.stdout.strip():
+        subprocess.run(["git", "checkout", branch], check=True)
+        subprocess.run(["git", "reset", "--hard", "HEAD"], check=True)
+    else:
+        subprocess.run(["git", "checkout", "-b", branch], check=True)
     subprocess.run(["git", "add", str(outpath)], check=True)
     subprocess.run(["git", "commit", "-m", f"community: {submitter} · {hardware['hardware_system']} · {hardware['chips_used']}-chip · {n} model(s)"], check=True)
     subprocess.run(["git", "push", "origin", branch], check=True)
