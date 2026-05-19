@@ -82,13 +82,16 @@ def route_model(
     model_type = (item.get("model_type") or "").lower()
 
     # Seed-model IDs encode the backend as the last path segment (e.g. "gpt2/pytorch").
-    # If library is empty, infer it from the path so the XLA-affinity guard below
-    # can correctly reject pytorch models that happen to share a model_type with
-    # a known XLA-affinity architecture.
+    # If library is empty, infer it from the path.  Track whether the inference
+    # happened so the XLA-affinity check below can distinguish seed models
+    # (library inferred from path — keep on forge) from HF-discovered models
+    # (library="pytorch" set explicitly — eligible for XLA via arch affinity).
+    library_from_path = False
     if not library:
         path_tail = model_id.split("/")[-1].lower()
         if path_tail in ("pytorch", "torch"):
             library = "pytorch"
+            library_from_path = True
         elif path_tail in ("jax", "flax"):
             library = path_tail
 
@@ -116,12 +119,10 @@ def route_model(
         reason     = "xla-failure-history"
 
     # Priority 3: Architecture is known to work well on XLA.
-    # Guard: skip if the model is explicitly a PyTorch library model — those
-    # carry PyTorch tensors and cannot run in the XLA/JAX worker.  Seed-model
-    # IDs like "gpt2/pytorch" have library="" but a path segment of "pytorch";
-    # HF items have library="pytorch" set explicitly.  Either way, forge is the
-    # correct backend regardless of model_type affinity.
-    elif model_type in _XLA_AFFINITY_TYPES and library not in ("pytorch", "torch"):
+    # Guard: exclude seed models whose library was inferred from the path suffix
+    # (e.g. "gpt2/pytorch" → library_from_path=True).  HF-discovered models with
+    # library="pytorch" set explicitly are still eligible — tt-xla handles them.
+    elif model_type in _XLA_AFFINITY_TYPES and not library_from_path:
         backend    = "xla"
         confidence = 0.68
         reason     = "arch-xla-affinity"
