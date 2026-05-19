@@ -1,0 +1,15 @@
+- name: bench-submission
+  color: "0075ca"
+  description: "Community bench result submission"
+
+- name: submission-invalid
+  color: "e4e669"
+  description: "Submission failed schema validation"
+
+- name: submission-pending
+  color: "fbca04"
+  description: "PR opened, awaiting maintainer review"
+
+- name: submission-accepted
+  color: "0e8a16"
+  description: "Submission merged and live on website"
