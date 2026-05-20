@@ -625,6 +625,66 @@ def _preflight_gated_check(item: "QueueItem") -> tuple[bool, str]:
         return False, ""  # fail-open: API blip must not block valid models
 
 
+# Custom module roots that are absent from the forge/XLA env.
+# Key = importable root extracted from auto_map class path; Value = pip package name.
+_CUSTOM_DEP_MAP: dict[str, str] = {
+    "mamba_ssm":     "mamba-ssm",
+    "simamba":       "simamba",
+    "mamba":         "mamba-ssm",
+    "FlagEmbedding": "FlagEmbedding",
+    "rwkv":          "rwkv",
+    "retnet":        "torchscale",
+    "megalodon":     "megalodon",
+}
+
+
+def _preflight_arch_check(item: "QueueItem") -> tuple[bool, str]:
+    """Fetch config.json only and detect unsupported architectures before any weight download.
+
+    Catches models that use trust_remote_code with custom class dependencies that
+    are not installed in the forge/XLA environment (mamba_ssm, simamba, RWKV, etc.).
+    Config files are a few KB — this check costs ~1 second and zero weight bandwidth.
+
+    Fails open on any exception (network blip, config absent) — a transient error
+    must never block a valid model.  Only runs for frontier models.
+
+    Returns:
+        (False, "")        — architecture looks fine, or check inconclusive
+        (True, error_str)  — architecture will fail; record and skip the model
+    """
+    if not item.is_frontier:
+        return False, ""
+    try:
+        from huggingface_hub import hf_hub_download
+        import json as _json
+
+        config_path = hf_hub_download(item.model_id, "config.json",
+                                      local_files_only=False)
+        with open(config_path) as f:
+            cfg = _json.load(f)
+
+        auto_map = cfg.get("auto_map", {})
+        for _key, class_path in auto_map.items():
+            if not isinstance(class_path, str) or "." not in class_path:
+                continue
+            module_root = class_path.split(".")[0]
+            if module_root in _CUSTOM_DEP_MAP:
+                dep = _CUSTOM_DEP_MAP[module_root]
+                return (True,
+                        f"MissingDependency: requires '{dep}' "
+                        f"(custom class {class_path!r}) which is not installed")
+            try:
+                __import__(module_root)
+            except ImportError:
+                return (True,
+                        f"MissingDependency: custom class {class_path!r} "
+                        f"requires importable module '{module_root}'")
+
+        return False, ""
+    except Exception:
+        return False, ""   # fail-open
+
+
 def _normalise_inputs(inputs: list) -> list:
     """Ensure tensors are contiguous float32 before forge sees them.
 
@@ -1428,6 +1488,24 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                 bestiary.save()
                 results.append({"model": item.model_id, "status": "failed",
                                  "error": _gated_err, "pts": score.pts})
+                continue
+
+        # ── Architecture preflight ───────────────────────────────────────────
+        # Fetch config.json only (a few KB) and check for custom-class deps
+        # not installed in the forge/XLA env (mamba_ssm, simamba, RWKV, etc.).
+        # Catches Simamba-style models before any multi-GB weight download.
+        if item.is_frontier:
+            _bad_arch, _arch_err = _preflight_arch_check(item)
+            if _bad_arch:
+                elapsed = time.time() - start
+                score = compute_score(False, is_first_ever, rarity, newness,
+                                      hud.state.streak, mesh_chips=item.mesh_chips)
+                hud.record_failure(item.model_id)
+                bestiary.record_failure(item.model_id, run_number, _arch_err)
+                hud.write_status()
+                bestiary.save()
+                results.append({"model": item.model_id, "status": "failed",
+                                 "error": _arch_err, "pts": score.pts})
                 continue
 
         _print_progress_step(1, 3, "Loading model...")
