@@ -550,7 +550,10 @@ def _print_gated_pitch(
         print(f"  {CYAN}Access req:{RESET}  {heading[:72]}")
     print()
     print(f"  {GOLD}You could be the first to run this on Tenstorrent silicon.{RESET}")
-    print(f"  {DIM}Takes ~2 minutes to unlock — here's how:{RESET}")
+    if gated_type == "manual":
+        print(f"  {DIM}Approval required — may take minutes to a few hours:{RESET}")
+    else:
+        print(f"  {DIM}Takes ~2 minutes to unlock — here's how:{RESET}")
     print()
     print(f"  {BOLD}How to unlock:{RESET}")
     print(f"  {YELLOW}①{RESET}  Visit   {CYAN}https://huggingface.co/{model_id}{RESET}")
