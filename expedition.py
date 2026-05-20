@@ -276,6 +276,13 @@ def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = Fals
     import importlib
     import types
 
+    # Some loaders (e.g. bert, distilbert, roberta) import from `third_party.tt_forge_models`
+    # which lives under the tt-forge-fe checkout root.  Ensure that root is on sys.path
+    # so the scan doesn't silently skip those loaders.
+    _forge_fe_root = Path.home() / "tt-forge-fe"
+    if _forge_fe_root.is_dir() and str(_forge_fe_root) not in sys.path:
+        sys.path.insert(0, str(_forge_fe_root))
+
     # The forge-models loaders use relative imports that reach all the way up to
     # the root of the repo (e.g. `from ...base import ForgeModel`).  The directory
     # name "tt-forge-models" contains a hyphen, so it cannot be imported as a
@@ -352,13 +359,33 @@ def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = Fals
 
             try:
                 mod = importlib.import_module(module_path)
-                # ForgeModel is defined in the synthetic package's base module.
-                ForgeModel = sys.modules[f"{_PKG}.base"].ForgeModel  # type: ignore[attr-defined]
+                # ForgeModel may come from two paths depending on the loader style:
+                # older loaders use `from third_party.tt_forge_models.base import ForgeModel`
+                # (absolute), newer loaders use `from ...base import ForgeModel` (relative
+                # through _forgems).  Collect all known ForgeModel base classes so that
+                # issubclass() finds loaders regardless of which import style they use.
+                _base_classes: list[type] = []
+                _base_mod = sys.modules.get(f"{_PKG}.base")
+                if _base_mod is not None and hasattr(_base_mod, "ForgeModel"):
+                    _base_classes.append(_base_mod.ForgeModel)
+                try:
+                    import importlib as _il
+                    _tp_base = _il.import_module("third_party.tt_forge_models.base")
+                    if hasattr(_tp_base, "ForgeModel") and _tp_base.ForgeModel not in _base_classes:
+                        _base_classes.append(_tp_base.ForgeModel)
+                except Exception:
+                    pass
+                if not _base_classes:
+                    continue
+
                 cls_name = None
                 for name in dir(mod):
                     obj = getattr(mod, name)
                     try:
-                        if isinstance(obj, type) and issubclass(obj, ForgeModel) and obj is not ForgeModel:
+                        if isinstance(obj, type) and any(
+                            issubclass(obj, bc) and obj is not bc
+                            for bc in _base_classes
+                        ):
                             cls_name = name
                             break
                     except Exception:
@@ -858,6 +885,7 @@ def build_queues(
     skip_gated: bool = True,
     staples: bool = False,
     xla_mesh: int = 1,
+    backend: str = "auto",
 ) -> list[list[dict]]:
     """
     Build per-chip model queues by merging forge-models seed items with HF
@@ -914,9 +942,13 @@ def build_queues(
 
         # Filter out seed models whose backend segment is not supported.
         # Seed model IDs have the form  name/task/backend  (e.g. alexnet/pytorch,
-        # albert/question_answering/pytorch).  paddle/paddlepaddle and ONNX models
-        # can hang indefinitely on import; exclude them up-front to keep runs clean.
+        # albert/question_answering/pytorch).  paddle/paddlepaddle models can hang
+        # indefinitely on import; always exclude.  When running forge-only, also
+        # exclude jax/onnx seeds — they fail immediately in the forge worker and
+        # waste a run slot.
         _UNSUPPORTED_SEED_BACKENDS = {"paddlepaddle", "paddle"}
+        if backend == "forge":
+            _UNSUPPORTED_SEED_BACKENDS |= {"jax", "onnx", "bounty_jax"}
         seed_items = [
             it for it in seed_items
             if it.get("model_id", "").split("/")[-1].lower() not in _UNSUPPORTED_SEED_BACKENDS
@@ -1929,6 +1961,7 @@ def main():
             skip_gated=not args.allow_gated,
             staples=args.staples,
             xla_mesh=getattr(args, "xla_mesh", 1),
+            backend=getattr(args, "backend", "auto"),
         )
 
     # ── Queue assignment summary ──────────────────────────────────────────────
