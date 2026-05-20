@@ -24,11 +24,12 @@ if _project_root not in _sys.path:
 import argparse
 import csv
 import json
+import multiprocessing
 import os
 import signal
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional, Any
 
@@ -746,6 +747,196 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
         return False, None, 0.0, 0.0, f"{type(e).__name__}: {str(e)[:300]}", None, []
 
 
+def _cleanup_dev_shm() -> None:
+    """Remove stale forge shared memory segments from /dev/shm.
+
+    forge.compile() creates sm_segment.tt-*.*.0 files in /dev/shm that persist
+    after process crashes (SIGSEGV).  Accumulation of stale segments corrupts
+    subsequent forge.compile() calls in parallel workers.  Called after each
+    subprocess compile completes (success or crash) so the next model starts
+    with a clean /dev/shm slate.
+    """
+    import glob
+    for path in glob.glob("/dev/shm/sm_segment.tt-*.*.0"):
+        try:
+            os.remove(path)
+        except OSError:
+            pass  # already gone or not owned by this process
+
+
+def _isolated_compile_worker(
+    item_dict: dict,
+    chip_id: int,
+    result_path: str,
+) -> None:
+    """Subprocess target: compile one model and write a JSON result file.
+
+    Runs the full pipeline (build loader → compile → decode → first voice →
+    throughput) inside a child process so that a SIGSEGV inside forge.compile()
+    kills only this child — the parent expedition worker survives and continues
+    to the next model.
+
+    All return values are serialised to JSON (result_path) so the parent can
+    read them without pickling torch tensors or forge compiled modules.
+
+    Args:
+        item_dict:   Serialised QueueItem fields (all JSON-serialisable scalars).
+        chip_id:     Zero-based TT chip index passed through to _compile_model.
+        result_path: Path where this function writes its JSON result dict.
+    """
+    result: dict = {
+        "success": False,
+        "compile_time": 0.0,
+        "infer_time": 0.0,
+        "error_str": "",
+        "artifact": "",
+        "first_voice_text": "",
+        "first_voice_sample": None,
+        "throughput": 0.0,
+        "throughput_unit": "",
+    }
+    try:
+        from lib.expedition.decoder import decode, FrontierModelInfo
+
+        item = QueueItem(**item_dict)
+        loader = _build_loader(item)
+
+        success, output, compile_time, infer_time, error_str, compiled_module, sample_inputs = (
+            _compile_model(loader, chip_id)
+        )
+        # Mirror the auto-install retry from the parent — pip installs run inside
+        # the subprocess so the installed package is available for the retry call.
+        if not success and "No module named" in error_str:
+            if _try_install_missing(error_str):
+                success, output, compile_time, infer_time, error_str, compiled_module, sample_inputs = (
+                    _compile_model(loader, chip_id)
+                )
+
+        result["compile_time"] = compile_time
+        result["infer_time"] = infer_time
+        result["error_str"] = error_str
+        result["success"] = success
+
+        if success:
+            model_info = FrontierModelInfo(
+                name=item.model_id, task=item.task, source=item.source
+            )
+            result["artifact"] = decode(output, model_info)
+
+            fv_text, fv_sample = _attempt_first_voice(
+                compiled_model=compiled_module,
+                task=item.task,
+                model_id=item.model_id,
+            )
+            result["first_voice_text"] = fv_text
+            result["first_voice_sample"] = fv_sample
+
+            throughput, throughput_unit = _compute_throughput(
+                item.task, output, infer_time
+            )
+            result["throughput"] = throughput
+            result["throughput_unit"] = throughput_unit
+
+    except Exception as exc:
+        result["error_str"] = f"{type(exc).__name__}: {str(exc)[:300]}"
+
+    finally:
+        # Always attempt to write results so the parent can read them, even on
+        # failure.  If this write itself fails, the parent detects a missing/empty
+        # file and falls back to the default (failed) result.
+        try:
+            with open(result_path, "w") as _f:
+                json.dump(result, _f)
+        except Exception:
+            pass
+
+
+def _compile_isolated(item: "QueueItem", chip_id: int) -> dict:
+    """Compile one model in a child process, isolating forge.compile() crashes.
+
+    forge.compile() occasionally triggers SIGSEGV in the underlying C++ runtime.
+    Running each compile in a fresh child process means a crash kills only that
+    child; the parent expedition worker and all other parallel chip workers
+    survive unaffected.
+
+    After the child exits (cleanly or via SIGSEGV), any stale /dev/shm
+    sm_segment.tt-* files left by that compile are cleaned up so the next model
+    starts with a fresh shared memory state.
+
+    Bench passes are not supported in isolated mode because the forge compiled
+    module cannot be pickled across process boundaries.  bench_passes > 0 has
+    no effect when called through this function.
+
+    Args:
+        item:    QueueItem describing the model to compile.
+        chip_id: Zero-based TT chip index.
+
+    Returns:
+        dict with keys: success, compile_time, infer_time, error_str, artifact,
+        first_voice_text, first_voice_sample, throughput, throughput_unit.
+    """
+    item_dict = asdict(item)
+
+    # Write subprocess results to a temp file; avoids IPC pipe sizing limits
+    # and allows the subprocess to flush incrementally.
+    import tempfile
+    result_fd, result_path = tempfile.mkstemp(prefix="forge_result_", suffix=".json")
+    os.close(result_fd)
+
+    proc = multiprocessing.Process(
+        target=_isolated_compile_worker,
+        args=(item_dict, chip_id, result_path),
+        daemon=False,
+    )
+    proc.start()
+    proc.join()  # blocks until child exits (normally or via signal)
+
+    # Clean up stale forge shared memory regardless of how the child exited.
+    _cleanup_dev_shm()
+
+    exitcode = proc.exitcode  # 0 = clean exit; negative = killed by signal (-11 = SIGSEGV)
+
+    default_result: dict = {
+        "success": False,
+        "compile_time": 0.0,
+        "infer_time": 0.0,
+        "error_str": "",
+        "artifact": "",
+        "first_voice_text": "",
+        "first_voice_sample": None,
+        "throughput": 0.0,
+        "throughput_unit": "",
+    }
+
+    try:
+        with open(result_path) as _f:
+            content = _f.read().strip()
+        if content:
+            default_result.update(json.loads(content))
+    except Exception:
+        pass  # subprocess crashed before writing — keep default (failed) result
+    finally:
+        try:
+            os.unlink(result_path)
+        except OSError:
+            pass
+
+    # Annotate SIGSEGV crashes that produced no error string so the bestiary
+    # classifier can bucket them as forge_internal.
+    if (
+        exitcode is not None
+        and exitcode < 0
+        and not default_result["success"]
+        and not default_result["error_str"]
+    ):
+        sig = -exitcode
+        default_result["error_str"] = (
+            f"SIGSEGV: forge.compile() killed by signal {sig} (forge_internal)"
+        )
+
+    return default_result
+
+
 def _attempt_first_voice(
     compiled_model,
     task: str,
@@ -1030,7 +1221,6 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
     """
     import datetime
     from lib.expedition.bestiary import Bestiary
-    from lib.expedition.decoder import decode, FrontierModelInfo
     from lib.expedition.hud import ChipHUD
     from lib.expedition.scorer import (
         compute_rarity, compute_newness, compute_score, Rarity, Newness,
@@ -1102,11 +1292,13 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
         _print_progress_step(1, 3, "Loading model...")
         start = time.time()
 
-        # ── Loader construction ──────────────────────────────────────────────
-        # This can fail for frontier models whose architecture we can't handle
-        # or for tt-forge-models entries with missing dependencies.
+        # ── Loader construction (pre-flight check) ───────────────────────────
+        # Build the loader in the parent as a fast error gate — catches missing
+        # modules and bad configs before paying the cost of a subprocess spawn.
+        # The subprocess rebuilds its own loader; this result is not passed across
+        # the process boundary.
         try:
-            loader = _build_loader(item)
+            _build_loader(item)
         except Exception as e:
             elapsed = time.time() - start
             _print_failure(item.model_id, str(e), elapsed)
@@ -1119,37 +1311,27 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                             "error": str(e), "pts": score.pts})
             continue
 
-        # ── Compile + inference ──────────────────────────────────────────────
-        success, output, compile_time, infer_time, error_str, compiled_module, sample_inputs = _compile_model(loader, chip_id)
-        # Auto-install missing packages and retry once
-        if not success and "No module named" in error_str:
-            if _try_install_missing(error_str):
-                success, output, compile_time, infer_time, error_str, compiled_module, sample_inputs = _compile_model(loader, chip_id)
+        # ── Compile + inference (subprocess-isolated) ─────────────────────────
+        # Each compile runs in a child process so a SIGSEGV inside forge.compile()
+        # kills only the child — this worker loop survives and continues to the
+        # next model.  decode(), first_voice, and throughput all run inside the
+        # subprocess; only JSON-serialisable scalars cross the boundary.
+        # bench_passes are silently skipped (compiled module can't be pickled).
+        cr = _compile_isolated(item, chip_id)
+        success          = cr["success"]
+        compile_time     = cr["compile_time"]
+        infer_time       = cr["infer_time"]
+        error_str        = cr["error_str"]
+        artifact         = cr["artifact"]
+        first_voice_text   = cr["first_voice_text"]
+        first_voice_sample = cr["first_voice_sample"]
+        throughput         = cr["throughput"]
+        throughput_unit    = cr["throughput_unit"]
         elapsed = time.time() - start
 
         if success:
-            # Decode the raw tensor output into a human-readable artifact string.
-            model_info = FrontierModelInfo(name=item.model_id, task=item.task,
-                                           source=item.source)
-            artifact = decode(output, model_info)
-            last_artifact = artifact
-
-            # ── First Voice pass ─────────────────────────────────────────────
-            # Re-run inference with a real themed sample input (image, text prompt,
-            # or audio) to elicit a meaningful decoded output — the model's actual
-            # "voice" rather than random-tensor statistics.  Best-effort: failure is
-            # silent and never blocks the main compile result.
-            first_voice_text, first_voice_sample = _attempt_first_voice(
-                compiled_model=compiled_module,
-                task=item.task,
-                model_id=item.model_id,
-            )
+            last_artifact  = artifact
             is_first_voice = bool(first_voice_text)
-
-            # Compute throughput from the standard inference pass.
-            throughput, throughput_unit = _compute_throughput(
-                item.task, output, infer_time
-            )
 
             score = compute_score(success=True, is_first_ever=is_first_ever,
                                   rarity=rarity, newness=newness,
@@ -1158,18 +1340,10 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                                   is_first_voice=is_first_voice)
             hud.record_success(item.model_id, score)
 
-            # Optional bench passes (--bench-passes N).
-            bench_stats: dict = {}
-            if bench_passes > 0 and compiled_module is not None and sample_inputs:
-                bench_stats = _run_bench_passes(
-                    compiled_module, sample_inputs, bench_passes, item.task
-                )
-
             _print_success(
                 item.model_id, compile_time, infer_time, artifact,
                 score.pts, is_first_ever, hud.state.streak,
                 throughput=throughput, throughput_unit=throughput_unit,
-                bench_p50=bench_stats.get("infer_p50_s", 0.0),
             )
 
             # Print First Voice output if we got one.
@@ -1251,14 +1425,6 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                 "throughput":      round(throughput, 3),
                 "throughput_unit": throughput_unit,
             }
-            perf_record.update(bench_stats)
-            # Optional shape sweep (--bench-shapes requires --bench-passes > 0).
-            if bench_shapes and bench_passes > 0 and compiled_module is not None:
-                shapes = _run_shape_sweep(
-                    compiled_module, loader, item.task, bench_passes
-                )
-                if shapes:
-                    perf_record["shapes"] = shapes
             bestiary.append_perf_record(perf_record)
             results.append({
                 "model":        item.model_id,

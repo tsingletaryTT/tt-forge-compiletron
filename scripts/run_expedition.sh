@@ -65,6 +65,11 @@ fi
 rm -f /tmp/expedition_chip_{0,1,2,3}.status
 rm -f /tmp/expedition_chip_{0,1,2,3}.log
 
+# Purge stale forge shared memory segments from the previous run.
+# forge.compile() creates sm_segment.tt-*.*.0 files in /dev/shm; a crashed
+# worker leaves them behind and they corrupt subsequent forge.compile() calls.
+find /dev/shm -name "sm_segment.tt-*.*.0" -delete 2>/dev/null || true
+
 # ── Per-chip launcher scripts ─────────────────────────────────────────────────
 
 # Build optional worker flags from env vars set by the orchestrator.
