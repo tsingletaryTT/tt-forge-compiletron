@@ -675,6 +675,7 @@ footer a { color: var(--teal); text-decoration: none; }
   <a href="#perf">Perf</a>
   <a href="#community">Community</a>
   <a href="#quickstart">Quick Start</a>
+  <a href="leaderboard.html" style="color:var(--gold)">Leaderboard ↗</a>
   <div class="spacer"></div>
   <a class="gh-link" href="https://github.com/tsingletaryTT/tt-forge-compiletron" target="_blank">GitHub ↗</a>
 </nav>
@@ -1097,6 +1098,7 @@ footer a { color: var(--teal); text-decoration: none; }
     binary uploaded to the chip. <strong>First Voice</strong> output is the model's real
     inference on a themed prompt, decoded from the raw logit tensor by
     <code>decoder.py</code>.
+    <a href="leaderboard.html" style="color:var(--gold);font-family:var(--mono);font-size:0.88rem;margin-left:0.5rem">View full leaderboard &#8594;</a>
   </p>
 
   <div class="bestiary-grid">
@@ -1183,32 +1185,11 @@ footer a { color: var(--teal); text-decoration: none; }
 
   </div>
 
-  <h3 style="margin-top:2.5rem;color:var(--teal2)">Chip History &#8212; All Time</h3>
-  <div class="chip-lb">
-    <div class="chip-row">
-      <span class="chip-label">C0</span>
-      <div class="chip-bar-wrap"><div class="chip-bar-fill" style="width:100%"></div></div>
-      <span class="chip-pts">+15,977</span>
-      <span class="chip-meta">10 first-ever &middot; &#x1F525;&#xD7;4</span>
-    </div>
-    <div class="chip-row">
-      <span class="chip-label">C2</span>
-      <div class="chip-bar-wrap"><div class="chip-bar-fill" style="width:78%"></div></div>
-      <span class="chip-pts">+12,450</span>
-      <span class="chip-meta">11 first-ever &middot; &#x1F525;&#xD7;1</span>
-    </div>
-    <div class="chip-row">
-      <span class="chip-label">C1</span>
-      <div class="chip-bar-wrap"><div class="chip-bar-fill" style="width:37%"></div></div>
-      <span class="chip-pts">+5,990</span>
-      <span class="chip-meta">4 first-ever &middot; &#x1F525;&#xD7;2</span>
-    </div>
-    <div class="chip-row">
-      <span class="chip-label">C3</span>
-      <div class="chip-bar-wrap"><div class="chip-bar-fill" style="width:17%"></div></div>
-      <span class="chip-pts">+2,650</span>
-      <span class="chip-meta">5 first-ever &middot; &#x1F525;&#xD7;1</span>
-    </div>
+  <h3 style="margin-top:2.5rem;color:var(--teal2)">Chip History &#8212; All Time
+    <a href="leaderboard.html#chip-lb" style="font-size:0.78rem;color:var(--muted);font-weight:400;margin-left:0.75rem">full leaderboard &#8599;</a>
+  </h3>
+  <div class="chip-lb" id="chip-lb-index">
+    <div style="color:var(--muted);font-family:var(--mono);font-size:0.82rem">Loading&hellip;</div>
   </div>
 
   <h3 style="margin-top:2.5rem">Still Hunting</h3>
@@ -1493,6 +1474,40 @@ footer a { color: var(--teal); text-decoration: none; }
     tt-forge · pjrt-plugin-tt · JAX · Flax · Textual · HuggingFace Hub
   </p>
 </footer>
+
+<script>
+/* ── Chip leaderboard (live from bestiary.json) ──────────────────────── */
+(function loadChipLb() {
+  var RAW = 'https://raw.githubusercontent.com/tsingletaryTT/tt-forge-compiletron/main';
+  var RARITY_MULT = { legendary: 200, epic: 150, rare: 125, uncommon: 110, familiar: 100, common: 100 };
+  fetch(RAW + '/data/bestiary.json')
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(bestiary) {
+      if (!bestiary) return;
+      var compiled = bestiary.compiled || {};
+      var scores = {}, firsts = {};
+      Object.values(compiled).forEach(function(m) {
+        var chip = m.first_chip != null ? m.first_chip : 0;
+        scores[chip] = (scores[chip] || 0) + (RARITY_MULT[m.rarity] || 100);
+        firsts[chip] = (firsts[chip] || 0) + 1;
+      });
+      var chips = Object.keys(scores).map(Number).sort(function(a, b) { return scores[b] - scores[a]; });
+      var max = scores[chips[0]] || 1;
+      var html = '';
+      chips.forEach(function(chip) {
+        var pts = scores[chip], pct = (pts / max * 100).toFixed(1);
+        html += '<div class="chip-row">' +
+          '<span class="chip-label">C' + chip + '</span>' +
+          '<div class="chip-bar-wrap"><div class="chip-bar-fill" style="width:' + pct + '%"></div></div>' +
+          '<span class="chip-pts">+' + pts + '</span>' +
+          '<span class="chip-meta">' + firsts[chip] + ' first-ever' + (firsts[chip] !== 1 ? 's' : '') + '</span>' +
+          '</div>';
+      });
+      document.getElementById('chip-lb-index').innerHTML = html;
+    })
+    .catch(function() {});
+})();
+</script>
 
 <script>
 (async function loadCommunity() {
