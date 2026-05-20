@@ -968,6 +968,7 @@ def build_queues(
             "xla_runtime_error",    # XLA runtime failure (e.g. bigbird/jax, bart/jax)
             "api_mismatch",         # JAX/Flax API incompatibility in our worker
             "shape_mismatch",       # tensor shape incompatibility in model forward pass
+            "forge_missing_op",     # operator not implemented in forge (e.g. aten::_pad_packed_sequence)
         }
         # forge_internal is fatal on first attempt (kills the worker process);
         # all other categories need 2+ attempts to rule out transient env issues.

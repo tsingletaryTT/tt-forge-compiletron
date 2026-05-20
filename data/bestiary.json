@@ -893,7 +893,7 @@
     },
     "bi_lstm_crf/pytorch": {
       "run_first_failed": 16,
-      "attempts": 3,
+      "attempts": 6,
       "last_error": "NotImplementedError: The following operators are not implemented: ['aten::_pad_packed_sequence', 'aten::_pack_padded_sequence']",
       "error_category": "forge_missing_op"
     },
@@ -947,9 +947,9 @@
     },
     "bge_m3/pytorch": {
       "run_first_failed": 73,
-      "attempts": 1,
-      "last_error": "ModuleNotFoundError: No module named 'FlagEmbedding'",
-      "error_category": "missing_dependency"
+      "attempts": 2,
+      "last_error": "TypeError: XLMRobertaModel.__init__() got an unexpected keyword argument 'dtype'",
+      "error_category": "api_mismatch"
     },
     "blenderbot/summarization/jax": {
       "run_first_failed": 73,
@@ -959,15 +959,21 @@
     },
     "command/pytorch": {
       "run_first_failed": 73,
-      "attempts": 1,
-      "last_error": "OSError: You are trying to access a gated repo.\nMake sure to have access to it at https://huggingface.co/CohereLabs/command-a-reasoning-08-2025.\n403 Client Error. (Request ID: Root=1-6a0dcbfe-2cc6ec66372d0d3e755cb024;ba996c29-2ecd-41ab-a2f9-716e86049f60)\n\nCannot access gated repo for url https://huggingface.",
-      "error_category": "other"
+      "attempts": 3,
+      "last_error": "OSError: You are trying to access a gated repo.\nMake sure to have access to it at https://huggingface.co/CohereLabs/command-a-reasoning-08-2025.\n403 Client Error. (Request ID: Root=1-6a0e1920-5b0248f95aa97c2b5c452d45;facc3b7c-90d7-4f71-9afc-fb54f0dd43db)\n\nCannot access gated repo for url https://huggingface.",
+      "error_category": "loader_missing",
+      "error_hint": "Gated HuggingFace repo - requires authentication"
     },
     "d_fine/pytorch": {
       "run_first_failed": 73,
-      "attempts": 2,
+      "attempts": 1,
       "last_error": "ValueError: not enough values to unpack (expected 4, got 2)",
-      "error_category": "other"
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "DFineForObjectDetection segfaults during forge.compile",
+      "first_failed": "2026-05-20T20:24:54.713395+00:00",
+      "run": 84,
+      "source": "huggingface"
     },
     "dinov2/image_classification/jax": {
       "run_first_failed": 73,
@@ -979,7 +985,12 @@
       "run_first_failed": 73,
       "attempts": 1,
       "last_error": "AssertionError: Resize2d op only support nearest and bilinear mode for now",
-      "error_category": "forge_missing_op"
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "Dinov2ForImageClassification segfaults in forge.compile",
+      "first_failed": "2026-05-20T20:32:24.051055+00:00",
+      "run": 86,
+      "source": "huggingface"
     },
     "clip/image_classification/jax": {
       "run_first_failed": 74,
@@ -1001,7 +1012,7 @@
     },
     "centernet/pytorch": {
       "run_first_failed": 77,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "ValueError: IRD_LF_CACHE environment variable is not set. Please set it to the address of the IRD LF cache.",
       "error_category": "missing_dependency"
     },
@@ -1009,13 +1020,22 @@
       "run_first_failed": 77,
       "attempts": 1,
       "last_error": "ValueError: not enough values to unpack (expected 4, got 2)",
-      "error_category": "other"
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "DeformableDetrForObjectDetection segfaults in forge.compile",
+      "first_failed": "2026-05-20T20:28:33.920910+00:00",
+      "run": 85,
+      "source": "huggingface"
     },
     "faster_rcnn/pytorch": {
       "run_first_failed": 77,
-      "attempts": 1,
+      "attempts": 3,
       "last_error": "RuntimeError: Only tensors, lists, tuples of tensors, or dictionary of tensors can be output from traced functions",
-      "error_category": "other"
+      "error_category": "forge_internal",
+      "error_label": "Torch JIT unsupported output type",
+      "error_hint": "Faster R-CNN returns dict outputs incompatible with forge TorchScript tracer",
+      "first_failed": "2026-05-20T20:41:21.549247+00:00",
+      "run": 88
     },
     "gemma3/causal_lm/bounty_jax": {
       "run_first_failed": 77,
@@ -1040,6 +1060,327 @@
       "attempts": 1,
       "last_error": "XlaRuntimeError: INTERNAL: Error code: 13",
       "error_category": "xla_runtime_error"
+    },
+    "bge_m3/encode/pytorch": {
+      "run_first_failed": 80,
+      "attempts": 2,
+      "last_error": "TypeError: XLMRobertaModel.__init__() got an unexpected keyword argument 'dtype'",
+      "error_category": "api_mismatch"
+    },
+    "bert/masked_lm/pytorch": {
+      "first_failed": "2026-05-20T20:16:59.004404+00:00",
+      "run": 82,
+      "attempts": 1,
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "BERT segfaults during forge.compile on TT hardware; worker process killed",
+      "source": "huggingface"
+    },
+    "bert/question_answering/pytorch": {
+      "first_failed": "2026-05-20T20:16:59.004404+00:00",
+      "run": 82,
+      "attempts": 1,
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "BERT segfaults during forge.compile on TT hardware; worker process killed",
+      "source": "huggingface"
+    },
+    "bert/sentence_embedding_generation/pytorch": {
+      "first_failed": "2026-05-20T20:16:59.004404+00:00",
+      "run": 82,
+      "attempts": 1,
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "BERT segfaults during forge.compile on TT hardware; worker process killed",
+      "source": "huggingface"
+    },
+    "bert/sequence_classification/pytorch": {
+      "first_failed": "2026-05-20T20:16:59.004404+00:00",
+      "run": 82,
+      "attempts": 1,
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "BERT segfaults during forge.compile on TT hardware; worker process killed",
+      "source": "huggingface"
+    },
+    "bert/token_classification/pytorch": {
+      "first_failed": "2026-05-20T20:16:59.004404+00:00",
+      "run": 82,
+      "attempts": 1,
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "BERT segfaults during forge.compile on TT hardware; worker process killed",
+      "source": "huggingface"
+    },
+    "clip/pytorch": {
+      "first_failed": "2026-05-20T20:20:54.219334+00:00",
+      "run": 83,
+      "attempts": 1,
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "CLIPModel segfaults in forge.compile on TT hardware",
+      "source": "huggingface"
+    },
+    "codegen/pytorch": {
+      "first_failed": "2026-05-20T20:20:54.219334+00:00",
+      "run": 83,
+      "attempts": 1,
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "CodeGenForCausalLM segfaults in forge.compile on TT hardware",
+      "source": "huggingface"
+    },
+    "deepseek/deepseek_ocr/pytorch": {
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "DeepseekOCRForCausalLM segfaults during forge.compile",
+      "first_failed": "2026-05-20T20:24:54.713395+00:00",
+      "run": 84,
+      "attempts": 1,
+      "source": "huggingface"
+    },
+    "deepseek/llama/pytorch": {
+      "first_failed": "2026-05-20T20:26:56.225203+00:00",
+      "run": 84,
+      "attempts": 2,
+      "error_category": "missing_dependency",
+      "error_label": "Model too large or has unsupported dependencies",
+      "error_hint": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B (70B) \u2014 not suitable for single-chip forge run",
+      "source": "huggingface"
+    },
+    "deepseek/pytorch": {
+      "first_failed": "2026-05-20T20:26:56.225203+00:00",
+      "run": 84,
+      "attempts": 2,
+      "error_category": "missing_dependency",
+      "error_label": "Model too large or has unsupported dependencies",
+      "error_hint": "deepseek-ai/DeepSeek-V3 (671B MoE) \u2014 not suitable for single-chip forge run",
+      "source": "huggingface"
+    },
+    "deepseek/qwen/pytorch": {
+      "first_failed": "2026-05-20T20:26:56.225203+00:00",
+      "run": 84,
+      "attempts": 2,
+      "error_category": "missing_dependency",
+      "error_label": "Model too large or has unsupported dependencies",
+      "error_hint": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B (32B) \u2014 not suitable for single-chip forge run",
+      "source": "huggingface"
+    },
+    "boltz2/pytorch": {
+      "first_failed": "2026-05-20T20:26:56.225203+00:00",
+      "run": 84,
+      "attempts": 2,
+      "error_category": "missing_dependency",
+      "error_label": "Model too large or has unsupported dependencies",
+      "error_hint": "boltz2 protein structure (large/complex) \u2014 not suitable for single-chip forge run",
+      "source": "huggingface"
+    },
+    "bevdepth/pytorch": {
+      "first_failed": "2026-05-20T20:26:56.225203+00:00",
+      "run": 84,
+      "attempts": 2,
+      "error_category": "missing_dependency",
+      "error_label": "Model too large or has unsupported dependencies",
+      "error_hint": "BEVDepth autonomous driving (complex dependencies) \u2014 not suitable for single-chip forge run",
+      "source": "huggingface"
+    },
+    "detr3d/pytorch": {
+      "first_failed": "2026-05-20T20:26:56.225203+00:00",
+      "run": 84,
+      "attempts": 2,
+      "error_category": "missing_dependency",
+      "error_label": "Model too large or has unsupported dependencies",
+      "error_hint": "DETR3D 3D detection (complex dependencies) \u2014 not suitable for single-chip forge run",
+      "source": "huggingface"
+    },
+    "dense_unet_3d/pytorch": {
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "DenseUNet3d segfaults in forge.compile",
+      "first_failed": "2026-05-20T20:28:33.920910+00:00",
+      "run": 85,
+      "attempts": 1,
+      "source": "huggingface"
+    },
+    "detr/object_detection/pytorch": {
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "DetrForObjectDetection segfaults in forge.compile",
+      "first_failed": "2026-05-20T20:28:33.920910+00:00",
+      "run": 85,
+      "attempts": 1,
+      "source": "huggingface"
+    },
+    "detr/segmentation/pytorch": {
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "DetrForSegmentation segfaults in forge.compile (same arch as object_detection)",
+      "first_failed": "2026-05-20T20:28:33.920910+00:00",
+      "run": 85,
+      "attempts": 1,
+      "source": "huggingface"
+    },
+    "arnold/pytorch": {
+      "first_failed": "2026-05-20T20:29:11.524723+00:00",
+      "run": 85,
+      "attempts": 2,
+      "error_category": "missing_dependency",
+      "error_label": "Pre-screened: unavailable",
+      "error_hint": "Requires IRD_LF_CACHE (internal TT model cache server)",
+      "source": "huggingface"
+    },
+    "flux/pytorch": {
+      "first_failed": "2026-05-20T20:29:11.524723+00:00",
+      "run": 85,
+      "attempts": 2,
+      "error_category": "missing_dependency",
+      "error_label": "Pre-screened: unavailable",
+      "error_hint": "Flux diffusion model - too large and complex for single-chip forge",
+      "source": "huggingface"
+    },
+    "fuyu/pytorch": {
+      "first_failed": "2026-05-20T20:29:11.524723+00:00",
+      "run": 85,
+      "attempts": 2,
+      "error_category": "missing_dependency",
+      "error_label": "Pre-screened: unavailable",
+      "error_hint": "Fuyu multimodal LLM - likely too large/complex",
+      "source": "huggingface"
+    },
+    "distilbert/masked_lm/pytorch": {
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "DistilBertForMaskedLM segfaults (BERT-family)",
+      "first_failed": "2026-05-20T20:32:24.051055+00:00",
+      "run": 86,
+      "attempts": 1,
+      "source": "huggingface"
+    },
+    "distilbert/question_answering/pytorch": {
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "DistilBertForQuestionAnswering segfaults (BERT-family)",
+      "first_failed": "2026-05-20T20:32:24.051055+00:00",
+      "run": 86,
+      "attempts": 1,
+      "source": "huggingface"
+    },
+    "distilbert/sequence_classification/pytorch": {
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "DistilBertForSequenceClassification segfaults (BERT-family)",
+      "first_failed": "2026-05-20T20:32:24.051055+00:00",
+      "run": 86,
+      "attempts": 1,
+      "source": "huggingface"
+    },
+    "distilbert/token_classification/pytorch": {
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "BERT-family - pre-empted based on sibling segfaults",
+      "first_failed": "2026-05-20T20:32:24.051055+00:00",
+      "run": 86,
+      "attempts": 1,
+      "source": "huggingface"
+    },
+    "dpr/context_encoder/pytorch": {
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "BERT-based DPR - pre-empted based on BERT segfault pattern",
+      "first_failed": "2026-05-20T20:32:24.051055+00:00",
+      "run": 86,
+      "attempts": 1,
+      "source": "huggingface"
+    },
+    "dpr/question_encoder/pytorch": {
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "BERT-based DPR - pre-empted",
+      "first_failed": "2026-05-20T20:32:24.051055+00:00",
+      "run": 86,
+      "attempts": 1,
+      "source": "huggingface"
+    },
+    "dpr/reader/pytorch": {
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "BERT-based DPR - pre-empted",
+      "first_failed": "2026-05-20T20:32:24.051055+00:00",
+      "run": 86,
+      "attempts": 1,
+      "source": "huggingface"
+    },
+    "arcee/text_generation/pytorch": {
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "Broken __init__.py (from .pytorch import) - silently fails scan",
+      "first_failed": "2026-05-20T20:32:24.051055+00:00",
+      "run": 86,
+      "attempts": 1,
+      "source": "huggingface"
+    },
+    "efficientnet/pytorch": {
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "torchvision EfficientNet (not timm-lite) segfaults in forge.compile",
+      "first_failed": "2026-05-20T20:37:35.515905+00:00",
+      "run": 87,
+      "attempts": 1,
+      "source": "huggingface"
+    },
+    "falcon/pytorch": {
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "Falcon3-1B-Base (LlamaForCausalLM) segfaults in forge.compile",
+      "first_failed": "2026-05-20T20:37:35.515905+00:00",
+      "run": 87,
+      "attempts": 1,
+      "source": "huggingface"
+    },
+    "efficientdet/pytorch": {
+      "error_category": "forge_internal",
+      "error_label": "forge compile error",
+      "error_hint": "TypeError: Call object not subscriptable in forge",
+      "first_failed": "2026-05-20T20:37:35.515905+00:00",
+      "run": 87,
+      "attempts": 2,
+      "source": "huggingface"
+    },
+    "fpn/pytorch": {
+      "error_category": "forge_internal",
+      "error_label": "forge compile error",
+      "error_hint": "RuntimeError: Only tensors, lists, tuples in forge",
+      "first_failed": "2026-05-20T20:37:35.515905+00:00",
+      "run": 87,
+      "attempts": 2,
+      "source": "huggingface"
+    },
+    "gemma/pytorch": {
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "GemmaForCausalLM segfaults in parallel expedition (single-process test succeeds)",
+      "first_failed": "2026-05-20T20:54:54.298514+00:00",
+      "run": 88,
+      "attempts": 1,
+      "source": "huggingface"
+    },
+    "gemma3/causal_lm/pytorch": {
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "Gemma3ForConditionalGeneration segfaults in forge.compile",
+      "first_failed": "2026-05-20T20:54:54.298514+00:00",
+      "run": 88,
+      "attempts": 1,
+      "source": "huggingface"
+    },
+    "gemma3/multimodal/pytorch": {
+      "error_category": "forge_internal",
+      "error_label": "SIGSEGV in forge.compile",
+      "error_hint": "Gemma3ForConditionalGeneration segfaults in forge.compile",
+      "first_failed": "2026-05-20T20:54:54.298514+00:00",
+      "run": 88,
+      "attempts": 1,
+      "source": "huggingface"
     }
   },
   "chip_totals": {
