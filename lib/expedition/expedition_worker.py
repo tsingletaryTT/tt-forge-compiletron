@@ -1230,6 +1230,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                 infer_s=infer_time,
                 throughput=throughput,
                 throughput_unit=throughput_unit,
+                mesh_chips=getattr(item, "mesh_chips", 1),
             )
             # Accumulate points into the per-chip all-time leaderboard entry.
             bestiary.add_chip_points(

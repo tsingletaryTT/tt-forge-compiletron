@@ -385,7 +385,8 @@
       "best_compile_s": 3.2763772010803223,
       "best_infer_s": 0.03319525718688965,
       "throughput_unit": "tokens/sec",
-      "best_throughput": 3855.973
+      "best_throughput": 3855.973,
+      "mesh_chips": 4
     },
     "mobilenetv2/pytorch": {
       "first_compiled": "2026-05-13T17:08:16.205140+00:00",
@@ -641,7 +642,8 @@
       "best_compile_s": 22.1473,
       "best_infer_s": 0.0099,
       "throughput_unit": "tokens/sec",
-      "best_throughput": 3223.908
+      "best_throughput": 3223.908,
+      "mesh_chips": 1
     },
     "deepseek/deepseek_coder/pytorch": {
       "first_compiled": "2026-05-20T15:03:40.851661+00:00",
@@ -795,7 +797,8 @@
       "best_compile_s": 0.816077470779419,
       "best_infer_s": 0.04180169105529785,
       "throughput_unit": "tokens/sec",
-      "best_throughput": 23922.477
+      "best_throughput": 23922.477,
+      "mesh_chips": 1
     },
     "gpt2/causal_lm/jax": {
       "first_compiled": "2026-05-20T17:57:45.107562+00:00",
@@ -817,7 +820,8 @@
       "best_compile_s": 0.7599356174468994,
       "best_infer_s": 0.07429933547973633,
       "throughput_unit": "tokens/sec",
-      "best_throughput": 430.69
+      "best_throughput": 430.69,
+      "mesh_chips": 1
     }
   },
   "failed": {

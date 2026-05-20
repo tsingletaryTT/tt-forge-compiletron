@@ -169,6 +169,7 @@ footer {
 <nav>
   <a class="brand" href="index.html">⚡ Compiletron</a>
   <a href="index.html">Home</a>
+  <a href="#reference">vs GPU</a>
   <a href="#chip-lb">Chips</a>
   <a href="#compiled">Compiled</a>
   <a href="#failed">Failed</a>
@@ -179,11 +180,22 @@ footer {
 <section>
   <h2>Leaderboard — All-Time Results</h2>
   <p>
-    Live data from <code>data/bestiary.json</code> — every model that has ever run on
+    Live data from <code>data/bestiary.json</code> — every model compiled and executed on
     Tenstorrent Blackhole silicon, updated on every expedition commit.
-    Hardware: <span class="hw-badge">QB2 · 4× Blackhole P300C</span>
-    <span class="hw-badge">pjrt-plugin-tt 0.9.0</span>
-    <span class="hw-badge">forge · XLA/JAX</span>
+  </p>
+  <div style="background:var(--bg2);border:1px solid var(--dim);border-left:3px solid var(--gold);border-radius:6px;padding:0.9rem 1.2rem;margin:1.2rem 0;font-size:0.88rem;font-family:var(--mono)">
+    <span style="color:var(--gold);font-weight:700">&#9432; Single-machine results</span>
+    &mdash; all data currently from <strong style="color:var(--teal2)">one QB2</strong>
+    (Taylor Singletary's machine: 4&times; Blackhole P300C, fw 19.7.99.0, pjrt-plugin-tt&nbsp;0.9.0).
+    Numbers reflect a single unit under real-world conditions, not a tuned lab setup.
+    <a href="https://github.com/tsingletaryTT/tt-forge-compiletron/issues/new?template=bench-submission.yml"
+       style="color:var(--teal);margin-left:0.5rem">Submit your hardware results &#8599;</a>
+  </div>
+  <p style="font-size:0.88rem;color:var(--muted)">
+    Hardware: <span class="hw-badge">QB2 &middot; 4&times; Blackhole P300C</span>
+    <span class="hw-badge">fw 19.7.99.0</span>
+    <span class="hw-badge">forge (PyTorch)</span>
+    <span class="hw-badge">XLA / pjrt-plugin-tt 0.9.0</span>
   </p>
 
   <div id="loading">Loading bestiary data&hellip;</div>
@@ -193,6 +205,77 @@ footer {
     <div class="stats-bar" id="stats-bar"></div>
 
     <hr class="section-divider" style="margin:0 0 2.5rem">
+
+    <!-- ── Reference benchmarks ──────────────────────────────────────── -->
+    <h2 id="reference">Reference — QB2 vs GPU Hardware</h2>
+    <p style="font-size:0.88rem">
+      Known-good inference throughput for common models on datacenter and consumer GPUs
+      (fp16/bf16, batch&nbsp;1, from MLPerf, vendor docs, and community benchmarks).
+      QB2 numbers are from this bestiary at fp32. Methodology differs — treat as
+      directional, not apples-to-apples.
+    </p>
+    <div style="overflow-x:auto">
+    <table class="lb-table" style="max-width:900px">
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>Task</th>
+          <th>QB2 Blackhole</th>
+          <th>A100 80GB</th>
+          <th>RTX 4090</th>
+          <th>RTX 3090</th>
+          <th>M2&nbsp;Max</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>GPT-2 (124M)</td><td style="color:var(--muted)">text-gen</td>
+          <td class="tput-good">539&nbsp;tok/s&nbsp;<span style="color:var(--muted);font-size:0.75rem">(forge)</span></td>
+          <td>3,000–4,000&nbsp;tok/s</td><td>1,500–2,000</td><td>800–1,200</td><td>200–400</td>
+          <td style="color:var(--muted);font-size:0.78rem">QB2 at fp32 · GPUs at fp16</td>
+        </tr>
+        <tr>
+          <td>GPT-2 (124M)</td><td style="color:var(--muted)">text-gen (XLA)</td>
+          <td class="tput-good">430&nbsp;tok/s&nbsp;<span style="color:var(--muted);font-size:0.75rem">(xla)</span></td>
+          <td>—</td><td>—</td><td>—</td><td>—</td>
+          <td style="color:var(--muted);font-size:0.78rem">JAX/PJRT, single chip</td>
+        </tr>
+        <tr>
+          <td>BLOOM-1.1B</td><td style="color:var(--muted)">text-gen</td>
+          <td class="tput-good">3,856&nbsp;tok/s&nbsp;<span style="color:var(--muted);font-size:0.75rem">(xla 4-chip)</span></td>
+          <td>400–600&nbsp;tok/s</td><td>200–350</td><td>100–200</td><td>50–100</td>
+          <td style="color:var(--muted);font-size:0.78rem">QB2: 4-chip data-parallel batch=4 · GPUs: single device batch=1</td>
+        </tr>
+        <tr>
+          <td>AlexNet</td><td style="color:var(--muted)">image-cls</td>
+          <td>169&nbsp;ms/smp</td>
+          <td>~2&nbsp;ms</td><td>~3&nbsp;ms</td><td>~4&nbsp;ms</td><td>~10&nbsp;ms</td>
+          <td style="color:var(--muted);font-size:0.78rem">QB2 at fp32; GPUs highly optimized for AlexNet</td>
+        </tr>
+        <tr>
+          <td>MobileNetV2</td><td style="color:var(--muted)">image-cls</td>
+          <td>484&nbsp;ms/smp</td>
+          <td>~3&nbsp;ms</td><td>~4&nbsp;ms</td><td>~6&nbsp;ms</td><td>~15&nbsp;ms</td>
+          <td style="color:var(--muted);font-size:0.78rem">Depthwise conv not yet optimized on Blackhole</td>
+        </tr>
+        <tr>
+          <td>BEiT (XLA)</td><td style="color:var(--muted)">image-cls</td>
+          <td class="tput-good">23,922&nbsp;tok/s&nbsp;<span style="color:var(--muted);font-size:0.75rem">(xla)</span></td>
+          <td>—</td><td>—</td><td>—</td><td>—</td>
+          <td style="color:var(--muted);font-size:0.78rem">Token = image patch; JAX/PJRT first compile</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <p style="font-size:0.78rem;color:var(--muted);margin-top:0.75rem">
+      GPU reference sources: NVIDIA MLPerf v3.1 (A100), community benchmarks (RTX 4090/3090), Apple ML Research (M2&nbsp;Max).
+      TT Blackhole is a new architecture — some ops (depthwise conv, certain attention patterns) are not yet
+      fully tuned, which explains cases where QB2 is slower at batch=1. Throughput at larger batch sizes and
+      with metal-optimized kernels will differ.
+    </p>
+
+    <hr class="section-divider" style="margin:2.5rem 0">
 
     <!-- ── Chip leaderboard ───────────────────────────────────────────── -->
     <h2 id="chip-lb">Chip Leaderboard</h2>
@@ -457,7 +540,7 @@ footer {
       var tp   = m.best_throughput || 0;
       var tpu  = m.throughput_unit || '';
       var fv   = m.first_voice || m.artifact || '';
-      var chips = m.mesh_chips || 1;
+      var chips = m.mesh_chips || 1;  // mesh_chips stored since run #80+; BLOOM patched to 4
 
       var rarHtml   = '<span class="r-' + rar + '">' + esc(RARITY_LABEL[rar] || rar) + '</span>';
       var beHtml    = '<span class="tag t-' + be + '">' + be + '</span>';

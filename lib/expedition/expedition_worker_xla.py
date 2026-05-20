@@ -1492,6 +1492,7 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
                 infer_s=infer_time,
                 throughput=throughput,
                 throughput_unit=throughput_unit,
+                mesh_chips=item.mesh_chips,
             )
             bestiary.add_chip_points(chip=chip_id, pts=score.pts,
                                      first_ever=is_first_ever, streak=hud.state.streak)

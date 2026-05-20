@@ -298,6 +298,7 @@ class Bestiary:
         infer_s: float = 0.0,
         throughput: float = 0.0,
         throughput_unit: str = "",
+        mesh_chips: int = 1,
     ) -> None:
         """Record a successful compilation.
 
@@ -355,6 +356,7 @@ class Bestiary:
                 "first_voice": first_voice,
                 "backend": backend,
                 "backends_succeeded": [backend],
+                "mesh_chips": mesh_chips,
             }
         entry = self._data["compiled"][model_id]
         entry["successes"] += 1
@@ -383,6 +385,9 @@ class Bestiary:
                 # Lower is better for latency metrics such as ms/sample.
                 if throughput < entry["best_throughput"]:
                     entry["best_throughput"] = throughput
+        # Track the highest chip count ever used to compile this model.
+        if mesh_chips > entry.get("mesh_chips", 1):
+            entry["mesh_chips"] = mesh_chips
         # Always update artifact so the bestiary reflects the most recent output.
         entry["artifact"] = artifact
         # Update first_voice if we got a non-empty result (never clobber with "").
