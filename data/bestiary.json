@@ -941,12 +941,6 @@
       "last_error": "AssertionError: Forge only supports: torch.nn.modules.module.Module | forge._framework_stubs._NI | onnx.onnx_ml_pb2.ModelProto | forge.module.OnnxModule | forge.module.ForgeModule.",
       "error_category": "other"
     },
-    "gpt2/causal_lm/jax": {
-      "run_first_failed": 1,
-      "attempts": 11,
-      "last_error": "XlaRuntimeError: INTERNAL: Error code: 13",
-      "error_category": "xla_runtime_error"
-    },
     "bge_m3/pytorch": {
       "run_first_failed": 73,
       "attempts": 1,
