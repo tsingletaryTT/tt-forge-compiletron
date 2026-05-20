@@ -434,26 +434,35 @@ def _compile_model_xla(
         _print_live_info(f"Architecture: {type(model).__name__}")
 
         # Linen models that don't use from_pretrained (e.g. AlexNet/custom) return
-        # an empty params dict because .init() was never called. Try model.init()
-        # with dummy inputs here, before building the forward fn, so that the JIT
-        # call has real parameters to work with.
+        # an empty params dict because .init() was never called. Use jax.eval_shape
+        # to trace parameter shapes without device execution (TT doesn't support
+        # eager mode, so model.init() would fail). Then zero-init the param tree —
+        # good enough for the compile trace even though the weights aren't trained.
         if not params and hasattr(model, "init"):
-            _print_live_info("params empty — attempting model.init() with dummy inputs...")
+            _print_live_info("params empty — attempting shape-based init via jax.eval_shape...")
             try:
                 import jax
+                import numpy as np
                 _dummy_for_init = make_input(device)
                 if isinstance(_dummy_for_init, _Mapping):
-                    _init_vars = model.init(jax.random.key(0), **_dummy_for_init)
+                    _shape_result = jax.eval_shape(
+                        model.init, jax.random.PRNGKey(0), **_dummy_for_init
+                    )
                 else:
-                    _init_vars = model.init(jax.random.key(0), _dummy_for_init)
-                params = _init_vars["params"] if isinstance(_init_vars, dict) and "params" in _init_vars else _init_vars
-                try:
-                    model.params = params
-                except Exception:
-                    pass
-                _print_live_info(f"model.init() OK")
+                    _shape_result = jax.eval_shape(
+                        model.init, jax.random.PRNGKey(0), _dummy_for_init
+                    )
+                params = jax.tree_util.tree_map(
+                    lambda s: np.zeros(s.shape, dtype=np.float32), _shape_result
+                )
+                _print_live_info(
+                    f"shape-based init OK — "
+                    f"keys: {list(params.keys()) if isinstance(params, dict) else 'flat'}"
+                )
             except Exception as _ie:
-                _print_live_info(f"model.init() failed: {str(_ie)[:120]}", ok=False)
+                _print_live_info(
+                    f"shape-based init failed: {str(_ie)[:120]}", ok=False
+                )
 
         # Build the forward function to JIT. Three calling conventions:
         # 1. HuggingFace FlaxPreTrainedModel: model(**inputs, params=params) → output
@@ -470,20 +479,32 @@ def _compile_model_xla(
                 if isinstance(out, (tuple, list)):
                     return out[0]
                 return out
-        else:
+        elif hasattr(model, 'apply'):
             # Flax Linen .apply() style. Supports two input conventions:
             # - dict inputs (e.g. {"pixel_values": ...}): unpacked as kwargs
             # - raw array inputs (e.g. AlexNet): passed positionally with train=False
+            #
+            # params may be the full variable collection {"params": ..., "batch_stats": ...}
+            # (produced by eval_shape init for Linen models with BatchNorm) or just the
+            # raw params subtree (from from_pretrained). Detect by checking for the
+            # "params" key at top level — HF params trees use model-specific keys.
             def forward(params, inputs):
+                var_coll = params if (isinstance(params, dict) and "params" in params) else {"params": params}
                 if isinstance(inputs, _Mapping):
-                    out = model.apply({"params": params}, **inputs)
+                    out = model.apply(var_coll, **inputs)
                 else:
-                    out = model.apply({"params": params}, inputs, train=False)
+                    out = model.apply(var_coll, inputs, train=False)
                 if hasattr(out, "logits") and out.logits is not None:
                     return out.logits
                 if isinstance(out, (tuple, list)):
                     return out[0]
                 return out
+        else:
+            raise ValueError(
+                f"{type(model).__name__} has no .apply() method — "
+                "XLA worker requires Flax Linen or HuggingFace Flax models. "
+                "EasyDel NNX models are not yet supported."
+            )
 
         if mesh_chips > 1:
             # ── Multi-chip path ───────────────────────────────────────────────
@@ -521,6 +542,10 @@ def _compile_model_xla(
                 )
 
                 single = make_input(all_devices[0])
+                # BatchEncoding / FeatureExtraction inherit UserDict but are not
+                # registered JAX pytrees; convert to plain dict for jax.tree_util.
+                if isinstance(single, _Mapping) and type(single) is not dict:
+                    single = dict(single)
                 if isinstance(single, _Mapping):
                     dummy_inputs = {k: jnp.concatenate([v] * n, axis=0)
                                     for k, v in single.items()}
@@ -586,8 +611,11 @@ def _compile_model_xla(
                 sharded_params = jax.device_put(flax_params, replicated)
 
                 # Build a batch of n identical inputs (one element per device).
-                # Use Mapping (not dict) — BatchEncoding inherits from UserDict, not dict.
+                # BatchEncoding / FeatureExtraction are UserDict subclasses that are
+                # NOT registered JAX pytrees; convert to plain dict first.
                 single = make_input(all_devices[0])
+                if isinstance(single, _Mapping) and type(single) is not dict:
+                    single = dict(single)
                 if isinstance(single, _Mapping):
                     dummy_inputs = {k: jnp.concatenate([v] * n, axis=0) for k, v in single.items()}
                 else:
@@ -637,6 +665,10 @@ def _compile_model_xla(
             compiled_fn = jax.jit(forward)
 
             dummy_inputs = make_input(device)
+            # BatchEncoding / FeatureExtraction are not registered JAX pytrees;
+            # convert to plain dict so tree_map and JIT can traverse them.
+            if isinstance(dummy_inputs, _Mapping) and type(dummy_inputs) is not dict:
+                dummy_inputs = dict(dummy_inputs)
             _print_live_info(f"Input shape: {jax.tree_util.tree_map(lambda x: x.shape, dummy_inputs)}")
 
             _print_progress_step(2, 3, "Compiling via JAX JIT (first call triggers XLA)...")
@@ -890,10 +922,15 @@ def _build_loader_xla(item: QueueItem):
             # Reattach params so model.params doesn't raise ValueError for internal
             # accesses. Encoder-decoder models (blenderbot, BART) read self.params
             # inside their forward pass even when params is also passed as a kwarg.
+            # In older transformers, the params setter is absent; bypass the property
+            # by writing _params directly so the getter finds real weights.
             try:
                 model.params = params
             except Exception:
-                pass
+                try:
+                    object.__setattr__(model, '_params', params)
+                except Exception:
+                    pass
 
             tokenizer = None
             try:
@@ -988,12 +1025,20 @@ def _build_loader_xla(item: QueueItem):
                 model, params = result
             else:
                 model = result
-                params = getattr(model, "params", {})
+                try:
+                    params = model.params
+                except Exception:
+                    params = {}
             # Reattach so model.params doesn't raise ValueError for internal accesses.
+            # Use object.__setattr__ as a fallback when the property setter is absent
+            # (older transformers builds) — bypasses the property directly to _params.
             try:
                 model.params = params
             except Exception:
-                pass
+                try:
+                    object.__setattr__(model, '_params', params)
+                except Exception:
+                    pass
 
             # For custom Linen models (e.g. AlexNet) that initialize parameters
             # with a random key instead of from_pretrained, params will be empty
