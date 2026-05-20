@@ -38,6 +38,11 @@ SESSION="expedition"
 NUM_CHIPS=4
 RUN_NUMBER=1
 MONITOR=0
+# Read ephemeral-cache flags from environment; default to off.
+# expedition.py sets EXPEDITION_EPHEMERAL=1 and EXPEDITION_EVICT_FAILURES=1
+# when the orchestrator decides workers should self-clean on exit.
+EPHEMERAL=${EXPEDITION_EPHEMERAL:-0}
+EVICT_FAILURES=${EXPEDITION_EVICT_FAILURES:-0}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -61,6 +66,14 @@ rm -f /tmp/expedition_chip_{0,1,2,3}.status
 rm -f /tmp/expedition_chip_{0,1,2,3}.log
 
 # ── Per-chip launcher scripts ─────────────────────────────────────────────────
+
+# Build optional worker flags from env vars set by the orchestrator.
+# These are evaluated here (outer shell) so the heredoc can interpolate them
+# as plain strings — no backslash-escaping needed inside the generated script.
+# Using $'...' quoting so the embedded newlines are real characters.
+EXTRA_FLAGS=""
+[ "${EPHEMERAL}" = "1" ]       && EXTRA_FLAGS="${EXTRA_FLAGS}"$' \\\n    --ephemeral'
+[ "${EVICT_FAILURES}" = "1" ]  && EXTRA_FLAGS="${EXTRA_FLAGS}"$' \\\n    --evict-failures'
 
 for chip_id in $(seq 0 $((NUM_CHIPS - 1))); do
     stagger=$((chip_id * 4))
@@ -94,7 +107,7 @@ python3 ${PROJECT_DIR}/lib/expedition/expedition_worker.py \
     --run ${RUN_NUMBER} \
     --bestiary ${PROJECT_DIR}/data/bestiary.json \
     --queue /tmp/expedition_queue_chip${chip_id}.json \
-    --results /tmp/expedition_results_chip${chip_id}.csv
+    --results /tmp/expedition_results_chip${chip_id}.csv${EXTRA_FLAGS}
 CHIPSCRIPT
     chmod +x "/tmp/expedition_chip_${chip_id}.sh"
 done
