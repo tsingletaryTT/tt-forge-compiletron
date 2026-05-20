@@ -1228,21 +1228,33 @@ class RunScreen(Screen):
         if chip_be == "xla":
             python_exe  = str(Path.home() / "tt-xla" / "venv" / "bin" / "python3")
             worker_path = str(self._project_dir / "lib" / "expedition" / "expedition_worker_xla.py")
-            # Start from parent env minus forge-specific TT-Metal vars.
-            # TT_MESH_GRAPH_DESC_PATH must NOT be inherited — it holds the forge
-            # single-chip p100 descriptor which overrides TT_VISIBLE_DEVICES and
-            # limits JAX to 1 device even when 4 are requested (verified: the p100
-            # textproto declares dims:[1,1]).  JAX enumerates devices from
-            # TT_VISIBLE_DEVICES on its own without needing a mesh descriptor file.
+            # Select the tt-xla mesh descriptor matching chip count.  JAX/TT
+            # requires TT_MESH_GRAPH_DESC_PATH for CUSTOM cluster types (e.g. a
+            # P300 board with only 1 chip visible).  We must NOT inherit the forge
+            # p100 descriptor (dims:[1,1]) for multi-chip XLA runs — it would cap
+            # JAX at 1 device.  Instead, pick from tt-xla's own install tree so
+            # the descriptor matches exactly the topology JAX will see.
+            _xla_descs = (
+                Path.home() / "tt-xla" / "third_party" / "tt-mlir" / "install"
+                / "tt-metal" / "tt_metal" / "fabric" / "mesh_graph_descriptors"
+            )
+            _chip_count = len(mesh_chip_ids) if mesh_chip_ids else 1
+            if _chip_count >= 4:
+                _xla_desc = _xla_descs / "p150_x4_mesh_graph_descriptor.textproto"
+            elif _chip_count >= 2:
+                _xla_desc = _xla_descs / "p300_mesh_graph_descriptor.textproto"
+            else:
+                _xla_desc = _xla_descs / "p150_mesh_graph_descriptor.textproto"
             env = {
                 k: v for k, v in os.environ.items()
                 if k not in ("TT_METAL_HOME", "TT_MESH_GRAPH_DESC_PATH")
             }
             env.update({
-                "TT_VISIBLE_DEVICES":      visible,
-                "TT_METAL_LOGGER_LEVEL":   "FATAL",
-                "JAX_PLATFORMS":           "tt",
-                "PYTHONUNBUFFERED":        "1",
+                "TT_VISIBLE_DEVICES":        visible,
+                "TT_METAL_LOGGER_LEVEL":     "FATAL",
+                "JAX_PLATFORMS":             "tt",
+                "TT_MESH_GRAPH_DESC_PATH":   str(_xla_desc),
+                "PYTHONUNBUFFERED":          "1",
             })
         else:
             python_exe  = sys.executable
