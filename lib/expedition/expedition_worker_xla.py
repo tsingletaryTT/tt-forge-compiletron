@@ -433,6 +433,28 @@ def _compile_model_xla(
 
         _print_live_info(f"Architecture: {type(model).__name__}")
 
+        # Linen models that don't use from_pretrained (e.g. AlexNet/custom) return
+        # an empty params dict because .init() was never called. Try model.init()
+        # with dummy inputs here, before building the forward fn, so that the JIT
+        # call has real parameters to work with.
+        if not params and hasattr(model, "init"):
+            _print_live_info("params empty — attempting model.init() with dummy inputs...")
+            try:
+                import jax
+                _dummy_for_init = make_input(device)
+                if isinstance(_dummy_for_init, _Mapping):
+                    _init_vars = model.init(jax.random.key(0), **_dummy_for_init)
+                else:
+                    _init_vars = model.init(jax.random.key(0), _dummy_for_init)
+                params = _init_vars["params"] if isinstance(_init_vars, dict) and "params" in _init_vars else _init_vars
+                try:
+                    model.params = params
+                except Exception:
+                    pass
+                _print_live_info(f"model.init() OK")
+            except Exception as _ie:
+                _print_live_info(f"model.init() failed: {str(_ie)[:120]}", ok=False)
+
         # Build the forward function to JIT. Three calling conventions:
         # 1. HuggingFace FlaxPreTrainedModel: model(**inputs, params=params) → output
         # 2. Flax Linen modules: model.apply({"params": params}, **inputs)
@@ -652,7 +674,11 @@ def _compile_model_xla(
         return False, None, 0.0, 0.0, "TIMEOUT", None
     except Exception as e:
         signal.alarm(0)
-        return False, None, 0.0, 0.0, f"{type(e).__name__}: {str(e)[:300]}", None
+        _emsg = str(e)
+        if not _emsg:
+            import traceback as _tb
+            _emsg = "".join(_tb.format_exception(type(e), e, e.__traceback__)).strip()[-300:]
+        return False, None, 0.0, 0.0, f"{type(e).__name__}: {_emsg[:300]}", None
 
 
 def _attempt_first_voice_xla(
@@ -861,6 +887,13 @@ def _build_loader_xla(item: QueueItem):
                 model, params = result
             else:
                 model, params = result, result.params
+            # Reattach params so model.params doesn't raise ValueError for internal
+            # accesses. Encoder-decoder models (blenderbot, BART) read self.params
+            # inside their forward pass even when params is also passed as a kwarg.
+            try:
+                model.params = params
+            except Exception:
+                pass
 
             tokenizer = None
             try:
@@ -956,6 +989,11 @@ def _build_loader_xla(item: QueueItem):
             else:
                 model = result
                 params = getattr(model, "params", {})
+            # Reattach so model.params doesn't raise ValueError for internal accesses.
+            try:
+                model.params = params
+            except Exception:
+                pass
 
             # For custom Linen models (e.g. AlexNet) that initialize parameters
             # with a random key instead of from_pretrained, params will be empty
