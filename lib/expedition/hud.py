@@ -168,6 +168,12 @@ class ChipHUD:
             self._state.failures    = int(data.get("failures",    0))
             self._state.streak      = int(data.get("streak",      0))
             self._state.best_streak = int(data.get("best_streak", 0))
+            # Carry forward the run total so per-model dispatch doesn't reset it
+            # to 1 on every subprocess invocation.  Only override when the file
+            # has a larger total — protects against a stale 1 being restored.
+            stored_total = int(data.get("total", 0))
+            if stored_total > self._state.total_models:
+                self._state.total_models = stored_total
         except Exception:
             pass  # missing file, parse error, etc. — fresh state is fine
 

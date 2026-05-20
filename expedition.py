@@ -314,11 +314,17 @@ def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = Fals
 
             parts_lower = [p.lower() for p in rel.parts]
 
-            # Skip loaders that download from the Tenstorrent internal S3 bucket
-            # (tt-ci-models-private). These require the IRD_LF_CACHE server to be
-            # reachable and will always fail in external/dev environments.
+            # Skip paddlepaddle loaders — Forge doesn't accept PaddlePaddle models
+            # and they always fail with "Forge only supports torch.nn.Module / ONNX".
+            if "paddlepaddle" in parts_lower or "paddle" in parts_lower:
+                continue
+
+            # Skip loaders that require the Tenstorrent internal model cache.
+            # Two patterns: s3://tt-ci-models-private (S3 direct) and IRD_LF_CACHE
+            # (cache proxy env var).  Both are only reachable inside Tenstorrent CI.
             try:
-                if "s3://tt-ci-models-private" in loader_py.read_text(encoding="utf-8", errors="ignore"):
+                loader_text = loader_py.read_text(encoding="utf-8", errors="ignore")
+                if "s3://tt-ci-models-private" in loader_text or "IRD_LF_CACHE" in loader_text:
                     continue
             except OSError:
                 pass

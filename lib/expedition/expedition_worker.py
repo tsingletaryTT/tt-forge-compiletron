@@ -999,7 +999,8 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                bench_passes: int = 0,
                bench_shapes: bool = False,
                ephemeral: bool = False,
-               evict_failures: bool = False) -> None:
+               evict_failures: bool = False,
+               run_total: int = 0) -> None:
     """Main entry point for the per-chip worker.
 
     Loads the queue, iterates over every model, runs the full pipeline
@@ -1045,7 +1046,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
         queue = _load_queue(queue_path)
     else:
         raise ValueError("Either queue_path or model_json_path must be provided")
-    hud = ChipHUD(chip_id=chip_id, total_models=len(queue), run_number=run_number)
+    hud = ChipHUD(chip_id=chip_id, total_models=run_total or len(queue), run_number=run_number)
     # Write the status file immediately so the ScoreStrip doesn't read a stale
     # file while this worker is initializing.  When resuming mid-run (TUI
     # per-model dispatch), this writes the already-accumulated pts/successes so
@@ -1339,6 +1340,9 @@ if __name__ == "__main__":
                         help="Zero-based index of the TT chip this worker owns.")
     parser.add_argument("--run",        type=int, required=True,
                         help="Sequential expedition run number.")
+    parser.add_argument("--run-total",  type=int, default=0, metavar="N",
+                        help="Total models assigned to this chip for the run. "
+                             "Used by the progress bar; 0 = infer from queue length.")
     parser.add_argument("--bestiary",   default="data/bestiary.json",
                         help="Path to the bestiary JSON file.")
     parser.add_argument("--queue",      default=None,
@@ -1375,4 +1379,5 @@ if __name__ == "__main__":
         bench_shapes=args.bench_shapes,
         ephemeral=args.ephemeral,
         evict_failures=args.evict_failures,
+        run_total=args.run_total,
     )

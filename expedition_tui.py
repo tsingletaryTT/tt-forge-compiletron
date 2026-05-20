@@ -1289,6 +1289,9 @@ class RunScreen(Screen):
                 cmd += ["--bench-passes", str(self.app.bench_passes)]
             if self.app.bench_shapes:
                 cmd.append("--bench-shapes")
+            _chip_total = len(self.chip_queues[chip_id]) if chip_id < len(self.chip_queues) else 0
+            if _chip_total > 0:
+                cmd += ["--run-total", str(_chip_total)]
             with self.app.suspend():
                 subprocess.run(cmd, env=env, stdin=subprocess.DEVNULL)
             self._rally_in_progress = False
@@ -1327,6 +1330,11 @@ class RunScreen(Screen):
             _bench_args += ["--bench-passes", str(self.app.bench_passes)]
         if self.app.bench_shapes:
             _bench_args.append("--bench-shapes")
+        # Per-chip queue depth for progress bar accuracy.  chip_queues[chip_id]
+        # holds the pre-planned allocation; may be 0 for chips added mid-run.
+        _chip_total = len(self.chip_queues[chip_id]) if chip_id < len(self.chip_queues) else 0
+        if _chip_total > 0:
+            _bench_args += ["--run-total", str(_chip_total)]
 
         proc = await asyncio.create_subprocess_exec(
             python_exe,
