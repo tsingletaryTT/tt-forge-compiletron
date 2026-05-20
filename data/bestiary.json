@@ -620,6 +620,94 @@
       "best_infer_s": 40.0125617980957,
       "throughput_unit": "ms/sample",
       "best_throughput": 40012.562
+    },
+    "albert/masked_lm/jax": {
+      "first_compiled": "2026-05-20T14:57:21.792678+00:00",
+      "first_chip": 0,
+      "run": 73,
+      "best_time_s": 22.147326707839966,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_masked_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 30000)  max=34.484  mean=-4.167",
+      "first_voice": "",
+      "backend": "xla",
+      "backends_succeeded": [
+        "xla"
+      ],
+      "best_compile_s": 22.1473,
+      "best_infer_s": 0.0099,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 3223.908
+    },
+    "deepseek/deepseek_coder/pytorch": {
+      "first_compiled": "2026-05-20T15:03:40.851661+00:00",
+      "first_chip": 1,
+      "run": 73,
+      "best_time_s": 35.650147676467896,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_causal_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 588, 32256) dtype=torch.float32 range=[-69.08, 83.17]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "best_compile_s": 35.6501,
+      "best_infer_s": 10.1264,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 10126.44
+    },
+    "deepcogito/pytorch": {
+      "first_compiled": "2026-05-20T15:10:50.619999+00:00",
+      "first_chip": 3,
+      "run": 73,
+      "best_time_s": 48.11630892753601,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_causal_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 128256) dtype=torch.float32 range=[-15.43, 23.52]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "best_compile_s": 48.1163,
+      "best_infer_s": 13.5569,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 2.36
+    },
+    "densenet/image_classification/onnx": {
+      "first_compiled": "2026-05-20T15:15:22.129063+00:00",
+      "first_chip": 3,
+      "run": 73,
+      "best_time_s": 39.88489246368408,
+      "successes": 1,
+      "source": "torchvision",
+      "task": "cv_image_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-5.73, 13.66]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "best_compile_s": 39.8849,
+      "best_infer_s": 77.2177,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 77217.738
     }
   },
   "failed": {
