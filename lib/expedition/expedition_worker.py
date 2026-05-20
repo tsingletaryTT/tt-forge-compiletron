@@ -997,7 +997,9 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                queue_path: str | None, results_path: str,
                model_json_path: str | None = None,
                bench_passes: int = 0,
-               bench_shapes: bool = False) -> None:
+               bench_shapes: bool = False,
+               ephemeral: bool = False,
+               evict_failures: bool = False) -> None:
     """Main entry point for the per-chip worker.
 
     Loads the queue, iterates over every model, runs the full pipeline
@@ -1022,6 +1024,8 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                          compile (preceded by 2 warm-up passes). 0 disables bench.
         bench_shapes:    When True, also sweep alternative input shapes after bench
                          passes. Requires bench_passes > 0 to have any effect.
+        ephemeral:       If True, evict net-new HF downloads after each model unless gold star.
+        evict_failures:  If True and ephemeral, also evict weights for failed models.
     """
     import datetime
     from lib.expedition.bestiary import Bestiary
@@ -1054,6 +1058,11 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
     print(f"{BOLD}{CYAN}{'═'*80}{RESET}\n")
 
     results: list[dict] = []
+    # Snapshot cache before any downloads so we only evict what this run fetched.
+    preexisting: frozenset[str] = frozenset()
+    if ephemeral:
+        from lib.expedition import cache_janitor as _janitor
+        preexisting = _janitor.snapshot_preexisting()
     # Track the last decoded artifact so it can be teased at the top of the
     # next model's reveal block ("last: …") for narrative continuity.
     last_artifact = ""
@@ -1272,6 +1281,16 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
         # Flush bestiary to disk after each model so a crash doesn't lose
         # all results. This is slightly slower but much safer for long runs.
         bestiary.save()
+        # Ephemeral mode: evict net-new downloads unless gold star.
+        if ephemeral:
+            _evicted, _freed = _janitor.maybe_evict(
+                item.model_id, score, preexisting, evict_failures
+            )
+            if _evicted:
+                _mb = _freed / 1_048_576
+                print(f"    {DIM}♻ {_mb:.0f} MB freed{RESET}")
+            elif success and _janitor.is_gold_star(score):
+                print(f"    {GOLD}★ SAVED{RESET}")
         hud.write_status()
 
     # ── Run complete ─────────────────────────────────────────────────────────
@@ -1334,6 +1353,11 @@ if __name__ == "__main__":
     parser.add_argument("--bench-shapes", action="store_true",
                         help="Sweep alternative input shapes after bench passes. "
                              "Requires --bench-passes > 0.")
+    parser.add_argument("--ephemeral", action="store_true",
+                        help="Evict net-new HF model weights after each result "
+                             "unless the model earns a gold-star rating.")
+    parser.add_argument("--evict-failures", action="store_true",
+                        help="With --ephemeral, also evict weights for failed models.")
     args = parser.parse_args()
     if not args.queue and not args.model_json:
         parser.error("one of --queue or --model-json is required")
@@ -1349,4 +1373,6 @@ if __name__ == "__main__":
         results_path=args.results,
         bench_passes=args.bench_passes,
         bench_shapes=args.bench_shapes,
+        ephemeral=args.ephemeral,
+        evict_failures=args.evict_failures,
     )
