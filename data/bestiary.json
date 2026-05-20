@@ -532,6 +532,94 @@
       "best_infer_s": 2.5086722373962402,
       "throughput_unit": "ms/sample",
       "best_throughput": 2508.672
+    },
+    "autoencoder/pytorch": {
+      "first_compiled": "2026-05-20T14:57:19.447318+00:00",
+      "first_chip": 2,
+      "run": 73,
+      "best_time_s": 5.170739412307739,
+      "successes": 1,
+      "source": "custom",
+      "task": "cv_img_to_img",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 784) dtype=torch.float32 range=[-0.21, 0.18]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "best_compile_s": 5.078556060791016,
+      "best_infer_s": 0.09218335151672363,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 92.183
+    },
+    "deepseek/deepseek_math/pytorch": {
+      "first_compiled": "2026-05-20T15:16:17.697468+00:00",
+      "first_chip": 2,
+      "run": 73,
+      "best_time_s": 103.12560248374939,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_qa",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 551, 102400) dtype=torch.float32 range=[-39.92, 87.25]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "best_compile_s": 87.15934681892395,
+      "best_infer_s": 15.96625566482544,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 15966.256
+    },
+    "dla/pytorch": {
+      "first_compiled": "2026-05-20T15:18:10.403825+00:00",
+      "first_chip": 2,
+      "run": 73,
+      "best_time_s": 29.31966233253479,
+      "successes": 1,
+      "source": "timm",
+      "task": "cv_image_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-6.19, 13.38]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "best_compile_s": 8.238611221313477,
+      "best_infer_s": 21.081051111221313,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 21081.051
+    },
+    "efficientnet/image_classification/onnx": {
+      "first_compiled": "2026-05-20T15:19:37.979888+00:00",
+      "first_chip": 3,
+      "run": 73,
+      "best_time_s": 52.68478083610535,
+      "successes": 1,
+      "source": "torchvision",
+      "task": "cv_image_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-2.62, 8.39]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "best_compile_s": 12.672219038009644,
+      "best_infer_s": 40.0125617980957,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 40012.562
     }
   },
   "failed": {
@@ -609,15 +697,15 @@
     },
     "beit/image_classification/jax": {
       "run_first_failed": 16,
-      "attempts": 2,
-      "last_error": "AttributeError: ",
-      "error_category": "other"
+      "attempts": 3,
+      "last_error": "XlaRuntimeError: INTERNAL: Error code: 13",
+      "error_category": "xla_runtime_error"
     },
     "bi_lstm_crf/pytorch": {
       "run_first_failed": 16,
-      "attempts": 1,
-      "last_error": "IndexError: index out of range in self",
-      "error_category": "forge_internal"
+      "attempts": 2,
+      "last_error": "NotImplementedError: The following operators are not implemented: ['aten::_pack_padded_sequence', 'aten::_pad_packed_sequence']",
+      "error_category": "forge_missing_op"
     },
     "bigbird/causal_lm/jax": {
       "run_first_failed": 16,
@@ -627,9 +715,9 @@
     },
     "blip/vision_language/paddlepaddle": {
       "run_first_failed": 16,
-      "attempts": 2,
-      "last_error": "ValueError: `forward()` requires `pixel_values` arguments, but not found in input `args`: [InputSpec(shape=(1, 32), dtype=paddle.int64, name=None, stop_gradient=False)] and `kwargs`: {}.",
-      "error_category": "unsupported_backend"
+      "attempts": 3,
+      "last_error": "AssertionError: Forge only supports: torch.nn.modules.module.Module | forge._framework_stubs._NI | onnx.onnx_ml_pb2.ModelProto | forge.module.OnnxModule | forge.module.ForgeModule.",
+      "error_category": "other"
     },
     "autoencoder/pytorch": {
       "run_first_failed": 17,
@@ -651,7 +739,7 @@
     },
     "bevformer/pytorch": {
       "run_first_failed": 40,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "ValueError: IRD_LF_CACHE environment variable is not set. Please set it to the address of the IRD LF cache.",
       "error_category": "missing_dependency"
     },
@@ -666,6 +754,54 @@
       "attempts": 2,
       "last_error": "AssertionError: Resize2d op only support nearest and bilinear mode for now",
       "error_category": "forge_missing_op"
+    },
+    "alexnet/image_classification/paddlepaddle": {
+      "run_first_failed": 72,
+      "attempts": 2,
+      "last_error": "AssertionError: Forge only supports: torch.nn.modules.module.Module | forge._framework_stubs._NI | onnx.onnx_ml_pb2.ModelProto | forge.module.OnnxModule | forge.module.ForgeModule.",
+      "error_category": "other"
+    },
+    "gpt2/causal_lm/jax": {
+      "run_first_failed": 1,
+      "attempts": 1,
+      "last_error": "AttributeError: 'GPT2LMHeadModel' object has no attribute 'apply'",
+      "error_category": "other"
+    },
+    "bge_m3/pytorch": {
+      "run_first_failed": 73,
+      "attempts": 1,
+      "last_error": "ModuleNotFoundError: No module named 'FlagEmbedding'",
+      "error_category": "missing_dependency"
+    },
+    "blenderbot/summarization/jax": {
+      "run_first_failed": 73,
+      "attempts": 1,
+      "last_error": "XlaRuntimeError: INTERNAL: Error code: 13",
+      "error_category": "xla_runtime_error"
+    },
+    "command/pytorch": {
+      "run_first_failed": 73,
+      "attempts": 1,
+      "last_error": "OSError: You are trying to access a gated repo.\nMake sure to have access to it at https://huggingface.co/CohereLabs/command-a-reasoning-08-2025.\n403 Client Error. (Request ID: Root=1-6a0dcbfe-2cc6ec66372d0d3e755cb024;ba996c29-2ecd-41ab-a2f9-716e86049f60)\n\nCannot access gated repo for url https://huggingface.",
+      "error_category": "other"
+    },
+    "d_fine/pytorch": {
+      "run_first_failed": 73,
+      "attempts": 1,
+      "last_error": "ValueError: not enough values to unpack (expected 4, got 2)",
+      "error_category": "other"
+    },
+    "dinov2/image_classification/jax": {
+      "run_first_failed": 73,
+      "attempts": 1,
+      "last_error": "ValueError: `params` cannot be accessed from model when the model is created with `_do_init=False`. You must call `init_weights` manually and store the params outside of the model and pass it explicitly where needed.",
+      "error_category": "other"
+    },
+    "dinov2/image_classification/pytorch": {
+      "run_first_failed": 73,
+      "attempts": 1,
+      "last_error": "AssertionError: Resize2d op only support nearest and bilinear mode for now",
+      "error_category": "forge_missing_op"
     }
   },
   "chip_totals": {
@@ -675,13 +811,13 @@
       "best_streak": 4
     },
     "2": {
-      "pts": 12450,
-      "first_evers": 11,
+      "pts": 12900,
+      "first_evers": 14,
       "best_streak": 1
     },
     "3": {
-      "pts": 2650,
-      "first_evers": 5,
+      "pts": 2800,
+      "first_evers": 6,
       "best_streak": 1
     },
     "1": {
