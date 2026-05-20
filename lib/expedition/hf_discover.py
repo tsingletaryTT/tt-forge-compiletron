@@ -118,6 +118,7 @@ _UNSUPPORTED_MODEL_TYPES: frozenset[str] = frozenset({
     "dwa",              # Dynamic Weight Adjustment (unknown custom code)
     "bitnet",           # BitNet 1.58-bit (requires custom int1 kernels)
     "bitnet_b158",      # BitNet variant
+    "glm4_moe",         # GLM-4 MoE variant — not in current transformers registry
 })
 
 # Parameter count threshold (in billions) above which a model is flagged for

@@ -581,8 +581,9 @@ def _preflight_gated_check(item: "QueueItem") -> tuple[bool, str]:
     Fails open on any API error (network blip, rate limit) — returns
     (False, "") so a transient HF API problem never blocks valid models.
 
-    Only runs for frontier (HF-discovered) models; seed models from
-    tt-forge-models are internal and don't require HF access grants.
+    Runs for both frontier and seed models — seed models like command/pytorch
+    and llama_3_2_vision require HF access grants and would otherwise waste a
+    full download attempt before hitting a 403.
 
     Args:
         item: QueueItem for the model being preflighted.
@@ -590,8 +591,6 @@ def _preflight_gated_check(item: "QueueItem") -> tuple[bool, str]:
     Returns:
         (is_gated, error_str) where error_str is non-empty only when gated.
     """
-    if not item.is_frontier:
-        return False, ""
     try:
         from huggingface_hub import HfApi
         info = HfApi().model_info(item.model_id)
@@ -1476,19 +1475,20 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
         # Check HF access gate before attempting any download. Prints a pitch
         # + numbered unlock instructions on interactive terminals (6 s pause),
         # then records model_access and skips — never retry a gated model.
-        if item.is_frontier:
-            _is_gated, _gated_err = _preflight_gated_check(item)
-            if _is_gated:
-                elapsed = time.time() - start
-                score = compute_score(False, is_first_ever, rarity, newness,
-                                      hud.state.streak, mesh_chips=item.mesh_chips)
-                hud.record_failure(item.model_id)
-                bestiary.record_failure(item.model_id, run_number, _gated_err)
-                hud.write_status()
-                bestiary.save()
-                results.append({"model": item.model_id, "status": "failed",
-                                 "error": _gated_err, "pts": score.pts})
-                continue
+        # Runs for ALL models (seed + frontier) — seed models like command/pytorch
+        # and llama_3_2_vision also require HF access grants.
+        _is_gated, _gated_err = _preflight_gated_check(item)
+        if _is_gated:
+            elapsed = time.time() - start
+            score = compute_score(False, is_first_ever, rarity, newness,
+                                  hud.state.streak, mesh_chips=item.mesh_chips)
+            hud.record_failure(item.model_id)
+            bestiary.record_failure(item.model_id, run_number, _gated_err)
+            hud.write_status()
+            bestiary.save()
+            results.append({"model": item.model_id, "status": "failed",
+                             "error": _gated_err, "pts": score.pts})
+            continue
 
         # ── Architecture preflight ───────────────────────────────────────────
         # Fetch config.json only (a few KB) and check for custom-class deps
