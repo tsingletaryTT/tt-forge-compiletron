@@ -474,6 +474,7 @@ class SetupScreen(Screen):
         Binding("3",          "sources_frontier","Sources: HF",   show=False),
         Binding("4",          "toggle_staples",  "Staples",       show=False),
         Binding("5",          "cycle_backend",   "Backend",       show=False),
+        Binding("6",          "cycle_xla_mesh",  "XLA Mesh",      show=False),
         Binding("q",          "quit",            "Quit",          show=True),
     ]
 
@@ -582,6 +583,10 @@ class SetupScreen(Screen):
             "xla":   "[bold cyan]XLA[/]",
             "mixed": "[bold yellow]MIXED[/]",
         }.get(self._backend, self._backend)
+        mesh_str = (
+            "[dim]1 (off)[/]" if self._xla_mesh == 1
+            else f"[bold cyan]{self._xla_mesh}[/]  [dim]causal LMs[/]"
+        )
 
         if self._discovering:
             status = "[bold cyan]⚙ Discovering…[/]"
@@ -607,6 +612,7 @@ class SetupScreen(Screen):
             f"  Sources      [bold]{src_str}[/]  [dim]1/2/3[/]",
             f"  Staples      {staples_str}  [dim]4[/]",
             f"  Backend      {backend_str}  [dim]5[/]",
+            f"  XLA Mesh     {mesh_str}  [dim]6[/]",
             "",
             "─" * 34,
             status,
@@ -658,6 +664,8 @@ class SetupScreen(Screen):
     def action_toggle_staples(self)  -> None: self._staples = not self._staples
     @_guarded
     def action_cycle_backend(self)   -> None: self._backend = {"auto": "forge", "forge": "xla", "xla": "mixed", "mixed": "auto"}[self._backend]
+    @_guarded
+    def action_cycle_xla_mesh(self)  -> None: self._xla_mesh = {1: 2, 2: 4, 4: 1}[self._xla_mesh]
 
     def action_start(self) -> None:
         if self._discovering or self._setup_done:

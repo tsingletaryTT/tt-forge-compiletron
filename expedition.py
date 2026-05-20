@@ -391,10 +391,17 @@ def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = Fals
                 "rarity": "familiar",       # seed models are known quantities
                 "hf_downloads": None,
                 "hf_created_at": None,
-                # For JAX loaders, honour the caller's xla_mesh request so that
-                # multi-chip shard_map dispatch is reflected in the queue item.
-                # PyTorch/forge loaders always stay at 1 (single-chip only).
-                "mesh_chips": xla_mesh if loader_lib == "jax" and xla_mesh > 1 else 1,
+                # For JAX causal-LM loaders, honour xla_mesh so large generative
+                # models get multi-chip shard_map dispatch.  Smaller JAX models
+                # (vision, masked-LM, audio) stay at 1 chip — they don't benefit
+                # from multi-chip and tying up 2-4 chips for a tiny encoder is wasteful.
+                # PyTorch/forge loaders are always single-chip.
+                "mesh_chips": (
+                    xla_mesh
+                    if loader_lib == "jax" and xla_mesh > 1
+                    and task in _XLA_LARGE_TASKS
+                    else 1
+                ),
                 # library reflects the actual framework so the dispatch router can
                 # send JAX loaders to XLA and pytorch loaders to forge.
                 "library": loader_lib,
@@ -1160,6 +1167,14 @@ _FORGE_IGNORE_PATTERNS = [
     "*.ot",        # OpenNMT tokenizer files
 ]
 
+# JAX task types that benefit from multi-chip shard_map dispatch.
+# Only causal/generative LMs are large enough to warrant tying up 2-4 chips.
+# Masked-LM, vision, and audio models are small enough to run single-chip.
+_XLA_LARGE_TASKS: frozenset[str] = frozenset({
+    "nlp_causal_lm",
+    "nlp_seq2seq_lm",   # T5/BART-family encoder-decoders
+})
+
 # Patterns to ignore when pre-downloading for tt-xla backend.
 # XLA needs Flax weights (.msgpack) — skip TF/Keras/Rust/PyTorch-only formats.
 _XLA_IGNORE_PATTERNS = [
@@ -1797,8 +1812,10 @@ def main():
                        help="With --ephemeral, also evict weights for models that "
                             "fail to compile (default: keep failures for retry).")
     run_p.add_argument("--xla-mesh", type=int, default=1, metavar="N",
-                       help="Run JAX/XLA seed models on N chips (data-parallel). "
-                            "1 = single-chip (default). Requires --backend xla or mixed.")
+                       help="Run JAX causal-LM seed models on N chips (data-parallel "
+                            "shard_map). 1 = single-chip (default). Smaller JAX models "
+                            "(vision, masked-LM, audio) always stay at 1 chip. "
+                            "Requires --backend xla or mixed (or auto with JAX models).")
 
     sub.add_parser("summary", help="Print bestiary summary")
 
