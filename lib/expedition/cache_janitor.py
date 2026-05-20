@@ -48,9 +48,15 @@ def is_gold_star(result: "ScoreResult") -> bool:
 
 
 def _hf_repo_dir(model_id: str) -> Path:
-    """Map a HuggingFace model_id to its local cache directory path."""
+    """Map a HuggingFace model_id to its local cache directory path.
+
+    Uses HF_HUB_CACHE (from huggingface_hub.constants) so that the
+    HF_HOME and HUGGINGFACE_HUB_CACHE environment overrides are respected,
+    rather than always resolving to ~/.cache/huggingface/hub/.
+    """
+    from huggingface_hub.constants import HF_HUB_CACHE
     safe = model_id.replace("/", "--")
-    return Path.home() / ".cache" / "huggingface" / "hub" / f"models--{safe}"
+    return Path(HF_HUB_CACHE) / f"models--{safe}"
 
 
 def maybe_evict(
