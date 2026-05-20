@@ -451,7 +451,7 @@ def _scan_forge_models(bestiary_compiled_ids: set[str], include_all: bool = Fals
 def _scan_frontier(
     bestiary_compiled_ids: set[str],
     forge_model_ids: set[str],
-    min_downloads: int = 50,
+    min_downloads: int = 1_000,
     min_likes: int = 1,
     max_dl_like_ratio: int = 300,
     max_params_b: float = 0.0,
@@ -878,7 +878,7 @@ def build_queues(
     seed_only: bool = False,
     frontier_only: bool = False,
     limit: int = 0,
-    min_downloads: int = 50,
+    min_downloads: int = 1_000,
     min_likes: int = 1,
     max_dl_like_ratio: int = 300,
     max_params_b: float = 0.0,

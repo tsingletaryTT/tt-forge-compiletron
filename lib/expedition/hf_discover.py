@@ -386,6 +386,16 @@ def discover_frontier(
         # Skip disabled repos (archived / deleted but still indexed).
         if getattr(m, "disabled", None):
             continue
+        # Recency gate: old models with little traction are likely superseded by
+        # newer versions.  Prefer trying the latest generation rather than proving
+        # out history — identical logic to discover_from_authors.
+        created_at = getattr(m, "created_at", None)
+        if created_at is not None:
+            age_days = (datetime.now(timezone.utc) - created_at).days
+            if age_days > _OLD_MODEL_AGE_DAYS and dl < _OLD_MODEL_MIN_DOWNLOADS:
+                _log.debug("skipped_old_low_traction model=%s age_days=%d downloads=%d",
+                           m.id, age_days, dl)
+                continue
         # Size cap: prefer safetensors metadata; fall back to name-based parsing
         # so GGUF and other non-safetensors models don't bypass the filter.
         if max_params_b > 0:
