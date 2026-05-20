@@ -410,6 +410,14 @@ def discover_frontier(
     return results
 
 
+# Models older than this many days need at least OLD_MODEL_MIN_DOWNLOADS to
+# qualify via the author supplement.  Recent uploads from proven authors are
+# always included; old experiments with tiny traction are skipped so we don't
+# prove out the past when a newer version of the same work likely exists.
+_OLD_MODEL_AGE_DAYS = 365
+_OLD_MODEL_MIN_DOWNLOADS = 10_000
+
+
 def discover_from_authors(
     authors: list[str],
     compiled_ids: set[str],
@@ -426,7 +434,10 @@ def discover_from_authors(
     base architecture and same upload patterns.
 
     Applies the same filters as discover_frontier (tag, format, model_type,
-    gated, disabled) but no downloads/likes floor since these are trusted sources.
+    gated, disabled) plus a recency gate: models older than _OLD_MODEL_AGE_DAYS
+    must have at least _OLD_MODEL_MIN_DOWNLOADS to qualify.  This prevents old
+    low-traction experiments from clogging the queue when a newer version of the
+    same work likely exists on HuggingFace.
 
     Args:
         authors:         HuggingFace author names (namespace before the /).
@@ -448,6 +459,7 @@ def discover_from_authors(
     # Unified exclusion set so we never return already-known models.
     excluded = set(compiled_ids) | set(known_model_ids)
     seen_ids: set[str] = set()
+    now = datetime.now(timezone.utc)
 
     for author in authors:
         try:
@@ -484,6 +496,17 @@ def discover_from_authors(
                 continue
             if getattr(m, "disabled", None):
                 continue
+            # Recency gate: old models with little traction are likely superseded.
+            # Prefer trying the newer version from the same author rather than
+            # burning bandwidth on a low-download experiment from a year+ ago.
+            created_at = getattr(m, "created_at", None)
+            if created_at is not None:
+                age_days = (now - created_at).days
+                dl = getattr(m, "downloads", 0) or 0
+                if age_days > _OLD_MODEL_AGE_DAYS and dl < _OLD_MODEL_MIN_DOWNLOADS:
+                    _log.debug("skipped_old_low_traction model=%s age_days=%d downloads=%d",
+                               m.id, age_days, dl)
+                    continue
             seen_ids.add(m.id)
             results.append(_model_to_frontier(m))
 
