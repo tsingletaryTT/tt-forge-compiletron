@@ -969,6 +969,7 @@ def build_queues(
             "api_mismatch",         # JAX/Flax API incompatibility in our worker
             "shape_mismatch",       # tensor shape incompatibility in model forward pass
             "forge_missing_op",     # operator not implemented in forge (e.g. aten::_pad_packed_sequence)
+            "model_access",         # gated HF model — requires explicit access grant before download
         }
         # forge_internal is fatal on first attempt (kills the worker process);
         # all other categories need 2+ attempts to rule out transient env issues.
@@ -1014,6 +1015,7 @@ def build_queues(
         #   loader_missing       — build_dynamic_loader() can't trace this pipeline type
         #   missing_dependency   — required optional package (mamba-ssm, FlagEmbedding…)
         #   xla_runtime_error    — XLA/PJRT crash (Error code 13 etc.) — persistent HW issue
+        #   model_access         — gated HF repo; preflight detected, user must request access
         # Plus a catch-all: 3+ attempts of any error OTHER than tracer_output_type.
         # tracer_output_type is exempted because the _LogitsWrapper retry in
         # _compile_model is designed to fix exactly that class — those models deserve
@@ -1021,6 +1023,7 @@ def build_queues(
         _PERM_FAIL_CATS = {
             "unsupported_arch", "loader_missing",
             "missing_dependency", "xla_runtime_error",
+            "model_access",
         }
         perm_fail_ids = {
             mid for mid, info in bestiary.failed.items()

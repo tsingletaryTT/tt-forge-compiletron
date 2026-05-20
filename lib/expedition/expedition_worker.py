@@ -504,6 +504,124 @@ def _print_failure(model_id: str, error: str, elapsed: float) -> None:
     print(f"\n  {BOLD}{RED}✗ FAILED{RESET}  {DIM}{error[:80]}{RESET}  ({elapsed:.1f}s  −10pts)")
 
 
+def _print_gated_pitch(
+    model_id: str,
+    downloads: int,
+    pipeline_tag: str,
+    gated_type: str,
+    heading: str,
+) -> None:
+    """Print a gated-model pitch block with numbered unlock instructions.
+
+    Called when the HF API confirms a model requires an access grant before
+    its weights can be downloaded.  The pitch leads with what the model does
+    and how many people use it (social proof), then hypes the Tenstorrent
+    first-run angle, then gives a concrete numbered checklist to unlock it.
+
+    Args:
+        model_id:     HuggingFace model identifier (used to build the URL).
+        downloads:    Total download count from HF for social proof.
+        pipeline_tag: HF pipeline task tag (e.g. "text-generation").
+        gated_type:   "manual" (fill-in form, may need approval wait) or
+                      "auto" (one-click agree-and-access).
+        heading:      extra_gated_heading from HF model card — the
+                      human-readable reason for gating (may be "").
+    """
+    _TASK_LABELS = {
+        "text-generation":              "a text-generation LLM",
+        "text2text-generation":         "a seq2seq language model",
+        "image-classification":         "an image classification model",
+        "image-to-text":                "a vision-language model",
+        "question-answering":           "a question-answering model",
+        "fill-mask":                    "a masked language model",
+        "token-classification":         "a token classification model",
+        "feature-extraction":           "an embedding/feature model",
+        "automatic-speech-recognition": "a speech recognition model",
+        "audio-classification":         "an audio classification model",
+    }
+    task_label = _TASK_LABELS.get(pipeline_tag, f"a {pipeline_tag} model")
+    dl_str = f"{downloads:,}" if downloads else "many"
+
+    print(f"\n  {BOLD}{YELLOW}🔒  GATED MODEL{RESET}")
+    print(f"  {'─'*56}")
+    print(f"  {CYAN}What it is:{RESET}  {task_label}")
+    print(f"  {CYAN}Downloads:{RESET}   {dl_str} devs already using this")
+    if heading:
+        print(f"  {CYAN}Access req:{RESET}  {heading[:72]}")
+    print()
+    print(f"  {GOLD}You could be the first to run this on Tenstorrent silicon.{RESET}")
+    print(f"  {DIM}Takes ~2 minutes to unlock — here's how:{RESET}")
+    print()
+    print(f"  {BOLD}How to unlock:{RESET}")
+    print(f"  {YELLOW}①{RESET}  Visit   {CYAN}https://huggingface.co/{model_id}{RESET}")
+    if gated_type == "manual":
+        print(f"  {YELLOW}②{RESET}  Fill in the access request form and submit")
+        print(f"  {YELLOW}③{RESET}  Wait for approval (usually minutes to a few hours)")
+        print(f"  {YELLOW}④{RESET}  Run    {CYAN}huggingface-cli login{RESET}")
+        print(f"  {YELLOW}⑤{RESET}  Rerun  {CYAN}expedition with --allow-gated{RESET}")
+    else:
+        print(f"  {YELLOW}②{RESET}  Click  {CYAN}\"Agree and access repository\"{RESET}")
+        print(f"  {YELLOW}③{RESET}  Run    {CYAN}huggingface-cli login{RESET}")
+        print(f"  {YELLOW}④{RESET}  Rerun  {CYAN}expedition with --allow-gated{RESET}")
+    print(f"  {'─'*56}")
+
+
+def _preflight_gated_check(item: "QueueItem") -> tuple[bool, str]:
+    """Check whether a HuggingFace model requires an access grant.
+
+    Uses HfApi.model_info() to inspect the ``gated`` field *before* any
+    download is attempted.  On a gated hit: prints the pitch block with
+    unlock instructions (when stdin is a tty, also pauses 6 s to give the
+    user time to read), then returns True so the caller can record a
+    model_access failure and skip to the next model.
+
+    Fails open on any API error (network blip, rate limit) — returns
+    (False, "") so a transient HF API problem never blocks valid models.
+
+    Only runs for frontier (HF-discovered) models; seed models from
+    tt-forge-models are internal and don't require HF access grants.
+
+    Args:
+        item: QueueItem for the model being preflighted.
+
+    Returns:
+        (is_gated, error_str) where error_str is non-empty only when gated.
+    """
+    if not item.is_frontier:
+        return False, ""
+    try:
+        from huggingface_hub import HfApi
+        info = HfApi().model_info(item.model_id)
+        if not getattr(info, "gated", None):
+            return False, ""
+
+        gated_type = info.gated  # "manual" or "auto"
+        downloads  = getattr(info, "downloads", 0) or 0
+        card       = getattr(info, "card_data", None)
+        heading    = ""
+        if card is not None:
+            heading = getattr(card, "extra_gated_heading", "") or ""
+
+        _print_gated_pitch(
+            model_id=item.model_id,
+            downloads=downloads,
+            pipeline_tag=item.task or "",
+            gated_type=gated_type,
+            heading=heading,
+        )
+
+        # Pause in interactive terminals so the user has time to read the pitch
+        # before the next model's reveal fires.  Don't block indefinitely —
+        # other chip panes are still running.
+        if sys.stdin.isatty():
+            time.sleep(6)
+
+        return True, f"GatedModelError: model requires HF access grant (type={gated_type})"
+
+    except Exception:
+        return False, ""  # fail-open: API blip must not block valid models
+
+
 def _normalise_inputs(inputs: list) -> list:
     """Ensure tensors are contiguous float32 before forge sees them.
 
@@ -1289,8 +1407,27 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
         if last_artifact:
             print(f"  {DIM}last: {last_artifact}{RESET}")
 
-        _print_progress_step(1, 3, "Loading model...")
         start = time.time()
+
+        # ── Gated model preflight ────────────────────────────────────────────
+        # Check HF access gate before attempting any download. Prints a pitch
+        # + numbered unlock instructions on interactive terminals (6 s pause),
+        # then records model_access and skips — never retry a gated model.
+        if item.is_frontier:
+            _is_gated, _gated_err = _preflight_gated_check(item)
+            if _is_gated:
+                elapsed = time.time() - start
+                score = compute_score(False, is_first_ever, rarity, newness,
+                                      hud.state.streak, mesh_chips=item.mesh_chips)
+                hud.record_failure(item.model_id)
+                bestiary.record_failure(item.model_id, run_number, _gated_err)
+                hud.write_status()
+                bestiary.save()
+                results.append({"model": item.model_id, "status": "failed",
+                                 "error": _gated_err, "pts": score.pts})
+                continue
+
+        _print_progress_step(1, 3, "Loading model...")
 
         # ── Loader construction (pre-flight check) ───────────────────────────
         # Build the loader in the parent as a fast error gate — catches missing
