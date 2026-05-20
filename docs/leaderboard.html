@@ -120,15 +120,19 @@ a:hover { color: var(--teal2); }
 .t-seed  { color: var(--muted); border-color: var(--muted); }
 .t-fail  { color: var(--red);   border-color: var(--red);   }
 
+.fv-row td {
+  background: rgba(79, 209, 197, 0.04);
+  border-top: none !important;
+  padding: 0.15rem 0.75rem 0.5rem 1.25rem;
+}
 .fv {
   color: var(--teal2);
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   font-family: var(--mono);
-  display: block;
   white-space: pre-wrap;
   word-break: break-word;
-  max-width: 320px;
-  line-height: 1.5;
+  line-height: 1.6;
+  opacity: 0.9;
 }
 .compile-fast { color: var(--green); }
 .tput-good    { color: var(--teal2); }
@@ -326,7 +330,6 @@ footer {
           <th data-col="successes">Runs</th>
           <th data-col="run">Run #</th>
           <th data-col="chip">Chip</th>
-          <th data-col="first_voice">First Voice</th>
         </tr>
       </thead>
       <tbody id="compiled-body"></tbody>
@@ -566,7 +569,6 @@ footer {
           tputHtml = tp.toFixed(1) + ' ' + esc(tpu);
         }
       }
-      var fvHtml = fv ? '<span class="fv">' + esc(String(fv)) + '</span>' : '';
       var dateStr = m.first_compiled ? m.first_compiled.slice(0, 10) : '';
 
       html += '<tr title="First compiled: ' + esc(dateStr) + '">' +
@@ -581,11 +583,13 @@ footer {
         '<td style="text-align:center">' + (m.successes || 1) + '</td>' +
         '<td style="text-align:center;color:var(--muted)">#' + (m.run || '?') + '</td>' +
         '<td style="text-align:center;color:var(--muted)">C' + (m.first_chip != null ? m.first_chip : '?') + '</td>' +
-        '<td>' + fvHtml + '</td>' +
         '</tr>';
+      if (fv) {
+        html += '<tr class="fv-row"><td colspan="11"><span class="fv">' + esc(String(fv)) + '</span></td></tr>';
+      }
     });
 
-    document.getElementById('compiled-body').innerHTML = html || '<tr><td colspan="12" style="color:var(--muted);text-align:center;padding:2rem">No models match the current filter.</td></tr>';
+    document.getElementById('compiled-body').innerHTML = html || '<tr><td colspan="11" style="color:var(--muted);text-align:center;padding:2rem">No models match the current filter.</td></tr>';
   }
 
   // ── Failed table ────────────────────────────────────────────────────────
