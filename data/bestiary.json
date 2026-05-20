@@ -921,8 +921,8 @@
     },
     "gpt2/causal_lm/jax": {
       "run_first_failed": 1,
-      "attempts": 2,
-      "last_error": "JAX model 'gpt2/causal_lm/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "attempts": 3,
+      "last_error": "ValueError: GPT2LMHeadModel has no .apply() method \u2014 XLA worker requires Flax Linen or HuggingFace Flax models. EasyDel NNX models are not yet supported.",
       "error_category": "other"
     },
     "bge_m3/pytorch": {

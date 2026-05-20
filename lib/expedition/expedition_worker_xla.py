@@ -464,11 +464,17 @@ def _compile_model_xla(
                     f"shape-based init failed: {str(_ie)[:120]}", ok=False
                 )
 
-        # Build the forward function to JIT. Three calling conventions:
+        # Build the forward function to JIT. Four calling conventions:
         # 1. HuggingFace FlaxPreTrainedModel: model(**inputs, params=params) → output
         # 2. Flax Linen modules: model.apply({"params": params}, **inputs)
         # 3. Raw array input (e.g. AlexNet): passed positionally with train=False
+        # 4. EasyDel / Flax NNX: nnx.split → (graphdef, state); forward via nnx.merge
         flax_params = params
+
+        try:
+            import flax.nnx as _nnx
+        except ImportError:
+            _nnx = None
 
         from transformers.modeling_flax_utils import FlaxPreTrainedModel  # noqa
         if isinstance(model, FlaxPreTrainedModel):
@@ -499,12 +505,35 @@ def _compile_model_xla(
                 if isinstance(out, (tuple, list)):
                     return out[0]
                 return out
+        elif _nnx is not None and isinstance(model, _nnx.Module):
+            # EasyDel / Flax NNX model: no .apply(), but nnx.split gives a
+            # (graphdef, state) pair where state is a JAX pytree. Rebuild the
+            # model inside forward() via nnx.merge so jax.jit can trace it.
+            # EasyDel requires an active JAX Mesh context — a 1-device Mesh
+            # is created below and stored as _nnx_mesh for use at call time.
+            _graphdef, _nnx_state = _nnx.split(model)
+            flax_params = _nnx_state  # replace dict params with NNX state pytree
+            _nnx_mesh = Mesh(np.array([device]), ("batch",))
+
+            def forward(params, inputs):
+                _m = _nnx.merge(_graphdef, params)
+                if isinstance(inputs, _Mapping):
+                    out = _m(**inputs)
+                else:
+                    out = _m(inputs)
+                if hasattr(out, "logits") and out.logits is not None:
+                    return out.logits
+                if isinstance(out, (tuple, list)):
+                    return out[0]
+                return out
         else:
             raise ValueError(
-                f"{type(model).__name__} has no .apply() method — "
-                "XLA worker requires Flax Linen or HuggingFace Flax models. "
-                "EasyDel NNX models are not yet supported."
+                f"{type(model).__name__} has no .apply() method and is not a Flax NNX module — "
+                "XLA worker requires HuggingFace Flax, Flax Linen, or EasyDel NNX models."
             )
+
+        # _nnx_mesh is only set for EasyDel (Type C) models; None otherwise.
+        _nnx_mesh = locals().get("_nnx_mesh", None)
 
         if mesh_chips > 1:
             # ── Multi-chip path ───────────────────────────────────────────────
@@ -678,8 +707,13 @@ def _compile_model_xla(
             signal.alarm(timeout)
             try:
                 with jax.default_device(device):
-                    output = compiled_fn(flax_params, dummy_inputs)
-                    output.block_until_ready()  # ensure device execution completes
+                    if _nnx_mesh is not None:
+                        with _nnx_mesh:
+                            output = compiled_fn(flax_params, dummy_inputs)
+                            output.block_until_ready()
+                    else:
+                        output = compiled_fn(flax_params, dummy_inputs)
+                        output.block_until_ready()  # ensure device execution completes
                 signal.alarm(0)
             except TimeoutException:
                 signal.alarm(0)
@@ -692,10 +726,17 @@ def _compile_model_xla(
             infer_s = 0.0
             try:
                 with jax.default_device(device):
-                    infer_start = time.time()
-                    _ = compiled_fn(flax_params, dummy_inputs)
-                    _.block_until_ready()
-                    infer_s = time.time() - infer_start
+                    if _nnx_mesh is not None:
+                        with _nnx_mesh:
+                            infer_start = time.time()
+                            _ = compiled_fn(flax_params, dummy_inputs)
+                            _.block_until_ready()
+                            infer_s = time.time() - infer_start
+                    else:
+                        infer_start = time.time()
+                        _ = compiled_fn(flax_params, dummy_inputs)
+                        _.block_until_ready()
+                        infer_s = time.time() - infer_start
             except Exception:
                 pass
 
