@@ -36,7 +36,7 @@ def snapshot_preexisting() -> frozenset[str]:
         return frozenset()
 
 
-def is_gold_star(result) -> bool:
+def is_gold_star(result: "ScoreResult") -> bool:
     """Return True if a successful result earns gold-star preservation.
 
     Gold star = pts > 0 AND (rarity rare/legendary OR first-ever compile).
@@ -92,8 +92,8 @@ def maybe_evict(
         repo_info = next((r for r in info.repos if r.repo_id == model_id), None)
         if repo_info:
             bytes_freed = repo_info.size_on_disk
-    except Exception:
-        pass
+    except Exception as exc:
+        log.debug("cache_janitor: could not measure size for %s: %s", model_id, exc)
 
     try:
         shutil.rmtree(repo_dir)

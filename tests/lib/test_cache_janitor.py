@@ -72,6 +72,7 @@ class TestMaybeEvict:
                    return_value=tmp_path / "nonexistent"):
             evicted, freed = maybe_evict("org/model", _score(100), preexisting)
         assert evicted is False
+        assert freed == 0
 
     def test_evicts_successful_common_model(self, tmp_path):
         repo_dir = tmp_path / "models--org--model"
@@ -128,6 +129,7 @@ class TestMaybeEvict:
             )
         assert evicted is True
         assert not repo_dir.exists()
+        assert freed == 0
 
     def test_survives_rmtree_error(self, tmp_path):
         repo_dir = tmp_path / "models--org--model"
@@ -135,7 +137,19 @@ class TestMaybeEvict:
 
         with patch("lib.expedition.cache_janitor._hf_repo_dir", return_value=repo_dir), \
              patch("lib.expedition.cache_janitor.scan_cache_dir") as mock_scan, \
-             patch("shutil.rmtree", side_effect=OSError("permission denied")):
+             patch("lib.expedition.cache_janitor.shutil.rmtree", side_effect=OSError("permission denied")):
             mock_scan.return_value.repos = []
             evicted, freed = maybe_evict("org/model", _score(100), frozenset())
         assert evicted is False
+        assert freed == 0
+
+    def test_evicts_and_returns_zero_bytes_when_scan_raises(self, tmp_path):
+        repo_dir = tmp_path / "models--org--model"
+        repo_dir.mkdir()
+
+        with patch("lib.expedition.cache_janitor._hf_repo_dir", return_value=repo_dir), \
+             patch("lib.expedition.cache_janitor.scan_cache_dir", side_effect=Exception("scan failed")):
+            evicted, freed = maybe_evict("org/model", _score(100), frozenset())
+        assert evicted is True
+        assert freed == 0
+        assert not repo_dir.exists()
