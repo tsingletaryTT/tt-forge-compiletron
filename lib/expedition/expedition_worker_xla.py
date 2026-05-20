@@ -1001,6 +1001,13 @@ def _build_loader_xla(item: QueueItem):
             # which hits SliceOp failures on TT hardware (XlaRuntimeError code 13).
             # With _do_init=False, from_pretrained returns a (model, params) tuple
             # instead of a model with .params — handle both shapes below.
+            #
+            # Two exceptions where _do_init=False must be skipped:
+            # 1. from_pt=True — HuggingFace accesses model.params internally during
+            #    PyTorch→Flax weight conversion; from_pt already avoids TT eager init.
+            # 2. Models with no native Flax weights (e.g. DINOv2) — from_pretrained
+            #    triggers an internal fallback that calls model.params. Retry with
+            #    from_pt=True which forces the PyTorch→Flax conversion path instead.
             _FPTM = None
             _orig = None
             try:
@@ -1009,8 +1016,20 @@ def _build_loader_xla(item: QueueItem):
                 _orig_func = _orig.__func__
                 @classmethod  # type: ignore[misc]
                 def _patched(cls, *args, **kw):
+                    if kw.get("from_pt", False):
+                        # from_pt=True handles weight init without TT eager execution;
+                        # adding _do_init=False would break the internal conversion.
+                        return _orig_func(cls, *args, **kw)
                     kw.setdefault("_do_init", False)
-                    return _orig_func(cls, *args, **kw)
+                    try:
+                        return _orig_func(cls, *args, **kw)
+                    except ValueError as _ve:
+                        if "params" in str(_ve) and "_do_init" in str(_ve):
+                            # No native Flax weights — retry via PyTorch→Flax conversion.
+                            kw.pop("_do_init", None)
+                            kw["from_pt"] = True
+                            return _orig_func(cls, *args, **kw)
+                        raise
                 _FPTM.from_pretrained = _patched
             except Exception:
                 pass
