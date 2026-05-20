@@ -506,26 +506,80 @@ def _compile_model_xla(
                     return out[0]
                 return out
         elif _nnx is not None and isinstance(model, _nnx.Module):
-            # EasyDel / Flax NNX model: no .apply(), but nnx.split gives a
-            # (graphdef, state) pair where state is a JAX pytree. Rebuild the
-            # model inside forward() via nnx.merge so jax.jit can trace it.
-            # EasyDel requires an active JAX Mesh context — a 1-device Mesh
-            # is created below and stored as _nnx_mesh for use at call time.
-            _graphdef, _nnx_state = _nnx.split(model)
-            flax_params = _nnx_state  # replace dict params with NNX state pytree
-            _nnx_mesh = Mesh(np.array([device]), ("batch",))
+            # EasyDel / Flax NNX model.  EasyDel bakes a 5D internal mesh
+            # (dp/fsdp/tp/sp/expert) into every model; TT MLIR only supports
+            # 1D/2D mesh, so any with_sharding_constraint referencing that mesh
+            # crashes the StableHLO pipeline.
+            #
+            # Strategy: re-load the equivalent native HuggingFace FlaxPreTrainedModel
+            # from the same pretrained checkpoint (already in HF cache from EasyDel's
+            # download).  The HF model has no sharding infrastructure and goes through
+            # the Type A (FlaxPreTrainedModel) path cleanly.
+            # EasyDel doesn't propagate _name_or_path to config; fall back to the
+            # name we stashed on the model by loader() via _compiletron_pretrained_name.
+            _pretrained_name = (
+                getattr(model, "_compiletron_pretrained_name", None)
+                or getattr(getattr(model, "config", None), "_name_or_path", None)
+                or getattr(getattr(model, "config", None), "name_or_path", None)
+            ) or None
+            _hf_fallback_ok = False
+            if _pretrained_name:
+                try:
+                    from transformers import FlaxAutoModelForCausalLM as _FlaxAutoCLM
+                    _print_live_info(
+                        f"EasyDel NNX detected — loading native Flax model to bypass 5D mesh"
+                    )
+                    # _do_init=False avoids TT eager init (SliceOp limitation) and
+                    # returns a (model, params) tuple instead of a model-only object.
+                    _hf_result = _FlaxAutoCLM.from_pretrained(_pretrained_name, _do_init=False)
+                    if isinstance(_hf_result, tuple):
+                        _hf_model, _hf_params = _hf_result
+                    else:
+                        _hf_model, _hf_params = _hf_result, _hf_result.params
+                    # Swap out model/params for the HF Flax version (Type A path)
+                    model = _hf_model
+                    params = _hf_params
+                    flax_params = params
+                    _hf_fallback_ok = True
 
-            def forward(params, inputs):
-                _m = _nnx.merge(_graphdef, params)
-                if isinstance(inputs, _Mapping):
-                    out = _m(**inputs)
-                else:
-                    out = _m(inputs)
-                if hasattr(out, "logits") and out.logits is not None:
-                    return out.logits
-                if isinstance(out, (tuple, list)):
-                    return out[0]
-                return out
+                    def forward(params, inputs):
+                        out = model(**inputs, params=params, train=False)
+                        if hasattr(out, "logits") and out.logits is not None:
+                            return out.logits
+                        if isinstance(out, (tuple, list)):
+                            return out[0]
+                        return out
+
+                except Exception as _fe:
+                    _print_live_info(
+                        f"HF Flax fallback failed ({type(_fe).__name__}: {_fe!s:.80}) — "
+                        "falling back to nnx.split/merge path"
+                    )
+
+            if not _hf_fallback_ok:
+                # Last resort: nnx.split/merge.  Patch eformer.escale sharding
+                # constraint (used by EasyDel) to a no-op during tracing.
+                import eformer.escale as _escale
+                _graphdef, _nnx_state = _nnx.split(model)
+                flax_params = _nnx_state
+                _nnx_mesh = Mesh(np.array([device]), ("batch",))
+                _orig_als = _escale.with_sharding_constraint
+
+                def forward(params, inputs):
+                    _escale.with_sharding_constraint = lambda x, *_a, **_kw: x
+                    try:
+                        _m = _nnx.merge(_graphdef, params)
+                        if isinstance(inputs, _Mapping):
+                            out = _m(**inputs)
+                        else:
+                            out = _m(inputs)
+                    finally:
+                        _escale.with_sharding_constraint = _orig_als
+                    if hasattr(out, "logits") and out.logits is not None:
+                        return out.logits
+                    if isinstance(out, (tuple, list)):
+                        return out[0]
+                    return out
         else:
             raise ValueError(
                 f"{type(model).__name__} has no .apply() method and is not a Flax NNX module — "
@@ -1078,8 +1132,13 @@ def _build_loader_xla(item: QueueItem):
             try:
                 result = instance.load_model()
             finally:
-                if _FPTM is not None and _orig is not None:
-                    _FPTM.from_pretrained = _orig
+                if _FPTM is not None and _orig_func is not None:
+                    # Restore as a proper classmethod descriptor, NOT the bound method
+                    # captured in _orig.  Restoring a bound method bakes cls=FlaxPreTrainedModel
+                    # into the attribute, breaking subclass MRO dispatch (FlaxGPT2LMHeadModel
+                    # would call from_pretrained with cls=FlaxPreTrainedModel → missing 'module'
+                    # TypeError when the HF Flax fallback runs later in _compile_model_xla).
+                    _FPTM.from_pretrained = classmethod(_orig_func)
 
             if isinstance(result, tuple):
                 model, params = result
@@ -1089,6 +1148,15 @@ def _build_loader_xla(item: QueueItem):
                     params = model.params
                 except Exception:
                     params = {}
+            # Stash the pretrained model name on the model object so _compile_model_xla
+            # can find it for the EasyDel NNX → HF Flax fallback path.  EasyDel doesn't
+            # propagate _name_or_path into its config, so we carry it ourselves.
+            try:
+                _pname = getattr(instance, "_model_name", None) or getattr(instance, "model_name", None)
+                if _pname:
+                    object.__setattr__(model, "_compiletron_pretrained_name", _pname)
+            except Exception:
+                pass
             # Reattach so model.params doesn't raise ValueError for internal accesses.
             # Use object.__setattr__ as a fallback when the property setter is absent
             # (older transformers builds) — bypasses the property directly to _params.

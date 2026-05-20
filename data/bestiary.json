@@ -796,6 +796,28 @@
       "best_infer_s": 0.04180169105529785,
       "throughput_unit": "tokens/sec",
       "best_throughput": 23922.477
+    },
+    "gpt2/causal_lm/jax": {
+      "first_compiled": "2026-05-20T17:57:45.107562+00:00",
+      "first_chip": 0,
+      "run": 79,
+      "best_time_s": 0.7599356174468994,
+      "successes": 1,
+      "source": "tt-forge-models",
+      "task": "text-generation",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "\u2192 The (7%) | A (3%) | \" (2%)",
+      "first_voice": "\u2192 The (7%) | A (3%) | \" (2%)",
+      "backend": "xla",
+      "backends_succeeded": [
+        "xla"
+      ],
+      "best_compile_s": 0.7599356174468994,
+      "best_infer_s": 0.07429933547973633,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 430.69
     }
   },
   "failed": {
@@ -921,9 +943,9 @@
     },
     "gpt2/causal_lm/jax": {
       "run_first_failed": 1,
-      "attempts": 3,
-      "last_error": "ValueError: GPT2LMHeadModel has no .apply() method \u2014 XLA worker requires Flax Linen or HuggingFace Flax models. EasyDel NNX models are not yet supported.",
-      "error_category": "other"
+      "attempts": 11,
+      "last_error": "XlaRuntimeError: INTERNAL: Error code: 13",
+      "error_category": "xla_runtime_error"
     },
     "bge_m3/pytorch": {
       "run_first_failed": 73,
@@ -1024,8 +1046,8 @@
   },
   "chip_totals": {
     "0": {
-      "pts": 16842,
-      "first_evers": 15,
+      "pts": 17092,
+      "first_evers": 16,
       "best_streak": 4
     },
     "2": {
