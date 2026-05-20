@@ -708,6 +708,94 @@
       "best_infer_s": 77.2177,
       "throughput_unit": "ms/sample",
       "best_throughput": 77217.738
+    },
+    "gemma/codegemma/pytorch": {
+      "first_compiled": "2026-05-20T16:39:47.076527+00:00",
+      "first_chip": 0,
+      "run": 77,
+      "best_time_s": 52.27216911315918,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_qa",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 256000) dtype=torch.float32 range=[-119.63, 34.95]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "best_compile_s": 39.877185583114624,
+      "best_infer_s": 12.394983530044556,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 12394.984
+    },
+    "gpt_neo/sequence_classification/pytorch": {
+      "first_compiled": "2026-05-20T16:40:19.599465+00:00",
+      "first_chip": 0,
+      "run": 77,
+      "best_time_s": 17.12840437889099,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_text_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 2) dtype=torch.float32 range=[-1.88, 0.52]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "best_compile_s": 9.698171854019165,
+      "best_infer_s": 7.430232524871826,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 0.269
+    },
+    "hrnet/pytorch": {
+      "first_compiled": "2026-05-20T16:41:03.079209+00:00",
+      "first_chip": 0,
+      "run": 77,
+      "best_time_s": 37.893696784973145,
+      "successes": 1,
+      "source": "timm",
+      "task": "cv_keypoint_det",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-5.74, 9.16]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "best_compile_s": 15.08296537399292,
+      "best_infer_s": 22.810731410980225,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 22810.731
+    },
+    "beit/image_classification/jax": {
+      "first_compiled": "2026-05-20T16:43:01.746404+00:00",
+      "first_chip": 0,
+      "run": 78,
+      "best_time_s": 0.816077470779419,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_masked_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 1000)  max=8.474",
+      "first_voice": "",
+      "backend": "xla",
+      "backends_succeeded": [
+        "xla"
+      ],
+      "best_compile_s": 0.816077470779419,
+      "best_infer_s": 0.04180169105529785,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 23922.477
     }
   },
   "failed": {
@@ -765,17 +853,11 @@
       "last_error": "ValueError: The checkpoint you are trying to load has model type `dyn_col_mask_moe_llava_qwen2` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.\n\nYou can update Transformers with the command `pip",
       "error_category": "unsupported_arch"
     },
-    "albert/masked_lm/jax": {
-      "run_first_failed": 12,
-      "attempts": 9,
-      "last_error": "AttributeError: ",
-      "error_category": "other"
-    },
     "alexnet/image_classification/jax": {
       "run_first_failed": 15,
-      "attempts": 5,
-      "last_error": "ScopeCollectionNotFound: Tried to access \"kernel\" from collection \"params\" in \"/Conv_0\" but the collection is empty. (https://flax.readthedocs.io/en/latest/api_reference/flax.errors.html#flax.errors.ScopeCollectionNotFound)",
-      "error_category": "flax_scope_error"
+      "attempts": 8,
+      "last_error": "JAX model 'alexnet/image_classification/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "other"
     },
     "attention_denseunet/pytorch": {
       "run_first_failed": 16,
@@ -783,21 +865,15 @@
       "last_error": "AssertionError: Setting a tensor value of incorrect shape: (1, 1024, 64, 32) vs torch.Size([1, 1024, 32, 32])",
       "error_category": "shape_mismatch"
     },
-    "beit/image_classification/jax": {
-      "run_first_failed": 16,
-      "attempts": 3,
-      "last_error": "XlaRuntimeError: INTERNAL: Error code: 13",
-      "error_category": "xla_runtime_error"
-    },
     "bi_lstm_crf/pytorch": {
       "run_first_failed": 16,
-      "attempts": 2,
-      "last_error": "NotImplementedError: The following operators are not implemented: ['aten::_pack_padded_sequence', 'aten::_pad_packed_sequence']",
+      "attempts": 3,
+      "last_error": "NotImplementedError: The following operators are not implemented: ['aten::_pad_packed_sequence', 'aten::_pack_padded_sequence']",
       "error_category": "forge_missing_op"
     },
     "bigbird/causal_lm/jax": {
       "run_first_failed": 16,
-      "attempts": 2,
+      "attempts": 3,
       "last_error": "XlaRuntimeError: INTERNAL: Error code: 13",
       "error_category": "xla_runtime_error"
     },
@@ -807,12 +883,6 @@
       "last_error": "AssertionError: Forge only supports: torch.nn.modules.module.Module | forge._framework_stubs._NI | onnx.onnx_ml_pb2.ModelProto | forge.module.OnnxModule | forge.module.ForgeModule.",
       "error_category": "other"
     },
-    "autoencoder/pytorch": {
-      "run_first_failed": 17,
-      "attempts": 1,
-      "last_error": "RuntimeError: mat1 and mat2 shapes cannot be multiplied (672x224 and 784x128)",
-      "error_category": "shape_mismatch"
-    },
     "bart/pytorch": {
       "run_first_failed": 18,
       "attempts": 1,
@@ -821,9 +891,9 @@
     },
     "bart/causal_lm/jax": {
       "run_first_failed": 22,
-      "attempts": 2,
-      "last_error": "XlaRuntimeError: INTERNAL: Error code: 13",
-      "error_category": "xla_runtime_error"
+      "attempts": 3,
+      "last_error": "ScopeParamNotFoundError: Could not find parameter named \"embedding\" in scope \"/model/decoder/embed_tokens\". (https://flax.readthedocs.io/en/latest/api_reference/flax.errors.html#flax.errors.ScopeParamNotFoundError)",
+      "error_category": "other"
     },
     "bevformer/pytorch": {
       "run_first_failed": 40,
@@ -851,8 +921,8 @@
     },
     "gpt2/causal_lm/jax": {
       "run_first_failed": 1,
-      "attempts": 1,
-      "last_error": "AttributeError: 'GPT2LMHeadModel' object has no attribute 'apply'",
+      "attempts": 2,
+      "last_error": "JAX model 'gpt2/causal_lm/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
       "error_category": "other"
     },
     "bge_m3/pytorch": {
@@ -863,9 +933,9 @@
     },
     "blenderbot/summarization/jax": {
       "run_first_failed": 73,
-      "attempts": 1,
-      "last_error": "XlaRuntimeError: INTERNAL: Error code: 13",
-      "error_category": "xla_runtime_error"
+      "attempts": 3,
+      "last_error": "ValueError: `params` cannot be accessed from model when the model is created with `_do_init=False`. You must call `init_weights` manually and store the params outside of the model and pass it explicitly where needed.",
+      "error_category": "other"
     },
     "command/pytorch": {
       "run_first_failed": 73,
@@ -875,13 +945,13 @@
     },
     "d_fine/pytorch": {
       "run_first_failed": 73,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "ValueError: not enough values to unpack (expected 4, got 2)",
       "error_category": "other"
     },
     "dinov2/image_classification/jax": {
       "run_first_failed": 73,
-      "attempts": 1,
+      "attempts": 3,
       "last_error": "ValueError: `params` cannot be accessed from model when the model is created with `_do_init=False`. You must call `init_weights` manually and store the params outside of the model and pass it explicitly where needed.",
       "error_category": "other"
     },
@@ -890,12 +960,72 @@
       "attempts": 1,
       "last_error": "AssertionError: Resize2d op only support nearest and bilinear mode for now",
       "error_category": "forge_missing_op"
+    },
+    "clip/image_classification/jax": {
+      "run_first_failed": 74,
+      "attempts": 2,
+      "last_error": "XlaRuntimeError: INTERNAL: Error code: 13",
+      "error_category": "xla_runtime_error"
+    },
+    "electra/causal_lm/jax": {
+      "run_first_failed": 76,
+      "attempts": 2,
+      "last_error": "JAX model 'electra/causal_lm/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "other"
+    },
+    "falcon/jax": {
+      "run_first_failed": 76,
+      "attempts": 1,
+      "last_error": "AttributeError: 'LlamaForCausalLM' object has no attribute 'apply'",
+      "error_category": "other"
+    },
+    "centernet/pytorch": {
+      "run_first_failed": 77,
+      "attempts": 1,
+      "last_error": "ValueError: IRD_LF_CACHE environment variable is not set. Please set it to the address of the IRD LF cache.",
+      "error_category": "missing_dependency"
+    },
+    "deformable_detr/pytorch": {
+      "run_first_failed": 77,
+      "attempts": 1,
+      "last_error": "ValueError: not enough values to unpack (expected 4, got 2)",
+      "error_category": "other"
+    },
+    "faster_rcnn/pytorch": {
+      "run_first_failed": 77,
+      "attempts": 1,
+      "last_error": "RuntimeError: Only tensors, lists, tuples of tensors, or dictionary of tensors can be output from traced functions",
+      "error_category": "other"
+    },
+    "gemma3/causal_lm/bounty_jax": {
+      "run_first_failed": 77,
+      "attempts": 1,
+      "last_error": "ValueError: An auto mesh context or metadata is required if creating a variable with annotation sharding_names=(None, 'X'). If running this on CPU for debugging, make a dummy mesh like `jax.make_mesh(((1, 1)), (<your axis names>))`. If running on explicit mode, remove `sharding_names=` annotation.",
+      "error_category": "other"
+    },
+    "glm/causal_lm/jax": {
+      "run_first_failed": 77,
+      "attempts": 1,
+      "last_error": "JAX model 'glm/causal_lm/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "other"
+    },
+    "facebook/blenderbot-400M-distill": {
+      "run_first_failed": 78,
+      "attempts": 1,
+      "last_error": "XlaRuntimeError: INTERNAL: Error code: 13",
+      "error_category": "xla_runtime_error"
+    },
+    "facebook/dinov2-base": {
+      "run_first_failed": 78,
+      "attempts": 1,
+      "last_error": "XlaRuntimeError: INTERNAL: Error code: 13",
+      "error_category": "xla_runtime_error"
     }
   },
   "chip_totals": {
     "0": {
-      "pts": 16227,
-      "first_evers": 11,
+      "pts": 16842,
+      "first_evers": 15,
       "best_streak": 4
     },
     "2": {
