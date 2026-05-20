@@ -1783,6 +1783,13 @@ def main():
     run_p.add_argument("--bench-shapes", action="store_true",
                        help="Also sweep input shapes after bench passes. "
                             "Requires --bench-passes > 0.")
+    run_p.add_argument("--ephemeral", action="store_true",
+                       help="Evict net-new HF model weights after each compile+bench "
+                            "cycle. Gold-star models (rare/legendary or first-ever) "
+                            "are always preserved.")
+    run_p.add_argument("--evict-failures", action="store_true",
+                       help="With --ephemeral, also evict weights for models that "
+                            "fail to compile (default: keep failures for retry).")
     run_p.add_argument("--xla-mesh", type=int, default=1, metavar="N",
                        help="Run JAX/XLA seed models on N chips (data-parallel). "
                             "1 = single-chip (default). Requires --backend xla or mixed.")
@@ -1819,7 +1826,13 @@ def main():
         args.parallel_downloads = 4
         args.bench_passes = 0
         args.bench_shapes = False
+        args.ephemeral = False
+        args.evict_failures = False
         args.xla_mesh = 1
+
+    # ── Flag validation ───────────────────────────────────────────────────────
+    if getattr(args, "evict_failures", False) and not getattr(args, "ephemeral", False):
+        print(f"  {_GOLD}warning:{_RST} --evict-failures has no effect without --ephemeral")
 
     # ── Hardware detection ────────────────────────────────────────────────────
     from lib.hardware import detect_hardware, get_hardware_summary
@@ -1937,8 +1950,10 @@ def main():
     env = {**os.environ,
            "EXPEDITION_RUN":          str(run_number),
            "EXPEDITION_NUM_CHIPS":    str(num_chips),
-           "EXPEDITION_BENCH_PASSES": str(getattr(args, "bench_passes", 0)),
-           "EXPEDITION_BENCH_SHAPES": "1" if getattr(args, "bench_shapes", False) else "0",
+           "EXPEDITION_BENCH_PASSES":    str(getattr(args, "bench_passes", 0)),
+           "EXPEDITION_BENCH_SHAPES":    "1" if getattr(args, "bench_shapes", False) else "0",
+           "EXPEDITION_EPHEMERAL":       "1" if getattr(args, "ephemeral", False) else "0",
+           "EXPEDITION_EVICT_FAILURES":  "1" if getattr(args, "evict_failures", False) else "0",
            }
     cmd = ["bash", str(script), "--chips", str(num_chips),
            "--run", str(run_number)]
