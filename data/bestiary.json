@@ -1505,15 +1505,6 @@
       "error_hint": "Requires IRD_LF_CACHE (internal TT model cache server)",
       "source": "huggingface"
     },
-    "flux/pytorch": {
-      "first_failed": "2026-05-20T20:29:11.524723+00:00",
-      "run": 85,
-      "attempts": 2,
-      "error_category": "missing_dependency",
-      "error_label": "Pre-screened: unavailable",
-      "error_hint": "Flux diffusion model - too large and complex for single-chip forge",
-      "source": "huggingface"
-    },
     "fuyu/pytorch": {
       "first_failed": "2026-05-20T20:29:11.524723+00:00",
       "run": 85,
@@ -1711,18 +1702,6 @@
       "hf_downloads": null,
       "hf_created_at": null,
       "artifact": "huggyllama/pytorch"
-    },
-    "llama/causal_lm/pytorch": {
-      "first_failed": "2026-05-20T21:07:24.091791+00:00",
-      "attempts": 1,
-      "error_category": "forge_internal",
-      "last_error": "Pre-blacklisted: LlamaForCausalLM \u2014 consistent SIGSEGV in forge.compile; same pattern as falcon/pytorch and gpt_neo/causal_lm/pytorch",
-      "source": "tt_forge_models",
-      "task": "causal_lm",
-      "rarity": "uncommon",
-      "hf_downloads": null,
-      "hf_created_at": null,
-      "artifact": "llama/causal_lm/pytorch"
     },
     "mistral/pytorch": {
       "first_failed": "2026-05-20T21:08:10.722860+00:00",
@@ -2044,12 +2023,6 @@
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "forge_internal"
     },
-    "stable_diffusion_xl/pytorch": {
-      "run_first_failed": 95,
-      "attempts": 3,
-      "last_error": "AttributeError: 'StableDiffusionXLPipeline' object has no attribute 'eval'",
-      "error_category": "api_mismatch"
-    },
     "swin/masked_image_modeling/pytorch": {
       "run_first_failed": 95,
       "attempts": 3,
@@ -2289,21 +2262,15 @@
     },
     "sam/pytorch": {
       "run_first_failed": 95,
-      "attempts": 3,
-      "last_error": "ModuleNotFoundError: No module named 'transformers.utils.output_capturing'",
-      "error_category": "missing_dependency"
+      "attempts": 2,
+      "last_error": "cannot import name 'BucketNotFoundError' from 'huggingface_hub.errors' (/opt/ttforge-toolchain/venv/lib/python3.12/site-packages/huggingface_hub/errors.py)",
+      "error_category": "other"
     },
     "siglip/image_text_similarity/pytorch": {
       "run_first_failed": 95,
       "attempts": 3,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "forge_internal"
-    },
-    "phi4/causal_lm/pytorch": {
-      "error_category": "forge_internal",
-      "error_summary": "SIGSEGV: downloads microsoft/phi-4 (~28G)",
-      "attempts": 3,
-      "last_seen": "2026-05-21T02:43:01.145793+00:00"
     },
     "Qwen/QwQ-32B": {
       "error_category": "unsupported_backend",
@@ -2345,12 +2312,6 @@
       "run_first_failed": 96,
       "attempts": 3,
       "last_error": "ImportError: huggingface-hub>=0.30.0,<1.0 is required for a normal functioning of this module, but found huggingface-hub==1.15.0.\nTry: `pip install transformers -U` or `pip install -e '.[dev]'` if you're working with git main",
-      "error_category": "other"
-    },
-    "llama/sequence_classification/pytorch": {
-      "run_first_failed": 96,
-      "attempts": 3,
-      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "maptr/pytorch": {
@@ -2415,8 +2376,8 @@
     },
     "qwen_2/token_classification/pytorch": {
       "run_first_failed": 96,
-      "attempts": 2,
-      "last_error": "RemoteEntryNotFoundError: 404 Client Error. (Request ID: Root=1-6a0f1cd7-6083a06477d0c99b67102867;7809e70d-bdd0-4d6a-83f9-2255bd076718)\n\nEntry Not Found for url: https://huggingface.co/api/models/Qwen/Qwen2-7B/tree/main/additional_chat_templates?recursive=false&expand=false.\nadditional_chat_templates does not exist on \"main\"",
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "mobilenetv3/pytorch": {
@@ -2463,7 +2424,7 @@
     },
     "phi3/token_cls/pytorch": {
       "run_first_failed": 96,
-      "attempts": 3,
+      "attempts": 2,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
@@ -2487,37 +2448,37 @@
     },
     "seamless_m4t/pytorch": {
       "run_first_failed": 96,
-      "attempts": 2,
-      "last_error": "ImportError: huggingface-hub>=0.30.0,<1.0 is required for a normal functioning of this module, but found huggingface-hub==1.15.0.\nTry: `pip install transformers -U` or `pip install -e '.[dev]'` if you're working with git main",
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "roberta/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "speecht5/pytorch": {
       "run_first_failed": 96,
-      "attempts": 2,
+      "attempts": 1,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "ssd300_vgg16/pytorch": {
       "run_first_failed": 96,
-      "attempts": 3,
-      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "attempts": 2,
+      "last_error": "ImportError: huggingface-hub>=0.30.0,<1.0 is required for a normal functioning of this module, but found huggingface-hub==1.15.0.\nTry: `pip install transformers -U` or `pip install -e '.[dev]'` if you're working with git main",
       "error_category": "other"
     },
     "stable_diffusion_unet/pytorch": {
       "run_first_failed": 96,
-      "attempts": 2,
-      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "attempts": 1,
+      "last_error": "Failed to import diffusers.models.unets.unet_2d_condition because of the following error (look up to see its traceback):\nFailed to import diffusers.loaders.peft because of the following error (look up to see its traceback):\ncannot import name 'BucketNotFoundError' from 'huggingface_hub.errors' (/opt/ttforge-toolchain/venv/lib/python3.12/site-packages/huggingface_hub/errors.py)",
       "error_category": "other"
     },
     "t5/causal_lm/onnx": {
       "run_first_failed": 96,
-      "attempts": 2,
+      "attempts": 1,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
@@ -2547,31 +2508,31 @@
     },
     "stereo/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "t5/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "unet_for_conditional_generation/pytorch": {
       "run_first_failed": 96,
-      "attempts": 2,
+      "attempts": 1,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "vilt/question_answering/pytorch": {
       "run_first_failed": 96,
-      "attempts": 2,
+      "attempts": 1,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "xglm/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
@@ -2587,22 +2548,10 @@
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
-    "phi4/seq_cls/pytorch": {
-      "run_first_failed": 96,
-      "attempts": 2,
-      "last_error": "RemoteEntryNotFoundError: 404 Client Error. (Request ID: Root=1-6a0f1cbb-44bccfe616e29a6f4737c8f4;62fd3c1a-69ba-4e47-817e-7a8764c9cc38)\n\nEntry Not Found for url: https://huggingface.co/api/models/microsoft/phi-4/tree/main/additional_chat_templates?recursive=false&expand=false.\nadditional_chat_templates does not exist on \"mai",
-      "error_category": "other"
-    },
-    "qwen_2/causal_lm/pytorch": {
-      "run_first_failed": 96,
-      "attempts": 2,
-      "last_error": "RemoteEntryNotFoundError: 404 Client Error. (Request ID: Root=1-6a0f1cbb-122ae67366deedc04159a27f;a2bb4a8a-1bbb-4b97-b8eb-68b5a4b600e2)\n\nEntry Not Found for url: https://huggingface.co/api/models/Qwen/QwQ-32B/tree/main/additional_chat_templates?recursive=false&expand=false.\nadditional_chat_templates does not exist on \"main\"",
-      "error_category": "other"
-    },
     "qwen_2_5_coder/pytorch": {
       "run_first_failed": 96,
-      "attempts": 3,
-      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "attempts": 2,
+      "last_error": "RemoteEntryNotFoundError: 404 Client Error. (Request ID: Root=1-6a0f1cbc-3e182ce327d6edee4e165322;3f12426f-a3b1-4f8d-865a-9a7cf6c6c8fe)\n\nEntry Not Found for url: https://huggingface.co/api/models/Qwen/Qwen2.5-Coder-0.5B/tree/main/additional_chat_templates?recursive=false&expand=false.\nadditional_chat_templates does not exist",
       "error_category": "other"
     },
     "rcnn/pytorch": {
@@ -2629,12 +2578,6 @@
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
-    "stable_diffusion/pytorch": {
-      "run_first_failed": 96,
-      "attempts": 1,
-      "last_error": "SIGSEGV: forge.compile() killed by signal 9 (forge_internal)",
-      "error_category": "other"
-    },
     "suryaocr/pytorch": {
       "run_first_failed": 96,
       "attempts": 1,
@@ -2643,19 +2586,13 @@
     },
     "vgg/image_classification/onnx": {
       "run_first_failed": 96,
-      "attempts": 1,
-      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
-      "error_category": "other"
-    },
-    "wan/pytorch": {
-      "run_first_failed": 96,
       "attempts": 2,
-      "last_error": "AttributeError: module diffusers has no attribute WanPipeline",
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "wide_resnet/pytorch": {
       "run_first_failed": 96,
-      "attempts": 2,
+      "attempts": 1,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
@@ -2721,7 +2658,7 @@
     },
     "qwen_2_5_vl/pytorch": {
       "run_first_failed": 98,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
@@ -2745,7 +2682,7 @@
     },
     "swin/image_classification/pytorch": {
       "run_first_failed": 98,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
@@ -2775,7 +2712,7 @@
     },
     "squeezebert/masked_lm/jax": {
       "run_first_failed": 98,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "TypeError: SqueezeBertForMaskedLM.__call__() missing 1 required keyword-only argument: 'train'",
       "error_category": "other"
     },
@@ -2793,7 +2730,7 @@
     },
     "vision_text_dual_encoder/mm_image_ttt/jax": {
       "run_first_failed": 98,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "AttributeError: 'tuple' object has no attribute 'config'",
       "error_category": "other"
     },
@@ -2811,7 +2748,7 @@
     },
     "mamba2/causal_lm/jax": {
       "run_first_failed": 98,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "TIMEOUT",
       "error_category": "timeout"
     },
@@ -2821,13 +2758,7 @@
       "last_error": "AttributeError: 'FlaxBigBirdForQuestionAnsweringModelOutput' object has no attribute 'block_until_ready'",
       "error_category": "other"
     },
-    "yolov3/pytorch": {
-      "run_first_failed": 99,
-      "attempts": 1,
-      "last_error": "ValueError: IRD_LF_CACHE environment variable is not set. Please set it to the address of the IRD LF cache.",
-      "error_category": "missing_dependency"
-    },
-    "yolov9/pytorch": {
+    "yoloworld/pytorch": {
       "run_first_failed": 99,
       "attempts": 1,
       "last_error": "ImportError: numpy.core.multiarray failed to import",
@@ -2854,15 +2785,6 @@
       "pts": 6290,
       "first_evers": 6,
       "best_streak": 2
-    }
-  },
-  "models": {
-    "wan/pytorch": {
-      "attempts": 99,
-      "error_category": "unsupported_arch",
-      "last_error": "hard-blocked: loads Wan2.2-TI2V-5B (NEVER TOUCH diffusion pipeline)",
-      "last_run": 99,
-      "first_seen": "2026-05-21"
     }
   }
 }
