@@ -804,24 +804,139 @@
       "first_compiled": "2026-05-20T17:57:45.107562+00:00",
       "first_chip": 0,
       "run": 79,
-      "best_time_s": 0.7599356174468994,
-      "successes": 1,
+      "best_time_s": 0.4996778964996338,
+      "successes": 2,
       "source": "tt-forge-models",
       "task": "text-generation",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "\u2192 The (7%) | A (3%) | \" (2%)",
+      "artifact": "shape=(8, 32, 50257)  max=29.942  mean=-88.215",
       "first_voice": "\u2192 The (7%) | A (3%) | \" (2%)",
       "backend": "xla",
       "backends_succeeded": [
         "xla"
       ],
-      "best_compile_s": 0.7599356174468994,
-      "best_infer_s": 0.07429933547973633,
+      "best_compile_s": 0.4996778964996338,
+      "best_infer_s": 0.06994271278381348,
       "throughput_unit": "tokens/sec",
-      "best_throughput": 430.69,
+      "best_throughput": 457.517,
       "mesh_chips": 1
+    },
+    "mbart50/nlp_summarization/jax": {
+      "first_compiled": "2026-05-21T15:46:29.587306+00:00",
+      "first_chip": 1,
+      "run": 98,
+      "best_time_s": 1.0888752937316895,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_summarization",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 250054)  max=17.998  mean=-1.486",
+      "first_voice": "",
+      "backend": "xla",
+      "backends_succeeded": [
+        "xla"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 1.0888752937316895,
+      "best_infer_s": 0.1827716827392578,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 182.772
+    },
+    "gpt_neo/causal_lm/jax": {
+      "first_compiled": "2026-05-21T16:02:25.960249+00:00",
+      "first_chip": 0,
+      "run": 98,
+      "best_time_s": 1.1327450275421143,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_causal_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 50257)  max=5.322  mean=-16.098",
+      "first_voice": "",
+      "backend": "xla",
+      "backends_succeeded": [
+        "xla"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 1.1327450275421143,
+      "best_infer_s": 0.24305057525634766,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 131.66
+    },
+    "longt5/text_classification/jax": {
+      "first_compiled": "2026-05-21T16:03:24.790077+00:00",
+      "first_chip": 0,
+      "run": 98,
+      "best_time_s": 1.4659795761108398,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_text_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 32128)  max=2.212  mean=-30.065",
+      "first_voice": "",
+      "backend": "xla",
+      "backends_succeeded": [
+        "xla"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 1.4659795761108398,
+      "best_infer_s": 0.053730010986328125,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 595.57
+    },
+    "roberta_prelayernorm/masked_lm/jax": {
+      "first_compiled": "2026-05-21T16:04:04.613611+00:00",
+      "first_chip": 2,
+      "run": 98,
+      "best_time_s": 0.8678200244903564,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_masked_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 50265)  max=40.665  mean=-2.601",
+      "first_voice": "",
+      "backend": "xla",
+      "backends_succeeded": [
+        "xla"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 0.8678200244903564,
+      "best_infer_s": 0.07268261909484863,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 440.27
+    },
+    "marian_mt/text_classification/jax": {
+      "first_compiled": "2026-05-21T16:04:23.988848+00:00",
+      "first_chip": 0,
+      "run": 98,
+      "best_time_s": 0.8349049091339111,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_text_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 58101)  max=13.295  mean=-4.040",
+      "first_voice": "",
+      "backend": "xla",
+      "backends_succeeded": [
+        "xla"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 0.8349049091339111,
+      "best_infer_s": 0.018350601196289062,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 1743.812
     }
   },
   "failed": {
@@ -1903,8 +2018,8 @@
     },
     "monodle/pytorch": {
       "run_first_failed": 95,
-      "attempts": 1,
-      "last_error": "URLError: <urlopen error [Errno 110] Connection timed out>",
+      "attempts": 3,
+      "last_error": "ImportError: huggingface-hub>=0.30.0,<1.0 is required for a normal functioning of this module, but found huggingface-hub==1.15.0.\nTry: `pip install transformers -U` or `pip install -e '.[dev]'` if you're working with git main",
       "error_category": "other"
     },
     "nanogpt/pytorch": {
@@ -2061,19 +2176,19 @@
     },
     "albert/albert-base-v1": {
       "run_first_failed": 96,
-      "attempts": 1,
-      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "attempts": 3,
+      "last_error": "ImportError: huggingface-hub>=0.30.0,<1.0 is required for a normal functioning of this module, but found huggingface-hub==1.15.0.\nTry: `pip install transformers -U` or `pip install -e '.[dev]'` if you're working with git main",
       "error_category": "other"
     },
     "openai-community/gpt2-medium": {
       "run_first_failed": 96,
-      "attempts": 1,
-      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "attempts": 3,
+      "last_error": "ImportError: huggingface-hub>=0.30.0,<1.0 is required for a normal functioning of this module, but found huggingface-hub==1.15.0.\nTry: `pip install transformers -U` or `pip install -e '.[dev]'` if you're working with git main",
       "error_category": "other"
     },
     "llama/sequence_classification/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 3,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
@@ -2085,68 +2200,68 @@
     },
     "minicpm_o_2_6/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 3,
       "last_error": "ImportError: This modeling file requires the following packages that were not found in your environment: torchaudio. Run `pip install torchaudio`",
       "error_category": "other"
     },
     "mnist/image_classification/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
-      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "attempts": 3,
+      "last_error": "ImportError: huggingface-hub>=0.30.0,<1.0 is required for a normal functioning of this module, but found huggingface-hub==1.15.0.\nTry: `pip install transformers -U` or `pip install -e '.[dev]'` if you're working with git main",
       "error_category": "other"
     },
     "motif_image_6B_preview/text_to_image/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
-      "last_error": "EntryNotFoundError: 404 Client Error. (Request ID: Root=1-6a0e736a-0ad6b378479ec13f2c715d3e;8fbf9863-c573-44c2-94a4-1fbf690976f8)\n\nEntry Not Found for url: https://huggingface.co/Motif-Technologies/Motif-Image-6B-Preview/resolve/main/model_index.json.",
+      "attempts": 3,
+      "last_error": "EntryNotFoundError: 404 Client Error. (Request ID: Root=1-6a0f2c96-167761da6a38f101421f379e;298d8586-161d-46eb-a6c4-ea65ca8e451b)\n\nEntry Not Found for url: https://huggingface.co/Motif-Technologies/Motif-Image-6B-Preview/resolve/main/model_index.json.",
       "error_category": "other"
     },
     "oft/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 3,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "opt/causal_lm/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 3,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "mixtral/causal_lm/bounty_jax": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 3,
       "last_error": "ValueError: An auto mesh context or metadata is required if creating a variable with annotation sharding_names=(None, 'X'). If running this on CPU for debugging, make a dummy mesh like `jax.make_mesh(((1, 1)), (<your axis names>))`. If running on explicit mode, remove `sharding_names=` annotation.",
       "error_category": "other"
     },
     "openpose/v2/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 3,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "phi3/phi_3_5/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 3,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "pi_0/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
-      "last_error": "ImportError: cannot import name 'BucketNotFoundError' from 'huggingface_hub.errors' (/opt/ttforge-toolchain/venv/lib/python3.12/site-packages/huggingface_hub/errors.py)",
-      "error_category": "other"
+      "attempts": 3,
+      "last_error": "ModuleNotFoundError: No module named 'transformers.masking_utils'",
+      "error_category": "missing_dependency"
     },
     "qwen_2/token_classification/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
-      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "attempts": 2,
+      "last_error": "RemoteEntryNotFoundError: 404 Client Error. (Request ID: Root=1-6a0f1cd7-6083a06477d0c99b67102867;7809e70d-bdd0-4d6a-83f9-2255bd076718)\n\nEntry Not Found for url: https://huggingface.co/api/models/Qwen/Qwen2-7B/tree/main/additional_chat_templates?recursive=false&expand=false.\nadditional_chat_templates does not exist on \"main\"",
       "error_category": "other"
     },
     "mobilenetv3/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
-      "last_error": "cannot import name 'BucketNotFoundError' from 'huggingface_hub.errors' (/opt/ttforge-toolchain/venv/lib/python3.12/site-packages/huggingface_hub/errors.py)",
+      "attempts": 2,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "mplug_owl2/pytorch": {
@@ -2163,43 +2278,43 @@
     },
     "panoptic_segmentation/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 3,
       "last_error": "ImportError: numpy.core.multiarray failed to import",
       "error_category": "other"
     },
     "phi1/token_classification/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 3,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "phi2/sequence_classification/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 3,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "phi2/token_classification/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "phi3/token_cls/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "pointpillars/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "qwen_3/embedding/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
@@ -2211,8 +2326,8 @@
     },
     "seamless_m4t/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
-      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "attempts": 2,
+      "last_error": "ImportError: huggingface-hub>=0.30.0,<1.0 is required for a normal functioning of this module, but found huggingface-hub==1.15.0.\nTry: `pip install transformers -U` or `pip install -e '.[dev]'` if you're working with git main",
       "error_category": "other"
     },
     "roberta/pytorch": {
@@ -2229,8 +2344,8 @@
     },
     "ssd300_vgg16/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
-      "last_error": "cannot import name 'BucketNotFoundError' from 'huggingface_hub.errors' (/opt/ttforge-toolchain/venv/lib/python3.12/site-packages/huggingface_hub/errors.py)",
+      "attempts": 2,
+      "last_error": "ImportError: huggingface-hub>=0.30.0,<1.0 is required for a normal functioning of this module, but found huggingface-hub==1.15.0.\nTry: `pip install transformers -U` or `pip install -e '.[dev]'` if you're working with git main",
       "error_category": "other"
     },
     "stable_diffusion_unet/pytorch": {
@@ -2253,8 +2368,8 @@
     },
     "vgg19_unet/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
-      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "attempts": 2,
+      "last_error": "ImportError: huggingface-hub>=0.30.0,<1.0 is required for a normal functioning of this module, but found huggingface-hub==1.15.0.\nTry: `pip install transformers -U` or `pip install -e '.[dev]'` if you're working with git main",
       "error_category": "other"
     },
     "vocoder_speecht5/pytorch": {
@@ -2307,26 +2422,26 @@
     },
     "phi1_5/token_classification/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 3,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "phi4/seq_cls/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
-      "last_error": "SIGSEGV: forge.compile() killed by signal 9 (forge_internal)",
+      "attempts": 2,
+      "last_error": "RemoteEntryNotFoundError: 404 Client Error. (Request ID: Root=1-6a0f1cbb-44bccfe616e29a6f4737c8f4;62fd3c1a-69ba-4e47-817e-7a8764c9cc38)\n\nEntry Not Found for url: https://huggingface.co/api/models/microsoft/phi-4/tree/main/additional_chat_templates?recursive=false&expand=false.\nadditional_chat_templates does not exist on \"mai",
       "error_category": "other"
     },
     "qwen_2/causal_lm/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
-      "last_error": "SIGSEGV: forge.compile() killed by signal 9 (forge_internal)",
+      "attempts": 2,
+      "last_error": "RemoteEntryNotFoundError: 404 Client Error. (Request ID: Root=1-6a0f1cbb-122ae67366deedc04159a27f;a2bb4a8a-1bbb-4b97-b8eb-68b5a4b600e2)\n\nEntry Not Found for url: https://huggingface.co/api/models/Qwen/QwQ-32B/tree/main/additional_chat_templates?recursive=false&expand=false.\nadditional_chat_templates does not exist on \"main\"",
       "error_category": "other"
     },
     "qwen_2_5_coder/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
-      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "attempts": 2,
+      "last_error": "RemoteEntryNotFoundError: 404 Client Error. (Request ID: Root=1-6a0f1cbc-3e182ce327d6edee4e165322;3f12426f-a3b1-4f8d-865a-9a7cf6c6c8fe)\n\nEntry Not Found for url: https://huggingface.co/api/models/Qwen/Qwen2.5-Coder-0.5B/tree/main/additional_chat_templates?recursive=false&expand=false.\nadditional_chat_templates does not exist",
       "error_category": "other"
     },
     "rcnn/pytorch": {
@@ -2337,20 +2452,20 @@
     },
     "retinanet/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 3,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "segformer/semantic_segmentation/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "squeezebert/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
-      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "attempts": 2,
+      "last_error": "RemoteEntryNotFoundError: 404 Client Error. (Request ID: Root=1-6a0f1cc9-045c733e355dfd316adb43f7;3f76368e-4caf-4617-911e-5b7ea5d50cd7)\n\nEntry Not Found for url: https://huggingface.co/api/models/squeezebert/squeezebert-mnli/tree/main/additional_chat_templates?recursive=false&expand=false.\nadditional_chat_templates does not ",
       "error_category": "other"
     },
     "stable_diffusion/pytorch": {
@@ -2388,17 +2503,137 @@
       "error_category": "missing_dependency",
       "attempts": 3,
       "run_number": 97
+    },
+    "Harley-ml/Dillion-1.2M": {
+      "run_first_failed": 98,
+      "attempts": 3,
+      "last_error": "ImportError: huggingface-hub>=0.30.0,<1.0 is required for a normal functioning of this module, but found huggingface-hub==1.15.0.\nTry: `pip install transformers -U` or `pip install -e '.[dev]'` if you're working with git main",
+      "error_category": "other"
+    },
+    "samcheng0/deeplm-108m": {
+      "run_first_failed": 98,
+      "attempts": 3,
+      "last_error": "ImportError: huggingface-hub>=0.30.0,<1.0 is required for a normal functioning of this module, but found huggingface-hub==1.15.0.\nTry: `pip install transformers -U` or `pip install -e '.[dev]'` if you're working with git main",
+      "error_category": "other"
+    },
+    "OpceanAI/Yuuki-NxG": {
+      "run_first_failed": 98,
+      "attempts": 3,
+      "last_error": "ImportError: huggingface-hub>=0.30.0,<1.0 is required for a normal functioning of this module, but found huggingface-hub==1.15.0.\nTry: `pip install transformers -U` or `pip install -e '.[dev]'` if you're working with git main",
+      "error_category": "other"
+    },
+    "younissk/nanoBeard": {
+      "run_first_failed": 98,
+      "attempts": 3,
+      "last_error": "ImportError: huggingface-hub>=0.30.0,<1.0 is required for a normal functioning of this module, but found huggingface-hub==1.15.0.\nTry: `pip install transformers -U` or `pip install -e '.[dev]'` if you're working with git main",
+      "error_category": "other"
+    },
+    "pocket_tts/pytorch": {
+      "run_first_failed": 98,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "nbeats/pytorch": {
+      "run_first_failed": 98,
+      "attempts": 3,
+      "last_error": "ImportError: huggingface-hub>=0.30.0,<1.0 is required for a normal functioning of this module, but found huggingface-hub==1.15.0.\nTry: `pip install transformers -U` or `pip install -e '.[dev]'` if you're working with git main",
+      "error_category": "other"
+    },
+    "openai-community/gpt2-large": {
+      "run_first_failed": 98,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "smolvla/vision_language_action/pytorch": {
+      "run_first_failed": 98,
+      "attempts": 2,
+      "last_error": "RemoteEntryNotFoundError: 404 Client Error. (Request ID: Root=1-6a0f1d6f-779cf7193f7da9c51c08a37a;1f55f4d1-6ce8-4382-9c60-d3eb1b287ae0)\n\nEntry Not Found for url: https://huggingface.co/api/models/HuggingFaceTB/SmolVLM2-500M-Video-Instruct/tree/main/additional_chat_templates?recursive=false&expand=false.\nadditional_chat_templ",
+      "error_category": "other"
+    },
+    "mgp_str_base/pytorch": {
+      "run_first_failed": 98,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "qwen_2_5_vl/pytorch": {
+      "run_first_failed": 98,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "phi3/phi_3_5_vision/pytorch": {
+      "run_first_failed": 98,
+      "attempts": 2,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "rt_detr/pytorch": {
+      "run_first_failed": 98,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "stable_diffusion_1_4/pytorch": {
+      "run_first_failed": 98,
+      "attempts": 1,
+      "last_error": "NameError: name 'torch' is not defined",
+      "error_category": "other"
+    },
+    "swin/image_classification/pytorch": {
+      "run_first_failed": 98,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "ultra_fast_lane_detection_v2/pytorch": {
+      "run_first_failed": 98,
+      "attempts": 1,
+      "last_error": "ValueError: IRD_LF_CACHE environment variable is not set. Please set it to the address of the IRD LF cache.",
+      "error_category": "missing_dependency"
+    },
+    "vgg/pytorch": {
+      "run_first_failed": 98,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "gpt2/causal_lm/jax": {
+      "run_first_failed": 98,
+      "attempts": 2,
+      "last_error": "XlaRuntimeError: INTERNAL: Error code: 13",
+      "error_category": "xla_runtime_error"
+    },
+    "mnist/image_classification/jax": {
+      "run_first_failed": 98,
+      "attempts": 1,
+      "last_error": "TypeError: MNISTMLPModel.__call__() got an unexpected keyword argument 'train'",
+      "error_category": "api_mismatch"
+    },
+    "black-forest-labs/FLUX.1-dev": {
+      "first_failed": "2026-05-21T16:08:06.817400+00:00",
+      "attempts": 0,
+      "error_category": "unsupported_arch",
+      "last_error": "UnsupportedArch: FLUX diffusion model \u2014 not a text/vision transformer; incompatible with forge compile path"
+    },
+    "stabilityai/stable-diffusion-3.5-medium": {
+      "first_failed": "2026-05-21T16:08:06.817400+00:00",
+      "attempts": 0,
+      "error_category": "unsupported_arch",
+      "last_error": "UnsupportedArch: Stable Diffusion 3.5 \u2014 diffusion model; incompatible with forge compile path"
     }
   },
   "chip_totals": {
     "0": {
-      "pts": 17092,
-      "first_evers": 16,
+      "pts": 17637,
+      "first_evers": 19,
       "best_streak": 4
     },
     "2": {
-      "pts": 12900,
-      "first_evers": 14,
+      "pts": 13050,
+      "first_evers": 15,
       "best_streak": 1
     },
     "3": {
@@ -2407,8 +2642,8 @@
       "best_streak": 1
     },
     "1": {
-      "pts": 5990,
-      "first_evers": 4,
+      "pts": 6140,
+      "first_evers": 5,
       "best_streak": 2
     }
   }
