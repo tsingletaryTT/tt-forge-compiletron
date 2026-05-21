@@ -1630,7 +1630,7 @@
     },
     "monodepth2/pytorch": {
       "run_first_failed": 95,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "ValueError: IRD_LF_CACHE environment variable is not set. Please set it to the address of the IRD LF cache.",
       "error_category": "missing_dependency"
     },
@@ -2013,9 +2013,9 @@
     },
     "sam/pytorch": {
       "run_first_failed": 95,
-      "attempts": 1,
-      "last_error": "ModuleNotFoundError: No module named 'transformers.utils.output_capturing'",
-      "error_category": "missing_dependency"
+      "attempts": 2,
+      "last_error": "cannot import name 'BucketNotFoundError' from 'huggingface_hub.errors' (/opt/ttforge-toolchain/venv/lib/python3.12/site-packages/huggingface_hub/errors.py)",
+      "error_category": "other"
     },
     "siglip/image_text_similarity/pytorch": {
       "run_first_failed": 95,
@@ -2070,6 +2070,295 @@
       "attempts": 1,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
+    },
+    "llama/sequence_classification/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "maptr/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "ValueError: IRD_LF_CACHE environment variable is not set. Please set it to the address of the IRD LF cache.",
+      "error_category": "missing_dependency"
+    },
+    "minicpm_o_2_6/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "ImportError: This modeling file requires the following packages that were not found in your environment: torchaudio. Run `pip install torchaudio`",
+      "error_category": "other"
+    },
+    "mnist/image_classification/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "motif_image_6B_preview/text_to_image/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "EntryNotFoundError: 404 Client Error. (Request ID: Root=1-6a0e736a-0ad6b378479ec13f2c715d3e;8fbf9863-c573-44c2-94a4-1fbf690976f8)\n\nEntry Not Found for url: https://huggingface.co/Motif-Technologies/Motif-Image-6B-Preview/resolve/main/model_index.json.",
+      "error_category": "other"
+    },
+    "oft/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "opt/causal_lm/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "mixtral/causal_lm/bounty_jax": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "ValueError: An auto mesh context or metadata is required if creating a variable with annotation sharding_names=(None, 'X'). If running this on CPU for debugging, make a dummy mesh like `jax.make_mesh(((1, 1)), (<your axis names>))`. If running on explicit mode, remove `sharding_names=` annotation.",
+      "error_category": "other"
+    },
+    "openpose/v2/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "phi3/phi_3_5/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "pi_0/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "ImportError: cannot import name 'BucketNotFoundError' from 'huggingface_hub.errors' (/opt/ttforge-toolchain/venv/lib/python3.12/site-packages/huggingface_hub/errors.py)",
+      "error_category": "other"
+    },
+    "qwen_2/token_classification/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "mobilenetv3/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "cannot import name 'BucketNotFoundError' from 'huggingface_hub.errors' (/opt/ttforge-toolchain/venv/lib/python3.12/site-packages/huggingface_hub/errors.py)",
+      "error_category": "other"
+    },
+    "mplug_owl2/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "ValueError: IRD_LF_CACHE environment variable is not set. Please set it to the address of the IRD LF cache.",
+      "error_category": "missing_dependency"
+    },
+    "olmo3/causal_lm/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "ValueError: The checkpoint you are trying to load has model type `olmo3` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.\n\nYou can update Transformers with the command `pip install --upgrade tran",
+      "error_category": "unsupported_arch"
+    },
+    "panoptic_segmentation/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "ImportError: numpy.core.multiarray failed to import",
+      "error_category": "other"
+    },
+    "phi1/token_classification/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "phi2/sequence_classification/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "phi2/token_classification/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "phi3/token_cls/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "pointpillars/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "qwen_3/embedding/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "resnet/image_classification/onnx": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "seamless_m4t/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "roberta/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "speecht5/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "ssd300_vgg16/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "cannot import name 'BucketNotFoundError' from 'huggingface_hub.errors' (/opt/ttforge-toolchain/venv/lib/python3.12/site-packages/huggingface_hub/errors.py)",
+      "error_category": "other"
+    },
+    "stable_diffusion_unet/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "Failed to import diffusers.models.unets.unet_2d_condition because of the following error (look up to see its traceback):\nFailed to import diffusers.loaders.peft because of the following error (look up to see its traceback):\ncannot import name 'BucketNotFoundError' from 'huggingface_hub.errors' (/opt/ttforge-toolchain/venv/lib/python3.12/site-packages/huggingface_hub/errors.py)",
+      "error_category": "other"
+    },
+    "t5/causal_lm/onnx": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "unet/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "cannot import name 'BucketNotFoundError' from 'huggingface_hub.errors' (/opt/ttforge-toolchain/venv/lib/python3.12/site-packages/huggingface_hub/errors.py)",
+      "error_category": "other"
+    },
+    "vgg19_unet/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "vocoder_speecht5/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "ssd512/object_detection/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "numpy.core.multiarray failed to import",
+      "error_category": "other"
+    },
+    "stereo/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "t5/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "unet_for_conditional_generation/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "vilt/question_answering/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "xglm/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "petr/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "ValueError: IRD_LF_CACHE environment variable is not set. Please set it to the address of the IRD LF cache.",
+      "error_category": "missing_dependency"
+    },
+    "phi1_5/token_classification/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "phi4/seq_cls/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 9 (forge_internal)",
+      "error_category": "other"
+    },
+    "qwen_2/causal_lm/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 9 (forge_internal)",
+      "error_category": "other"
+    },
+    "qwen_2_5_coder/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal",
+      "last_seen": "2026-05-21T03:15:01.471456+00:00"
+    },
+    "rcnn/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "numpy.core.multiarray failed to import",
+      "error_category": "other"
+    },
+    "retinanet/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "segformer/semantic_segmentation/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "squeezebert/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "wan/pytorch": {
+      "error_category": "unsupported_backend",
+      "error_summary": "Video gen model; downloads Wan-AI/Wan2.1-T2V-14B or Wan2.2-TI2V-5B (5-80G); unsupported in forge",
+      "attempts": 3,
+      "last_seen": "2026-05-21T03:15:01.471456+00:00"
     }
   },
   "chip_totals": {

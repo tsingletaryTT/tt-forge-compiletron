@@ -1547,6 +1547,30 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
 
         start = time.time()
 
+        # ── Runtime perm-fail gate ───────────────────────────────────────────
+        # Reload bestiary here so models added to perm-fail mid-run are caught
+        # before any download begins. Prevents waste when guardian adds entries
+        # during an active expedition (e.g. wan/pytorch, qwen_2/causal_lm).
+        _RUNTIME_PERM_FAIL_CATS = {
+            "forge_internal", "unsupported_arch", "loader_missing",
+            "missing_dependency", "unsupported_backend", "xla_runtime_error",
+            "api_mismatch", "shape_mismatch", "forge_missing_op",
+            "model_access", "wrong_backend", "model_bug",
+        }
+        bestiary = Bestiary(path=bestiary_path)
+        _bf = bestiary.failed.get(item.model_id, {})
+        _bf_cat = _bf.get("error_category", "")
+        _bf_att = _bf.get("attempts", 0)
+        if _bf_cat in _RUNTIME_PERM_FAIL_CATS or _bf_att >= 3:
+            score = compute_score(False, is_first_ever, rarity, newness,
+                                  hud.state.streak, mesh_chips=item.mesh_chips)
+            hud.record_failure(item.model_id)
+            hud.write_status()
+            results.append({"model": item.model_id, "status": "failed",
+                             "error": f"skipped: perm-fail ({_bf_cat})",
+                             "pts": score.pts})
+            continue
+
         # ── Gated model preflight ────────────────────────────────────────────
         # Check HF access gate before attempting any download. Prints a pitch
         # + numbered unlock instructions on interactive terminals (6 s pause),
