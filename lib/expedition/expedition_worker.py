@@ -662,6 +662,7 @@ def _preflight_arch_check(item: "QueueItem") -> tuple[bool, str]:
         with open(config_path) as f:
             cfg = _json.load(f)
 
+        # ── auto_map: custom class references ───────────────────────────────
         auto_map = cfg.get("auto_map", {})
         for _key, class_path in auto_map.items():
             if not isinstance(class_path, str) or "." not in class_path:
@@ -678,6 +679,24 @@ def _preflight_arch_check(item: "QueueItem") -> tuple[bool, str]:
                 return (True,
                         f"MissingDependency: custom class {class_path!r} "
                         f"requires importable module '{module_root}'")
+
+        # ── Unknown model_type: requires trust_remote_code / not in transformers ─
+        # If model_type is not registered in transformers' AutoConfig mapping,
+        # AutoModel.from_pretrained() will fail unless trust_remote_code=True.
+        # The forge worker never passes trust_remote_code, so these always fail.
+        model_type = cfg.get("model_type", "")
+        if model_type:
+            try:
+                from transformers.models.auto.configuration_auto import (
+                    CONFIG_MAPPING_NAMES,
+                )
+                if model_type not in CONFIG_MAPPING_NAMES:
+                    return (True,
+                            f"UnsupportedArch: model_type={model_type!r} is not "
+                            f"registered in transformers AutoConfig and requires "
+                            f"trust_remote_code (not supported by forge)")
+            except Exception:
+                pass  # fail-open if transformers internals change
 
         return False, ""
     except Exception:

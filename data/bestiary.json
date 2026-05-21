@@ -2325,10 +2325,9 @@
     },
     "qwen_2_5_coder/pytorch": {
       "run_first_failed": 96,
-      "attempts": 3,
+      "attempts": 1,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
-      "error_category": "forge_internal",
-      "last_seen": "2026-05-21T03:15:01.471456+00:00"
+      "error_category": "other"
     },
     "rcnn/pytorch": {
       "run_first_failed": 96,
@@ -2354,11 +2353,41 @@
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
+    "stable_diffusion/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 9 (forge_internal)",
+      "error_category": "other"
+    },
+    "suryaocr/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "ModuleNotFoundError: No module named 'surya'",
+      "error_category": "missing_dependency"
+    },
+    "vgg/image_classification/onnx": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
     "wan/pytorch": {
-      "error_category": "unsupported_backend",
-      "error_summary": "Video gen model; downloads Wan-AI/Wan2.1-T2V-14B or Wan2.2-TI2V-5B (5-80G); unsupported in forge",
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "AttributeError: module diffusers has no attribute WanPipeline",
+      "error_category": "other"
+    },
+    "wide_resnet/pytorch": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "rookiexiong/SetCon-8B": {
+      "error": "MissingDependency: custom class SetConChatModelQwen requires importable module setcon_chat",
+      "error_category": "missing_dependency",
       "attempts": 3,
-      "last_seen": "2026-05-21T03:15:01.471456+00:00"
+      "run_number": 97
     }
   },
   "chip_totals": {
