@@ -881,9 +881,9 @@
     },
     "alexnet/image_classification/jax": {
       "run_first_failed": 15,
-      "attempts": 8,
+      "attempts": 0,
       "last_error": "JAX model 'alexnet/image_classification/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
-      "error_category": "other"
+      "error_category": "wrong_backend"
     },
     "attention_denseunet/pytorch": {
       "run_first_failed": 16,
@@ -907,7 +907,7 @@
       "run_first_failed": 16,
       "attempts": 3,
       "last_error": "AssertionError: Forge only supports: torch.nn.modules.module.Module | forge._framework_stubs._NI | onnx.onnx_ml_pb2.ModelProto | forge.module.OnnxModule | forge.module.ForgeModule.",
-      "error_category": "other"
+      "error_category": "unsupported_arch"
     },
     "bart/pytorch": {
       "run_first_failed": 18,
@@ -917,9 +917,9 @@
     },
     "bart/causal_lm/jax": {
       "run_first_failed": 22,
-      "attempts": 3,
-      "last_error": "ScopeParamNotFoundError: Could not find parameter named \"embedding\" in scope \"/model/decoder/embed_tokens\". (https://flax.readthedocs.io/en/latest/api_reference/flax.errors.html#flax.errors.ScopeParamNotFoundError)",
-      "error_category": "other"
+      "attempts": 0,
+      "last_error": "JAX model 'bart/causal_lm/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "wrong_backend"
     },
     "bevformer/pytorch": {
       "run_first_failed": 40,
@@ -941,9 +941,9 @@
     },
     "alexnet/image_classification/paddlepaddle": {
       "run_first_failed": 72,
-      "attempts": 2,
+      "attempts": 3,
       "last_error": "AssertionError: Forge only supports: torch.nn.modules.module.Module | forge._framework_stubs._NI | onnx.onnx_ml_pb2.ModelProto | forge.module.OnnxModule | forge.module.ForgeModule.",
-      "error_category": "other"
+      "error_category": "unsupported_arch"
     },
     "bge_m3/pytorch": {
       "run_first_failed": 73,
@@ -953,9 +953,9 @@
     },
     "blenderbot/summarization/jax": {
       "run_first_failed": 73,
-      "attempts": 3,
-      "last_error": "ValueError: `params` cannot be accessed from model when the model is created with `_do_init=False`. You must call `init_weights` manually and store the params outside of the model and pass it explicitly where needed.",
-      "error_category": "other"
+      "attempts": 0,
+      "last_error": "JAX model 'blenderbot/summarization/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "wrong_backend"
     },
     "command/pytorch": {
       "run_first_failed": 73,
@@ -977,9 +977,9 @@
     },
     "dinov2/image_classification/jax": {
       "run_first_failed": 73,
-      "attempts": 3,
-      "last_error": "ValueError: `params` cannot be accessed from model when the model is created with `_do_init=False`. You must call `init_weights` manually and store the params outside of the model and pass it explicitly where needed.",
-      "error_category": "other"
+      "attempts": 0,
+      "last_error": "JAX model 'dinov2/image_classification/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "wrong_backend"
     },
     "dinov2/image_classification/pytorch": {
       "run_first_failed": 73,
@@ -1000,15 +1000,15 @@
     },
     "electra/causal_lm/jax": {
       "run_first_failed": 76,
-      "attempts": 2,
+      "attempts": 0,
       "last_error": "JAX model 'electra/causal_lm/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
-      "error_category": "other"
+      "error_category": "wrong_backend"
     },
     "falcon/jax": {
       "run_first_failed": 76,
-      "attempts": 1,
-      "last_error": "AttributeError: 'LlamaForCausalLM' object has no attribute 'apply'",
-      "error_category": "other"
+      "attempts": 0,
+      "last_error": "JAX model 'falcon/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "wrong_backend"
     },
     "centernet/pytorch": {
       "run_first_failed": 77,
@@ -1039,15 +1039,15 @@
     },
     "gemma3/causal_lm/bounty_jax": {
       "run_first_failed": 77,
-      "attempts": 1,
+      "attempts": 3,
       "last_error": "ValueError: An auto mesh context or metadata is required if creating a variable with annotation sharding_names=(None, 'X'). If running this on CPU for debugging, make a dummy mesh like `jax.make_mesh(((1, 1)), (<your axis names>))`. If running on explicit mode, remove `sharding_names=` annotation.",
-      "error_category": "other"
+      "error_category": "api_mismatch"
     },
     "glm/causal_lm/jax": {
       "run_first_failed": 77,
-      "attempts": 1,
+      "attempts": 0,
       "last_error": "JAX model 'glm/causal_lm/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
-      "error_category": "other"
+      "error_category": "wrong_backend"
     },
     "facebook/blenderbot-400M-distill": {
       "run_first_failed": 78,
@@ -1381,6 +1381,695 @@
       "run": 88,
       "attempts": 1,
       "source": "huggingface"
+    },
+    "gemma/text_extraction_and_translation/pytorch": {
+      "first_failed": "2026-05-20T21:00:28.490123+00:00",
+      "attempts": 1,
+      "error_category": "forge_internal",
+      "last_error": "Segmentation fault in forge.compile (Gemma3ForConditionalGeneration on TT hardware)",
+      "source": "tt_forge_models",
+      "task": "cv_image_to_text",
+      "rarity": "uncommon",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "gemma/text_extraction_and_translation/pytorch"
+    },
+    "gemma/text_translation/pytorch": {
+      "first_failed": "2026-05-20T21:00:28.490123+00:00",
+      "attempts": 1,
+      "error_category": "forge_internal",
+      "last_error": "Segmentation fault in forge.compile (Gemma3ForConditionalGeneration on TT hardware)",
+      "source": "tt_forge_models",
+      "task": "text_translation",
+      "rarity": "uncommon",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "gemma/text_translation/pytorch"
+    },
+    "gpt_oss/pytorch": {
+      "first_failed": "2026-05-20T21:01:23.158351+00:00",
+      "attempts": 1,
+      "error_category": "api_mismatch",
+      "last_error": "ImportError: cannot import name Mxfp4Config from transformers.utils.quantization_config \u2014 needs newer transformers",
+      "source": "tt_forge_models",
+      "task": "causal_lm",
+      "rarity": "uncommon",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "gpt_oss/pytorch"
+    },
+    "glm/causal_lm/pytorch": {
+      "run_first_failed": 90,
+      "attempts": 2,
+      "last_error": "ValueError: The checkpoint you are trying to load has model type `glm4_moe` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.\n\nYou can update Transformers with the command `pip install --upgrade t",
+      "error_category": "unsupported_arch"
+    },
+    "huggyllama/pytorch": {
+      "first_failed": "2026-05-20T21:07:24.091791+00:00",
+      "attempts": 1,
+      "error_category": "forge_internal",
+      "last_error": "Pre-blacklisted: LlamaForCausalLM (AutoModelForCausalLM via huggyllama/llama-7b) \u2014 consistent SIGSEGV pattern in forge.compile; confirmed via falcon/pytorch same arch",
+      "source": "tt_forge_models",
+      "task": "causal_lm",
+      "rarity": "uncommon",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "huggyllama/pytorch"
+    },
+    "llama/causal_lm/pytorch": {
+      "first_failed": "2026-05-20T21:07:24.091791+00:00",
+      "attempts": 1,
+      "error_category": "forge_internal",
+      "last_error": "Pre-blacklisted: LlamaForCausalLM \u2014 consistent SIGSEGV in forge.compile; same pattern as falcon/pytorch and gpt_neo/causal_lm/pytorch",
+      "source": "tt_forge_models",
+      "task": "causal_lm",
+      "rarity": "uncommon",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "llama/causal_lm/pytorch"
+    },
+    "mistral/pytorch": {
+      "first_failed": "2026-05-20T21:08:10.722860+00:00",
+      "attempts": 1,
+      "error_category": "forge_internal",
+      "last_error": "Pre-blacklisted: MistralForCausalLM \u2014 Mistral is Llama-derivative; consistent SIGSEGV pattern for CausalLM models on TT hardware",
+      "source": "tt_forge_models",
+      "task": "causal_lm",
+      "rarity": "uncommon",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "mistral/pytorch"
+    },
+    "kimi_k2/pytorch": {
+      "first_failed": "2026-05-20T21:08:10.722860+00:00",
+      "attempts": 1,
+      "error_category": "missing_dependency",
+      "last_error": "Pre-blacklisted: moonshotai/Kimi-K2-Instruct is 32B+ MoE model \u2014 exceeds available RAM for single-chip compilation",
+      "source": "tt_forge_models",
+      "task": "causal_lm",
+      "rarity": "legendary",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "kimi_k2/pytorch"
+    },
+    "llava/pytorch": {
+      "first_failed": "2026-05-20T21:08:10.722860+00:00",
+      "attempts": 1,
+      "error_category": "forge_internal",
+      "last_error": "Pre-blacklisted: LlavaForConditionalGeneration \u2014 multimodal vision-language model; forge_internal SIGSEGV expected based on similar multimodal arch patterns",
+      "source": "tt_forge_models",
+      "task": "multimodal",
+      "rarity": "uncommon",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "llava/pytorch"
+    },
+    "llama/llama_3_2_vision/pytorch": {
+      "run_first_failed": 91,
+      "attempts": 3,
+      "last_error": "OSError: You are trying to access a gated repo.\nMake sure to have access to it at https://huggingface.co/meta-llama/Llama-3.2-11B-Vision-Instruct.\n403 Client Error. (Request ID: Root=1-6a0e6bb5-6a53e4b8075c3631612b5f9c;03fdfd32-7e78-425e-9c8b-e5a5e1a59394)\n\nCannot access gated repo for url https://huggingfac",
+      "error_category": "model_access"
+    },
+    "hippynn/pytorch": {
+      "run_first_failed": 91,
+      "attempts": 3,
+      "last_error": "AttributeError: 'tuple' object has no attribute 'eval'",
+      "error_category": "api_mismatch"
+    },
+    "gliner/pytorch": {
+      "first_failed": "2026-05-20T21:18:28.389824+00:00",
+      "attempts": 3,
+      "error_category": "forge_internal",
+      "last_error": "Segmentation fault in forge.compile (GLiNER architecture); confirmed 3x including on clean hardware",
+      "source": "tt_forge_models",
+      "task": "token_classification",
+      "rarity": "uncommon",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "gliner/pytorch"
+    },
+    "glpn_kitti/pytorch": {
+      "first_failed": "2026-05-20T21:18:28.389824+00:00",
+      "attempts": 2,
+      "error_category": "forge_internal",
+      "last_error": "Segmentation fault in forge.compile (GLPNForDepthEstimation)",
+      "source": "tt_forge_models",
+      "task": "depth_estimation",
+      "rarity": "uncommon",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "glpn_kitti/pytorch"
+    },
+    "gpt_neo/causal_lm/pytorch": {
+      "first_failed": "2026-05-20T21:18:28.389824+00:00",
+      "attempts": 2,
+      "error_category": "forge_internal",
+      "last_error": "Segmentation fault in forge.compile (GPTNeoForCausalLM); note seqclass variant compiles fine",
+      "source": "tt_forge_models",
+      "task": "causal_lm",
+      "rarity": "uncommon",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "gpt_neo/causal_lm/pytorch"
+    },
+    "mamba/pytorch": {
+      "first_failed": "2026-05-20T21:18:28.389824+00:00",
+      "attempts": 2,
+      "error_category": "forge_internal",
+      "last_error": "Segmentation fault in forge.compile (MambaForCausalLM)",
+      "source": "tt_forge_models",
+      "task": "causal_lm",
+      "rarity": "uncommon",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "mamba/pytorch"
+    },
+    "snehangshu511/tinystories-gpt2-124M-scratch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "MissingDependency: custom class 'hf_model.SmallLLMConfig' requires importable module 'hf_model'",
+      "error_category": "missing_dependency"
+    },
+    "OpceanAI/Yuuki-3.7": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "gpt_j/causal_lm/jax": {
+      "run_first_failed": 95,
+      "attempts": 0,
+      "last_error": "JAX model 'gpt_j/causal_lm/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "wrong_backend"
+    },
+    "albert/albert-base-v2": {
+      "run_first_failed": 95,
+      "attempts": 4,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "OpceanAI/Yuuki-best": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "OvercastLab/Quark-50m": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "microsoft/paza-whisper-large-v3-turbo": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "gpt_sw3/causal_lm/jax": {
+      "run_first_failed": 95,
+      "attempts": 0,
+      "last_error": "JAX model 'gpt_sw3/causal_lm/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "wrong_backend"
+    },
+    "llama/causal_lm/jax": {
+      "run_first_failed": 95,
+      "attempts": 0,
+      "last_error": "JAX model 'llama/causal_lm/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "wrong_backend"
+    },
+    "mamba/causal_lm/jax": {
+      "run_first_failed": 95,
+      "attempts": 0,
+      "last_error": "JAX model 'mamba/causal_lm/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "wrong_backend"
+    },
+    "maskformer_swin_b/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/opt/tenstorrent/models/hub/models--facebook--maskformer-swin-base-coco/blobs/d80418c3bcb17c6a847accbca3a0d66b7574c5c767419aad3cd5fa9fad0441a4.incomplete'",
+      "error_category": "loader_missing"
+    },
+    "mistral/causal_lm/bounty_jax": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "No module named 'jaxtyping'",
+      "error_category": "missing_dependency"
+    },
+    "mlp_mixer/lucidrains/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "mobilenetv1/image_classification/onnx": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "monodepth2/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 1,
+      "last_error": "ValueError: IRD_LF_CACHE environment variable is not set. Please set it to the address of the IRD LF cache.",
+      "error_category": "missing_dependency"
+    },
+    "mt5/nlp_summarization/jax": {
+      "run_first_failed": 95,
+      "attempts": 0,
+      "last_error": "JAX model 'mt5/nlp_summarization/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "wrong_backend"
+    },
+    "oft_stable_diffusion/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "AttributeError: 'StableDiffusionPipeline' object has no attribute 'eval'",
+      "error_category": "api_mismatch"
+    },
+    "openvla/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "opt/qa/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "pegasus/summarization/jax": {
+      "run_first_failed": 95,
+      "attempts": 0,
+      "last_error": "JAX model 'pegasus/summarization/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "wrong_backend"
+    },
+    "phi1/causal_lm/jax": {
+      "run_first_failed": 95,
+      "attempts": 0,
+      "last_error": "JAX model 'phi1/causal_lm/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "wrong_backend"
+    },
+    "phi1_5/causal_lm/jax": {
+      "run_first_failed": 95,
+      "attempts": 0,
+      "last_error": "JAX model 'phi1_5/causal_lm/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "wrong_backend"
+    },
+    "phi2/causal_lm/jax": {
+      "run_first_failed": 95,
+      "attempts": 0,
+      "last_error": "JAX model 'phi2/causal_lm/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "wrong_backend"
+    },
+    "phi3/causal_lm/jax": {
+      "run_first_failed": 95,
+      "attempts": 0,
+      "last_error": "JAX model 'phi3/causal_lm/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "wrong_backend"
+    },
+    "phi3/seq_cls/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "phi4/token_cls/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "qwen_1_5/causal_lm/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "qwen_2_5/causal_lm/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "qwen_3/causal_lm/jax": {
+      "run_first_failed": 95,
+      "attempts": 0,
+      "last_error": "JAX model 'qwen_3/causal_lm/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "wrong_backend"
+    },
+    "regnet/image_classification/jax": {
+      "run_first_failed": 95,
+      "attempts": 0,
+      "last_error": "JAX model 'regnet/image_classification/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "wrong_backend"
+    },
+    "resnext/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "roberta/masked_lm/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "roformer/masked_lm/jax": {
+      "run_first_failed": 95,
+      "attempts": 0,
+      "last_error": "JAX model 'roformer/masked_lm/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "wrong_backend"
+    },
+    "segformer/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "solar-10_7B/causal_lm/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 9 (forge_internal)",
+      "error_category": "forge_internal",
+      "error_summary": "SIGSEGV: downloads SOLAR-10.7B (~20G)",
+      "last_seen": "2026-05-21T02:43:01.145793+00:00"
+    },
+    "squeezebert/sequence_classification/onnx": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "ssdlite320_mobilenetv3/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "stable_diffusion_xl/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "AttributeError: 'StableDiffusionXLPipeline' object has no attribute 'eval'",
+      "error_category": "api_mismatch"
+    },
+    "swin/masked_image_modeling/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "transfuser/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 2,
+      "last_error": "ModuleNotFoundError: No module named 'third_party.tt_forge_models.transfuser'",
+      "error_category": "missing_dependency"
+    },
+    "uniad/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 2,
+      "last_error": "ModuleNotFoundError: No module named 'third_party.tt_forge_models.uniad'",
+      "error_category": "missing_dependency"
+    },
+    "vilt/masked_lm/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "vit/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "wav2vec2/audio_classification/jax": {
+      "run_first_failed": 95,
+      "attempts": 0,
+      "last_error": "JAX model 'wav2vec2/audio_classification/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
+      "error_category": "wrong_backend"
+    },
+    "xception/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "yolop/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 1,
+      "last_error": "ModuleNotFoundError: No module named 'lib.utils'",
+      "error_category": "missing_dependency"
+    },
+    "yolov5/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "UnboundLocalError: cannot access local variable 'model' where it is not associated with a value",
+      "error_category": "model_bug"
+    },
+    "yolox/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 1,
+      "last_error": "ModuleNotFoundError: No module named 'yolox'",
+      "error_category": "missing_dependency"
+    },
+    "microsoft/phi-4": {
+      "error_category": "forge_internal",
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal) \u2014 run 95",
+      "last_seen": "2026-05-21T02:02:45Z",
+      "first_seen": "2026-05-21T02:02:45Z"
+    },
+    "OpceanAI/Yuuki-RxG": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "OpceanAI/Yuuki-NxG-nano": {
+      "run_first_failed": 95,
+      "attempts": 4,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "centernet/onnx": {
+      "run_first_failed": 95,
+      "attempts": 2,
+      "last_error": "ValueError: IRD_LF_CACHE environment variable is not set. Please set it to the address of the IRD LF cache.",
+      "error_category": "missing_dependency"
+    },
+    "falcon/bounty_jax": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "AttributeError: \"_FalconWrapper\" object has no attribute \"eval\". If \"eval\" is defined in '.setup()', remember these fields are only accessible from inside 'init' or 'apply'.",
+      "error_category": "api_mismatch"
+    },
+    "googlenet/image_classification/onnx": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "hardnet/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "openai-community/openai-gpt": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "inception/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "mlp_mixer/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "mobilenetv1/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "monodle/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 1,
+      "last_error": "URLError: <urlopen error [Errno 110] Connection timed out>",
+      "error_category": "other"
+    },
+    "nanogpt/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "olm_ocr/image_text_generation/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 9 (forge_internal)",
+      "error_category": "forge_internal",
+      "error_summary": "SIGSEGV: downloads allenai/olmOCR-7B (~15G)",
+      "last_seen": "2026-05-21T02:43:01.145793+00:00"
+    },
+    "openvla_oft/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "opt/sequence_classification/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "perceiver/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "phi1/causal_lm/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "phi1_5/causal_lm/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "phi2/causal_lm/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "phi3/causal_lm/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "owl_vit/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "perceiverio_vision/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "phi1/sequence_classification/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "phi1_5/sequence_classification/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "qwen_3/causal_lm/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "regnet/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "rmbg/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "OSError: You are trying to access a gated repo.\nMake sure to have access to it at https://huggingface.co/briaai/RMBG-2.0.\n403 Client Error. (Request ID: Root=1-6a0e70ea-4a4751c3231c0ee3061d98d4;880cbf4c-973b-48f5-a14b-b771f682fd45)\n\nCannot access gated repo for url https://huggingface.co/briaai/RMBG-2.0/reso",
+      "error_category": "model_access"
+    },
+    "roberta/sequence_classification/onnx": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "sam/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 1,
+      "last_error": "ModuleNotFoundError: No module named 'transformers.utils.output_capturing'",
+      "error_category": "missing_dependency"
+    },
+    "siglip/image_text_similarity/pytorch": {
+      "run_first_failed": 95,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "forge_internal"
+    },
+    "phi4/causal_lm/pytorch": {
+      "error_category": "forge_internal",
+      "error_summary": "SIGSEGV: downloads microsoft/phi-4 (~28G)",
+      "attempts": 3,
+      "last_seen": "2026-05-21T02:43:01.145793+00:00"
+    },
+    "Qwen/QwQ-32B": {
+      "error_category": "unsupported_backend",
+      "error_summary": "32B model too large for forge/XLA single-chip",
+      "attempts": 3,
+      "last_seen": "2026-05-21T02:43:01.145793+00:00"
+    },
+    "mistral/pixtral/pytorch": {
+      "error_category": "forge_internal",
+      "error_summary": "SIGSEGV: downloads mistral-community/pixtral-12b (~25G)",
+      "attempts": 3,
+      "last_seen": "2026-05-21T02:43:01.145793+00:00"
+    },
+    "mochi/pytorch": {
+      "error_category": "forge_internal",
+      "error_summary": "Video gen model genmo/mochi-1-preview, unsupported in forge",
+      "attempts": 3,
+      "last_seen": "2026-05-21T02:43:01.145793+00:00"
+    },
+    "luayas1977/arabicai-tinystories-gpt": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "ValueError: The checkpoint you are trying to load has model type `gpt` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.\n\nYou can update Transformers with the command `pip install --upgrade transf",
+      "error_category": "unsupported_arch"
+    },
+    "Surpem/Supertron2-1.7B": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "albert/albert-base-v1": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "openai-community/gpt2-medium": {
+      "run_first_failed": 96,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
     }
   },
   "chip_totals": {

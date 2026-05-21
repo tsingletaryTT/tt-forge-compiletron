@@ -1117,6 +1117,82 @@ def _compile_isolated(item: "QueueItem", chip_id: int) -> dict:
     return default_result
 
 
+def _dispatch_xla_item(
+    item: "QueueItem",
+    chip_id: int,
+    run_number: int,
+    bestiary_path: str,
+) -> dict:
+    """Dispatch a JAX/Flax model to expedition_worker_xla.py and return compile result.
+
+    The XLA worker subprocess handles bestiary recording, HUD writes, and
+    result CSV creation internally.  This function collects only the compile
+    result dict so the forge worker can update its own score/HUD tracking.
+
+    Returns a dict compatible with _compile_isolated(): keys success,
+    compile_time, infer_time, error_str, artifact, first_voice_text,
+    first_voice_sample, throughput, throughput_unit.
+    """
+    import tempfile
+    import subprocess as _sp
+
+    project_dir = Path(__file__).resolve().parent.parent.parent
+    xla_python = Path.home() / "tt-xla" / "venv" / "bin" / "python3"
+
+    default: dict = {
+        "success": False, "compile_time": 0.0, "infer_time": 0.0,
+        "error_str": "", "artifact": "", "first_voice_text": "",
+        "first_voice_sample": None, "throughput": 0.0, "throughput_unit": "",
+    }
+
+    if not xla_python.exists():
+        default["error_str"] = "XLA venv not found at ~/tt-xla/venv — cannot compile JAX model"
+        return default
+
+    item_fd, item_path = tempfile.mkstemp(prefix="xla_item_", suffix=".json")
+    res_fd,  res_path  = tempfile.mkstemp(prefix="xla_res_",  suffix=".csv")
+    os.close(item_fd)
+    os.close(res_fd)
+
+    try:
+        with open(item_path, "w") as f:
+            json.dump(asdict(item), f, default=str)
+
+        cmd = [
+            str(xla_python),
+            str(project_dir / "lib" / "expedition" / "expedition_worker_xla.py"),
+            "--chip",       str(chip_id),
+            "--run",        str(run_number),
+            "--bestiary",   bestiary_path,
+            "--model-json", item_path,
+            "--results",    res_path,
+        ]
+        _sp.run(cmd, timeout=660)  # 11-min hard cap; XLA worker has its own 300s SIGALRM
+
+        if Path(res_path).stat().st_size > 0:
+            with open(res_path) as f:
+                for row in csv.DictReader(f):
+                    default["success"]          = row.get("status")            == "success"
+                    default["compile_time"]     = float(row.get("compile_time") or 0)
+                    default["infer_time"]       = float(row.get("infer_time")   or 0)
+                    default["error_str"]        = row.get("error")              or ""
+                    default["artifact"]         = row.get("artifact")           or ""
+                    default["first_voice_text"] = row.get("first_voice")        or ""
+                    break
+    except _sp.TimeoutExpired:
+        default["error_str"] = "XLA worker timeout (660s)"
+    except Exception as exc:
+        default["error_str"] = f"XLA dispatch error: {exc}"
+    finally:
+        for p in (item_path, res_path):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+
+    return default
+
+
 def _attempt_first_voice(
     compiled_model,
     task: str,
@@ -1508,34 +1584,51 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                                  "error": _arch_err, "pts": score.pts})
                 continue
 
-        _print_progress_step(1, 3, "Loading model...")
+        # ── JAX/Flax → XLA worker dispatch ──────────────────────────────────────
+        # JAX models must compile via the XLA backend (expedition_worker_xla.py).
+        # Detect by library tag or by the last path segment of the model ID (e.g.
+        # "alexnet/image_classification/jax" ends in "jax").  Spawn the XLA worker
+        # subprocess; it handles its own bestiary recording, HUD writes, and CSV.
+        # The forge worker re-syncs bestiary from disk so subsequent models see the
+        # XLA worker's updates, and tracks the result in its own HUD/score state.
+        _item_is_jax = (item.library or "").lower() in ("jax", "flax") or \
+                       item.model_id.split("/")[-1].lower() in ("jax", "flax")
 
-        # ── Loader construction (pre-flight check) ───────────────────────────
-        # Build the loader in the parent as a fast error gate — catches missing
-        # modules and bad configs before paying the cost of a subprocess spawn.
-        # The subprocess rebuilds its own loader; this result is not passed across
-        # the process boundary.
-        try:
-            _build_loader(item)
-        except Exception as e:
-            elapsed = time.time() - start
-            _print_failure(item.model_id, str(e), elapsed)
-            score = compute_score(False, is_first_ever, rarity, newness, hud.state.streak,
-                                  mesh_chips=item.mesh_chips)
-            hud.record_failure(item.model_id)
-            bestiary.record_failure(item.model_id, run_number, str(e))
-            hud.write_status()
-            results.append({"model": item.model_id, "status": "failed",
-                            "error": str(e), "pts": score.pts})
-            continue
+        if _item_is_jax:
+            _print_progress_step(2, 3, "Routing to XLA worker (JAX)...")
+            cr = _dispatch_xla_item(item, chip_id, run_number, bestiary_path)
+            # XLA worker updated bestiary on disk — reload so this worker's
+            # in-memory state reflects those changes for subsequent models.
+            bestiary = Bestiary(path=bestiary_path)
+        else:
+            _print_progress_step(1, 3, "Loading model...")
 
-        # ── Compile + inference (subprocess-isolated) ─────────────────────────
-        # Each compile runs in a child process so a SIGSEGV inside forge.compile()
-        # kills only the child — this worker loop survives and continues to the
-        # next model.  decode(), first_voice, and throughput all run inside the
-        # subprocess; only JSON-serialisable scalars cross the boundary.
-        # bench_passes are silently skipped (compiled module can't be pickled).
-        cr = _compile_isolated(item, chip_id)
+            # ── Loader construction (pre-flight check) ───────────────────────────
+            # Build the loader in the parent as a fast error gate — catches missing
+            # modules and bad configs before paying the cost of a subprocess spawn.
+            # The subprocess rebuilds its own loader; this result is not passed across
+            # the process boundary.
+            try:
+                _build_loader(item)
+            except Exception as e:
+                elapsed = time.time() - start
+                _print_failure(item.model_id, str(e), elapsed)
+                score = compute_score(False, is_first_ever, rarity, newness, hud.state.streak,
+                                      mesh_chips=item.mesh_chips)
+                hud.record_failure(item.model_id)
+                bestiary.record_failure(item.model_id, run_number, str(e))
+                hud.write_status()
+                results.append({"model": item.model_id, "status": "failed",
+                                "error": str(e), "pts": score.pts})
+                continue
+
+            # ── Compile + inference (subprocess-isolated) ─────────────────────────
+            # Each compile runs in a child process so a SIGSEGV inside forge.compile()
+            # kills only the child — this worker loop survives and continues to the
+            # next model.  decode(), first_voice, and throughput all run inside the
+            # subprocess; only JSON-serialisable scalars cross the boundary.
+            # bench_passes are silently skipped (compiled module can't be pickled).
+            cr = _compile_isolated(item, chip_id)
         success          = cr["success"]
         compile_time     = cr["compile_time"]
         infer_time       = cr["infer_time"]
@@ -1604,46 +1697,48 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             )
 
             # Record the compilation in the bestiary compiled dict.
-            # artifact = raw tensor stats (always); first_voice = decoded text (when available).
-            bestiary.record_success(
-                model_id=item.model_id,
-                chip=chip_id,
-                run=run_number,
-                time_s=compile_time + infer_time,
-                task=item.task,
-                source=item.source,
-                rarity=rarity.value,
-                hf_downloads=item.hf_downloads,
-                hf_created_at=item.hf_created_at,
-                artifact=artifact,
-                backend="forge",
-                first_voice=first_voice_text if is_first_voice else "",
-                compile_s=compile_time,
-                infer_s=infer_time,
-                throughput=throughput,
-                throughput_unit=throughput_unit,
-                mesh_chips=getattr(item, "mesh_chips", 1),
-            )
-            # Accumulate points into the per-chip all-time leaderboard entry.
-            bestiary.add_chip_points(
-                chip=chip_id,
-                pts=score.pts,
-                first_ever=is_first_ever,
-                streak=hud.state.streak,
-            )
-            # Build and append the perf history record.
-            perf_record: dict = {
-                "model_id":        item.model_id,
-                "run":             run_number,
-                "timestamp":       compiled_at,
-                "backend":         "forge",
-                "chip":            chip_id,
-                "compile_s":       round(compile_time, 4),
-                "infer_s":         round(infer_time, 4),
-                "throughput":      round(throughput, 3),
-                "throughput_unit": throughput_unit,
-            }
-            bestiary.append_perf_record(perf_record)
+            # XLA-dispatched items are already recorded by expedition_worker_xla.py;
+            # skip to avoid double-writing (attempts counter, backend field, etc.).
+            if not _item_is_jax:
+                bestiary.record_success(
+                    model_id=item.model_id,
+                    chip=chip_id,
+                    run=run_number,
+                    time_s=compile_time + infer_time,
+                    task=item.task,
+                    source=item.source,
+                    rarity=rarity.value,
+                    hf_downloads=item.hf_downloads,
+                    hf_created_at=item.hf_created_at,
+                    artifact=artifact,
+                    backend="forge",
+                    first_voice=first_voice_text if is_first_voice else "",
+                    compile_s=compile_time,
+                    infer_s=infer_time,
+                    throughput=throughput,
+                    throughput_unit=throughput_unit,
+                    mesh_chips=getattr(item, "mesh_chips", 1),
+                )
+                # Accumulate points into the per-chip all-time leaderboard entry.
+                bestiary.add_chip_points(
+                    chip=chip_id,
+                    pts=score.pts,
+                    first_ever=is_first_ever,
+                    streak=hud.state.streak,
+                )
+                # Build and append the perf history record.
+                perf_record: dict = {
+                    "model_id":        item.model_id,
+                    "run":             run_number,
+                    "timestamp":       compiled_at,
+                    "backend":         "forge",
+                    "chip":            chip_id,
+                    "compile_s":       round(compile_time, 4),
+                    "infer_s":         round(infer_time, 4),
+                    "throughput":      round(throughput, 3),
+                    "throughput_unit": throughput_unit,
+                }
+                bestiary.append_perf_record(perf_record)
             results.append({
                 "model":        item.model_id,
                 "status":       "success",
@@ -1660,7 +1755,9 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             score = compute_score(False, is_first_ever, rarity, newness,
                                   hud.state.streak, mesh_chips=item.mesh_chips)
             hud.record_failure(item.model_id)
-            bestiary.record_failure(item.model_id, run_number, error_str)
+            # XLA-dispatched failures are already in the bestiary from the subprocess.
+            if not _item_is_jax:
+                bestiary.record_failure(item.model_id, run_number, error_str)
             results.append({"model": item.model_id, "status": "failed",
                             "error": error_str, "pts": score.pts})
 

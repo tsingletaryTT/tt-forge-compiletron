@@ -19,8 +19,8 @@ HF_CACHE="$HOME/.cache/huggingface/hub"
 BONUS_MODELS="/mnt/bonus/models"
 LOG="/tmp/disk_guardian.log"
 
-WARN_GB=200   # start offloading compiled weights below this free space
-CRIT_GB=130   # also delete perm-failed weights below this
+WARN_GB=60    # start offloading compiled weights below this free space
+CRIT_GB=45    # also delete perm-failed weights below this
 
 log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG"; }
 
