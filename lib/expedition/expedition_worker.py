@@ -1154,6 +1154,11 @@ def _dispatch_xla_item(
     os.close(item_fd)
     os.close(res_fd)
 
+    # Serialize XLA dispatch globally — the TT pjrt backend can only be held
+    # by one process at a time.  All 4 chip workers share this lock so they
+    # queue up rather than fighting over the device and crashing each other.
+    _xla_lock_path = "/tmp/tt_xla_dispatch.lock"
+
     try:
         with open(item_path, "w") as f:
             json.dump(asdict(item), f, default=str)
@@ -1167,7 +1172,10 @@ def _dispatch_xla_item(
             "--model-json", item_path,
             "--results",    res_path,
         ]
-        _sp.run(cmd, timeout=660)  # 11-min hard cap; XLA worker has its own 300s SIGALRM
+        import fcntl as _fcntl
+        with open(_xla_lock_path, "w") as _lf:
+            _fcntl.flock(_lf, _fcntl.LOCK_EX)   # blocks until the running XLA worker exits
+            _sp.run(cmd, timeout=660)            # 11-min hard cap; XLA worker has its own 300s SIGALRM
 
         if Path(res_path).stat().st_size > 0:
             with open(res_path) as f:
