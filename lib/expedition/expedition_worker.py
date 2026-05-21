@@ -1194,7 +1194,7 @@ def _dispatch_xla_item(
         import fcntl as _fcntl
         with open(_xla_lock_path, "w") as _lf:
             _fcntl.flock(_lf, _fcntl.LOCK_EX)   # blocks until the running XLA worker exits
-            _sp.run(cmd, timeout=660)            # 11-min hard cap; XLA worker has its own 300s SIGALRM
+            _sp.run(cmd, timeout=660, stdin=_sp.DEVNULL)  # 11-min hard cap; DEVNULL prevents "Press Enter" hang
 
         if Path(res_path).stat().st_size > 0:
             with open(res_path) as f:
