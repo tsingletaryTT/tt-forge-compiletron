@@ -2499,25 +2499,25 @@
     },
     "speecht5/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "ssd300_vgg16/pytorch": {
       "run_first_failed": 96,
-      "attempts": 2,
-      "last_error": "ImportError: huggingface-hub>=0.30.0,<1.0 is required for a normal functioning of this module, but found huggingface-hub==1.15.0.\nTry: `pip install transformers -U` or `pip install -e '.[dev]'` if you're working with git main",
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "stable_diffusion_unet/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
-      "last_error": "Failed to import diffusers.models.unets.unet_2d_condition because of the following error (look up to see its traceback):\nFailed to import diffusers.loaders.peft because of the following error (look up to see its traceback):\ncannot import name 'BucketNotFoundError' from 'huggingface_hub.errors' (/opt/ttforge-toolchain/venv/lib/python3.12/site-packages/huggingface_hub/errors.py)",
+      "attempts": 2,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "t5/causal_lm/onnx": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
@@ -2559,13 +2559,13 @@
     },
     "unet_for_conditional_generation/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "vilt/question_answering/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
@@ -2649,13 +2649,13 @@
     },
     "wan/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "AttributeError: module diffusers has no attribute WanPipeline",
       "error_category": "other"
     },
     "wide_resnet/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
@@ -2820,6 +2820,18 @@
       "attempts": 1,
       "last_error": "AttributeError: 'FlaxBigBirdForQuestionAnsweringModelOutput' object has no attribute 'block_until_ready'",
       "error_category": "other"
+    },
+    "yolov3/pytorch": {
+      "run_first_failed": 99,
+      "attempts": 1,
+      "last_error": "ValueError: IRD_LF_CACHE environment variable is not set. Please set it to the address of the IRD LF cache.",
+      "error_category": "missing_dependency"
+    },
+    "yolov9/pytorch": {
+      "run_first_failed": 99,
+      "attempts": 1,
+      "last_error": "ImportError: numpy.core.multiarray failed to import",
+      "error_category": "other"
     }
   },
   "chip_totals": {
@@ -2842,6 +2854,15 @@
       "pts": 6290,
       "first_evers": 6,
       "best_streak": 2
+    }
+  },
+  "models": {
+    "wan/pytorch": {
+      "attempts": 99,
+      "error_category": "unsupported_arch",
+      "last_error": "hard-blocked: loads Wan2.2-TI2V-5B (NEVER TOUCH diffusion pipeline)",
+      "last_run": 99,
+      "first_seen": "2026-05-21"
     }
   }
 }

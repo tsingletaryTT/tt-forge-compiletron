@@ -1590,6 +1590,8 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             "llama/sequence_classification/pytorch",
             "phi4/seq_cls/pytorch",               # microsoft/phi-4 (14B)
             "phi4/causal_lm/pytorch",             # microsoft/phi-4 (14B)
+            # Wan diffusion — loads Wan2.2-TI2V-5B or Wan2.1-T2V-14B (NEVER TOUCH)
+            "wan/pytorch",
         }
         if item.model_id in _HARD_BLOCK:
             score = compute_score(False, is_first_ever, rarity, newness,
