@@ -1075,6 +1075,29 @@
       "best_infer_s": 0.3417196273803711,
       "throughput_unit": "tokens/sec",
       "best_throughput": 93.644
+    },
+    "resnet/image_classification/jax": {
+      "first_compiled": "2026-05-21T16:32:44.656727+00:00",
+      "first_chip": 1,
+      "run": 99,
+      "best_time_s": 0.446305513381958,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "cv_image_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 1000)  max=1.617",
+      "first_voice": "",
+      "backend": "xla",
+      "backends_succeeded": [
+        "xla"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 0.446305513381958,
+      "best_infer_s": 0.012836933135986328,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 12.837
     }
   },
   "failed": {
@@ -2266,9 +2289,9 @@
     },
     "sam/pytorch": {
       "run_first_failed": 95,
-      "attempts": 2,
-      "last_error": "cannot import name 'BucketNotFoundError' from 'huggingface_hub.errors' (/opt/ttforge-toolchain/venv/lib/python3.12/site-packages/huggingface_hub/errors.py)",
-      "error_category": "other"
+      "attempts": 3,
+      "last_error": "ModuleNotFoundError: No module named 'transformers.utils.output_capturing'",
+      "error_category": "missing_dependency"
     },
     "siglip/image_text_similarity/pytorch": {
       "run_first_failed": 95,
@@ -2440,13 +2463,13 @@
     },
     "phi3/token_cls/pytorch": {
       "run_first_failed": 96,
-      "attempts": 2,
+      "attempts": 3,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "pointpillars/pytorch": {
       "run_first_failed": 96,
-      "attempts": 2,
+      "attempts": 3,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
@@ -2512,7 +2535,7 @@
     },
     "vocoder_speecht5/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
@@ -2578,8 +2601,8 @@
     },
     "qwen_2_5_coder/pytorch": {
       "run_first_failed": 96,
-      "attempts": 2,
-      "last_error": "RemoteEntryNotFoundError: 404 Client Error. (Request ID: Root=1-6a0f1cbc-3e182ce327d6edee4e165322;3f12426f-a3b1-4f8d-865a-9a7cf6c6c8fe)\n\nEntry Not Found for url: https://huggingface.co/api/models/Qwen/Qwen2.5-Coder-0.5B/tree/main/additional_chat_templates?recursive=false&expand=false.\nadditional_chat_templates does not exist",
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "rcnn/pytorch": {
@@ -2596,14 +2619,14 @@
     },
     "segformer/semantic_segmentation/pytorch": {
       "run_first_failed": 96,
-      "attempts": 2,
+      "attempts": 3,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "squeezebert/pytorch": {
       "run_first_failed": 96,
-      "attempts": 2,
-      "last_error": "RemoteEntryNotFoundError: 404 Client Error. (Request ID: Root=1-6a0f1cc9-045c733e355dfd316adb43f7;3f76368e-4caf-4617-911e-5b7ea5d50cd7)\n\nEntry Not Found for url: https://huggingface.co/api/models/squeezebert/squeezebert-mnli/tree/main/additional_chat_templates?recursive=false&expand=false.\nadditional_chat_templates does not ",
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
     "stable_diffusion/pytorch": {
@@ -2704,7 +2727,7 @@
     },
     "phi3/phi_3_5_vision/pytorch": {
       "run_first_failed": 98,
-      "attempts": 2,
+      "attempts": 3,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
@@ -2716,7 +2739,7 @@
     },
     "stable_diffusion_1_4/pytorch": {
       "run_first_failed": 98,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "NameError: name 'torch' is not defined",
       "error_category": "other"
     },
@@ -2734,7 +2757,7 @@
     },
     "vgg/pytorch": {
       "run_first_failed": 98,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other"
     },
@@ -2764,7 +2787,7 @@
     },
     "whisper/audio_classification/jax": {
       "run_first_failed": 98,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "TypeError: WhisperForConditionalGeneration.__call__() missing 1 required positional argument: 'decoder_input_ids'",
       "error_category": "other"
     },
@@ -2778,6 +2801,24 @@
       "run_first_failed": 98,
       "attempts": 1,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "openai-community/gpt2-xl": {
+      "run_first_failed": 98,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
+    },
+    "mamba2/causal_lm/jax": {
+      "run_first_failed": 98,
+      "attempts": 1,
+      "last_error": "TIMEOUT",
+      "error_category": "timeout"
+    },
+    "bigbird/question_answering/jax": {
+      "run_first_failed": 99,
+      "attempts": 1,
+      "last_error": "AttributeError: 'FlaxBigBirdForQuestionAnsweringModelOutput' object has no attribute 'block_until_ready'",
       "error_category": "other"
     }
   },
@@ -2798,8 +2839,8 @@
       "best_streak": 1
     },
     "1": {
-      "pts": 6140,
-      "first_evers": 5,
+      "pts": 6290,
+      "first_evers": 6,
       "best_streak": 2
     }
   }

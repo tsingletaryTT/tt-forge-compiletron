@@ -1574,6 +1574,33 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
 
         start = time.time()
 
+        # ── Hard-coded model blocklist ───────────────────────────────────────
+        # Model IDs listed here are NEVER attempted, regardless of bestiary
+        # state. This prevents workers from overwriting bestiary entries and
+        # re-downloading models that are known to be incompatible or forbidden.
+        # Covers: large diffusion pipelines, oversized LLMs, NEVER TOUCH ops.
+        _HARD_BLOCK = {
+            # Diffusion pipelines — incompatible with forge/XLA compile path
+            "stable_diffusion/pytorch",
+            "stable_diffusion_xl/pytorch",
+            "flux/pytorch",
+            # Oversized LLMs — exceed disk / RAM budget for expedition runs
+            "qwen_2/causal_lm/pytorch",          # QwQ-32B (32B params)
+            "llama/causal_lm/pytorch",            # Llama-3.1-8B / 3.3-70B
+            "llama/sequence_classification/pytorch",
+            "phi4/seq_cls/pytorch",               # microsoft/phi-4 (14B)
+            "phi4/causal_lm/pytorch",             # microsoft/phi-4 (14B)
+        }
+        if item.model_id in _HARD_BLOCK:
+            score = compute_score(False, is_first_ever, rarity, newness,
+                                  hud.state.streak, mesh_chips=item.mesh_chips)
+            hud.record_failure(item.model_id)
+            hud.write_status()
+            results.append({"model": item.model_id, "status": "failed",
+                             "error": "skipped: hard-blocked (large/incompatible)",
+                             "pts": score.pts})
+            continue
+
         # ── Runtime perm-fail gate ───────────────────────────────────────────
         # Reload bestiary here so models added to perm-fail mid-run are caught
         # before any download begins. Prevents waste when guardian adds entries
