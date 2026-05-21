@@ -1006,6 +1006,75 @@
       "best_infer_s": 0.04357194900512695,
       "throughput_unit": "ms/sample",
       "best_throughput": 43.572
+    },
+    "roberta/masked_lm/jax": {
+      "first_compiled": "2026-05-21T16:19:02.278275+00:00",
+      "first_chip": 0,
+      "run": 98,
+      "best_time_s": 0.5209202766418457,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_masked_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 50265)  max=38.566  mean=-3.296",
+      "first_voice": "",
+      "backend": "xla",
+      "backends_succeeded": [
+        "xla"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 0.5209202766418457,
+      "best_infer_s": 0.02506399154663086,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 1276.732
+    },
+    "vit/image_classification/jax": {
+      "first_compiled": "2026-05-21T16:19:31.144958+00:00",
+      "first_chip": 0,
+      "run": 98,
+      "best_time_s": 0.6879181861877441,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "cv_image_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 1000)  max=12.419",
+      "first_voice": "",
+      "backend": "xla",
+      "backends_succeeded": [
+        "xla"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 0.6879181861877441,
+      "best_infer_s": 0.037085533142089844,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 37.086
+    },
+    "xglm/causal_lm/jax": {
+      "first_compiled": "2026-05-21T16:20:10.266367+00:00",
+      "first_chip": 0,
+      "run": 98,
+      "best_time_s": 1.3646728992462158,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_causal_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 256008)  max=65.137  mean=20.123",
+      "first_voice": "",
+      "backend": "xla",
+      "backends_succeeded": [
+        "xla"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 1.3646728992462158,
+      "best_infer_s": 0.3417196273803711,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 93.644
     }
   },
   "failed": {
@@ -2698,12 +2767,24 @@
       "attempts": 1,
       "last_error": "TypeError: WhisperForConditionalGeneration.__call__() missing 1 required positional argument: 'decoder_input_ids'",
       "error_category": "other"
+    },
+    "vision_text_dual_encoder/mm_image_ttt/jax": {
+      "run_first_failed": 98,
+      "attempts": 1,
+      "last_error": "AttributeError: 'tuple' object has no attribute 'config'",
+      "error_category": "other"
+    },
+    "yolos/pytorch": {
+      "run_first_failed": 98,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other"
     }
   },
   "chip_totals": {
     "0": {
-      "pts": 17637,
-      "first_evers": 19,
+      "pts": 18087,
+      "first_evers": 22,
       "best_streak": 4
     },
     "2": {
