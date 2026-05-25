@@ -458,6 +458,7 @@ def _scan_frontier(
     skip_gated: bool = True,
     proven_authors: set[str] | None = None,
     library: str | None = "pytorch",
+    max_age_days: int = 180,
 ) -> list[dict]:
     """
     Query the HuggingFace frontier for models not yet in the bestiary and not
@@ -483,6 +484,7 @@ def _scan_frontier(
         max_params_b=max_params_b,
         skip_gated=skip_gated,
         library=library,
+        max_age_days=max_age_days,
     )
 
     # If the frontier scan is sparse, supplement with models from authors whose
@@ -1007,7 +1009,8 @@ def build_queues(
                                        max_dl_like_ratio=max_dl_like_ratio,
                                        max_params_b=max_params_b,
                                        skip_gated=skip_gated,
-                                       proven_authors=proven_authors)
+                                       proven_authors=proven_authors,
+                                       max_age_days=getattr(args, "max_model_age_days", 180))
 
         # Exclude models whose failure history shows they cannot succeed.
         # Permanent-failure categories (skip immediately regardless of attempt count):
@@ -1812,6 +1815,9 @@ def main():
     run_p.add_argument("--max-model-params", type=float, default=0.0, metavar="B",
                        help="Skip frontier models larger than B billion parameters "
                             "(0=off; try 7 for single-chip sweet-spot, 13 for upper limit)")
+    run_p.add_argument("--max-model-age-days", type=int, default=180, metavar="DAYS",
+                       help="Only include frontier models created within DAYS days "
+                            "(default 180 — last 6 months; 0 = no age filter)")
     run_p.add_argument("--allow-gated",      action="store_true",
                        help="Include gated HuggingFace models (requires an approved "
                             "access token — downloads will fail without it)")

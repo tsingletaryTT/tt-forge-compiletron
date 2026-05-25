@@ -239,18 +239,24 @@ def _model_to_frontier(hf_model) -> FrontierModel:
 def discover_frontier(
     compiled_ids: set[str],
     known_model_ids: set[str],
-    limit: int = 1000,
+    limit: int = 2000,
     min_downloads: int = 0,
     min_likes: int = 0,
     max_dl_like_ratio: int = 0,
     max_params_b: float = 0.0,
     skip_gated: bool = True,
     library: str | None = "pytorch",
+    max_age_days: int = 180,
 ) -> list[FrontierModel]:
-    """Query HuggingFace for the newest models in a given library and return uncharted ones.
+    """Query HuggingFace for recent, well-regarded models not yet in the bestiary.
 
-    Sorts by creation date descending ("newest first") to maximise zero-day
-    finds.  Filter passes applied in order:
+    Strategy: sort by downloads (most popular first) and filter client-side to
+    models created within ``max_age_days``.  This yields the most-downloaded
+    recent models rather than the most-recently-created models — sorting by
+    ``createdAt`` returns today's auto-generated forks (0 downloads) and is
+    ineffective for finding real, recent work.
+
+    Filter passes applied in order:
 
     1. ``pipeline_tag`` must be in ``_SUPPORTED_TAGS``.
     2. Model ID not a known-unsupported binary format (GGUF, GGML, etc.).
@@ -292,6 +298,9 @@ def discover_frontier(
                        all libraries — useful for XLA/auto modes that want
                        Flax-native models alongside PyTorch ones.
                        Defaults to "pytorch" for backwards compatibility.
+    max_age_days:      Only include models created within this many days.
+                       Filters out legacy models while keeping genuinely recent
+                       work.  0 = no age limit.  Default 180 (6 months).
 
     Returns an empty list if ``huggingface_hub`` is unavailable or the API
     call fails — callers should treat that as "no new discoveries this tick".
@@ -302,8 +311,8 @@ def discover_frontier(
     api = HfApi()
     try:
         api_kwargs = dict(
-            sort="createdAt",
-            direction=-1,   # descending → newest first
+            sort="downloads",
+            direction=-1,   # descending → most downloaded first
             limit=limit,
             # expand overrides the default field set — list every field we read.
             # Omitting any field here leaves it as None in the response.
@@ -387,12 +396,13 @@ def discover_frontier(
         # Skip disabled repos (archived / deleted but still indexed).
         if getattr(m, "disabled", None):
             continue
-        # Recency gate: old models with little traction are likely superseded by
-        # newer versions.  Prefer trying the latest generation rather than proving
-        # out history — identical logic to discover_from_authors.
+        # Recency gate: respect max_age_days if set, and drop old low-traction models.
         created_at = getattr(m, "created_at", None)
         if created_at is not None:
             age_days = (datetime.now(timezone.utc) - created_at).days
+            if max_age_days > 0 and age_days > max_age_days:
+                _log.debug("skipped_too_old model=%s age_days=%d", m.id, age_days)
+                continue
             if age_days > _OLD_MODEL_AGE_DAYS and dl < _OLD_MODEL_MIN_DOWNLOADS:
                 _log.debug("skipped_old_low_traction model=%s age_days=%d downloads=%d",
                            m.id, age_days, dl)
