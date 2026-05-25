@@ -1810,9 +1810,9 @@ def main():
     run_p.add_argument("--min-likes",        type=int,   default=1, metavar="N",
                        help="Skip frontier models with fewer than N HuggingFace likes "
                             "(default 1; 0 to disable)")
-    run_p.add_argument("--max-dl-like-ratio", type=int,  default=300, metavar="R",
+    run_p.add_argument("--max-dl-like-ratio", type=int,  default=5000, metavar="R",
                        help="Skip frontier models where downloads/likes > R — bots inflate "
-                            "download counts without generating likes (default 300; 0 to disable)")
+                            "download counts without generating likes (default 5000; 0 to disable)")
     run_p.add_argument("--max-model-params", type=float, default=0.0, metavar="B",
                        help="Skip frontier models larger than B billion parameters "
                             "(0=off; try 7 for single-chip sweet-spot, 13 for upper limit)")
