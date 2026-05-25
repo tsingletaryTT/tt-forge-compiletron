@@ -125,6 +125,16 @@ _UNSUPPORTED_MODEL_TYPES: frozenset[str] = frozenset({
 # multi-chip mesh placement regardless of architecture name.
 _LARGE_PARAM_THRESHOLD_B = 40
 
+# HuggingFace tags that mark a model as hobbyist-only with no compelling
+# hardware use-case story.  Any model carrying one of these tags is skipped
+# during frontier discovery.  Keep this list narrow — broad terms like
+# "assistant" or "chat" catch legitimate models.
+_BLOCKED_TAGS: frozenset[str] = frozenset({
+    "sillytavern",   # SillyTavern character roleplay UI — no research value
+    "DarkIdol",      # specific roleplay character-card series
+    "OpenClaw",      # roleplay claw-card series
+})
+
 _log = logging.getLogger(__name__)
 
 # Matches size tokens like "7B", "1.3B", "0.6b", "70b" in a model ID.
@@ -393,6 +403,13 @@ def discover_frontier(
         if max_dl_like_ratio > 0 and lk > 0 and dl / lk > max_dl_like_ratio:
             _log.debug("skipped_bot_ratio model=%s downloads=%d likes=%d ratio=%.0f",
                        m.id, dl, lk, dl / lk)
+            continue
+        # Reject models whose tags mark them as hobbyist-only (e.g. SillyTavern
+        # character roleplay).  Checked against the full tag list, not just
+        # pipeline_tag, because these markers appear in the card metadata tags.
+        model_tags = {t.lower() for t in (getattr(m, "tags", None) or [])}
+        if model_tags & {t.lower() for t in _BLOCKED_TAGS}:
+            _log.debug("skipped_blocked_tag model=%s", m.id)
             continue
         # Gated models require an explicit HF access grant — skip by default.
         if skip_gated and getattr(m, "gated", None):
