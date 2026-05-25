@@ -1574,6 +1574,24 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
 
         start = time.time()
 
+        # ── Per-item wall-clock watchdog ─────────────────────────────────────
+        # Downloads have no built-in timeout — a large model on a slow link
+        # can stall a worker for hours.  Cancel the PREVIOUS item's timer here
+        # (before starting a new one) so each item gets exactly 12 minutes
+        # from its own start.  If an item never completes, SIGTERM fires and
+        # the pane exits; manual restart is needed but that beats a forever hang.
+        _ITEM_TIMEOUT_S = 720  # 12 min: covers download + compile + infer
+        try:
+            _item_timer.cancel()  # type: ignore[name-defined]
+        except NameError:
+            pass  # first iteration — no prior timer
+        _item_timer = threading.Timer(
+            _ITEM_TIMEOUT_S,
+            lambda: os.kill(os.getpid(), signal.SIGTERM),
+        )
+        _item_timer.daemon = True
+        _item_timer.start()
+
         # ── Out-of-scope model list ──────────────────────────────────────────
         # Loader IDs listed here are silently skipped — not failures, just
         # outside the current compile scope (diffusion pipelines, models that
