@@ -453,7 +453,7 @@ def _scan_frontier(
     forge_model_ids: set[str],
     min_downloads: int = 1_000,
     min_likes: int = 1,
-    max_dl_like_ratio: int = 300,
+    max_dl_like_ratio: int = 5000,
     max_params_b: float = 0.0,
     skip_gated: bool = True,
     proven_authors: set[str] | None = None,
@@ -882,12 +882,13 @@ def build_queues(
     limit: int = 0,
     min_downloads: int = 1_000,
     min_likes: int = 1,
-    max_dl_like_ratio: int = 300,
+    max_dl_like_ratio: int = 5000,
     max_params_b: float = 0.0,
     skip_gated: bool = True,
     staples: bool = False,
     xla_mesh: int = 1,
     backend: str = "auto",
+    max_age_days: int = 180,
 ) -> list[list[dict]]:
     """
     Build per-chip model queues by merging forge-models seed items with HF
@@ -1010,7 +1011,7 @@ def build_queues(
                                        max_params_b=max_params_b,
                                        skip_gated=skip_gated,
                                        proven_authors=proven_authors,
-                                       max_age_days=getattr(args, "max_model_age_days", 180))
+                                       max_age_days=max_age_days)
 
         # Exclude models whose failure history shows they cannot succeed.
         # Permanent-failure categories (skip immediately regardless of attempt count):
@@ -1883,7 +1884,7 @@ def main():
         args.tui = False
         args.min_downloads = 50
         args.min_likes = 1
-        args.max_dl_like_ratio = 300
+        args.max_dl_like_ratio = 5000
         args.max_model_params = 0.0
         args.allow_gated = False
         args.max_cache_gb = 0.0
@@ -1939,7 +1940,7 @@ def main():
             no_predownload=True,
             min_downloads=args.min_downloads,
             min_likes=args.min_likes,
-            max_dl_like_ratio=getattr(args, "max_dl_like_ratio", 300),
+            max_dl_like_ratio=getattr(args, "max_dl_like_ratio", 5000),
             max_params_b=args.max_model_params,
             allow_gated=args.allow_gated,
             max_cache_gb=args.max_cache_gb,
@@ -1972,6 +1973,7 @@ def main():
             staples=args.staples,
             xla_mesh=getattr(args, "xla_mesh", 1),
             backend=getattr(args, "backend", "auto"),
+            max_age_days=getattr(args, "max_model_age_days", 180),
         )
 
     # ── Queue assignment summary ──────────────────────────────────────────────

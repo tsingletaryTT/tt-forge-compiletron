@@ -239,7 +239,7 @@ def _model_to_frontier(hf_model) -> FrontierModel:
 def discover_frontier(
     compiled_ids: set[str],
     known_model_ids: set[str],
-    limit: int = 2000,
+    limit: int = 5000,
     min_downloads: int = 0,
     min_likes: int = 0,
     max_dl_like_ratio: int = 0,
@@ -250,11 +250,16 @@ def discover_frontier(
 ) -> list[FrontierModel]:
     """Query HuggingFace for recent, well-regarded models not yet in the bestiary.
 
-    Strategy: sort by downloads (most popular first) and filter client-side to
-    models created within ``max_age_days``.  This yields the most-downloaded
-    recent models rather than the most-recently-created models — sorting by
-    ``createdAt`` returns today's auto-generated forks (0 downloads) and is
-    ineffective for finding real, recent work.
+    Strategy: sort by ``createdAt`` (newest first) with ``filter='pytorch'`` and
+    a large page limit.  Filtering by library tag narrows the pool to pytorch-
+    compatible models and extends the time window covered: without a filter, the
+    5000 most-recently-created models are all from today (zero downloads); with
+    ``filter='pytorch'`` the same 5000 slots cover ~100+ days back in time and
+    include real models that have accumulated downloads and likes.
+
+    Sorting by ``downloads`` without a recency filter yields only old models
+    (BERT, GPT-2) that are all filtered out by ``max_age_days``, so ``createdAt``
+    is the correct primary sort.
 
     Filter passes applied in order:
 
@@ -311,8 +316,8 @@ def discover_frontier(
     api = HfApi()
     try:
         api_kwargs = dict(
-            sort="downloads",
-            direction=-1,   # descending → most downloaded first
+            sort="createdAt",
+            direction=-1,   # descending → newest first
             limit=limit,
             # expand overrides the default field set — list every field we read.
             # Omitting any field here leaves it as None in the response.
@@ -324,7 +329,7 @@ def discover_frontier(
                 "gated",         # access-control flag
                 "disabled",      # archived/deleted flag
                 "safetensors",   # weight-file metadata for size cap
-                "createdAt",     # creation timestamp for rarity scoring
+                "createdAt",     # upload timestamp — primary sort key
             ],
         )
         # Only pass filter when a library is specified — omitting it discovers all libraries.
