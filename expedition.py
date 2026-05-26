@@ -886,6 +886,7 @@ def build_queues(
     max_params_b: float = 0.0,
     skip_gated: bool = True,
     staples: bool = False,
+    rerun_compiled: bool = False,
     xla_mesh: int = 1,
     backend: str = "auto",
     max_age_days: int = 180,
@@ -900,20 +901,25 @@ def build_queues(
     one chip — the limit applies to the total unique model count, not per chip.
 
     Args:
-        num_chips:  Number of Tenstorrent chips to distribute work across.
-        seed_only:  If True, skip HuggingFace frontier discovery.
-        frontier_only: If True, skip forge-models seed scan.
-        limit:      If > 0, cap total unique models across all chips combined.
-        staples:    If True, include tt-forge-models seed models even if they
-                    have already been compiled (bypass bestiary filter).
-        xla_mesh:   Number of chips for JAX/XLA seed models (data-parallel
-                    shard_map dispatch).  1 = single-chip (default).  Values
-                    > 1 are threaded through to _scan_forge_models so that
-                    every JAX loader item gets mesh_chips=xla_mesh.
+        num_chips:       Number of Tenstorrent chips to distribute work across.
+        seed_only:       If True, skip HuggingFace frontier discovery.
+        frontier_only:   If True, skip forge-models seed scan.
+        limit:           If > 0, cap total unique models across all chips combined.
+        staples:         If True, include tt-forge-models seed models even if they
+                         have already been compiled (bypass bestiary filter).
+        rerun_compiled:  If True, also re-queue HF frontier models already in the
+                         bestiary compiled dict (implies staples).  Useful for
+                         benchmark sweeps and regression testing.
+        xla_mesh:        Number of chips for JAX/XLA seed models (data-parallel
+                         shard_map dispatch).  1 = single-chip (default).  Values
+                         > 1 are threaded through to _scan_forge_models so that
+                         every JAX loader item gets mesh_chips=xla_mesh.
 
     Returns:
         A list of num_chips lists, each containing queue item dicts.
     """
+    if rerun_compiled:
+        staples = True   # rerun_compiled implies staples for seed models too
     from lib.expedition.bestiary import Bestiary
     # Bestiary only accepts a single `path` argument — no `runs_dir` param.
     bestiary = Bestiary(path=str(BESTIARY_PATH))
@@ -1002,9 +1008,12 @@ def build_queues(
 
         # HF frontier discovery involves network calls — spinner keeps the user
         # informed while we wait for the HuggingFace API to respond.
+        # When --rerun-compiled is set, pass an empty compiled set so the
+        # frontier scanner re-queues models already in the bestiary.
+        _frontier_compiled = set() if rerun_compiled else compiled_ids
         frontier_items = _with_spinner("querying HuggingFace frontier…",
                                        _scan_frontier,
-                                       compiled_ids, forge_ids,
+                                       _frontier_compiled, forge_ids,
                                        min_downloads=min_downloads,
                                        min_likes=min_likes,
                                        max_dl_like_ratio=max_dl_like_ratio,
@@ -1824,6 +1833,9 @@ def main():
     run_p.add_argument("--frontier-only",    action="store_true")
     run_p.add_argument("--staples",          action="store_true",
                        help="Include tt-forge-models seed models even if already compiled (regression test mode)")
+    run_p.add_argument("--rerun-compiled",   action="store_true",
+                       help="Re-queue ALL models already in the bestiary (seed + frontier). "
+                            "Implies --staples. Use with --bench-passes for a full benchmark sweep.")
     run_p.add_argument("--curated",          action="store_true",
                        help="Use the hand-curated showcase demo queue (5 models: ONNX, XLA, CV, fail, 4-chip finale)")
     run_p.add_argument("--backend",          choices=["auto", "forge", "xla", "mixed"], default="auto",
@@ -1905,6 +1917,7 @@ def main():
         args.seed_only = False
         args.frontier_only = False
         args.staples = False
+        args.rerun_compiled = False
         args.curated = False
         args.backend = "auto"
         args.auto_quit = 0
@@ -1959,6 +1972,7 @@ def main():
             seed_only=args.seed_only,
             frontier_only=args.frontier_only,
             staples=args.staples,
+            rerun_compiled=getattr(args, "rerun_compiled", False),
             curated=getattr(args, "curated", False),
             backend=args.backend,
             auto_quit_secs=getattr(args, "auto_quit", 0),
@@ -2000,6 +2014,7 @@ def main():
             max_params_b=args.max_model_params,
             skip_gated=not args.allow_gated,
             staples=args.staples,
+            rerun_compiled=getattr(args, "rerun_compiled", False),
             xla_mesh=getattr(args, "xla_mesh", 1),
             backend=getattr(args, "backend", "auto"),
             max_age_days=getattr(args, "max_model_age_days", 180),
