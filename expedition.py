@@ -1836,6 +1836,9 @@ def main():
     run_p.add_argument("--rerun-compiled",   action="store_true",
                        help="Re-queue ALL models already in the bestiary (seed + frontier). "
                             "Implies --staples. Use with --bench-passes for a full benchmark sweep.")
+    run_p.add_argument("--model",            type=str, default=None, metavar="HF_ID",
+                       help="Run a single specific HuggingFace model (e.g. llava-hf/llava-v1.6-mistral-7b-hf). "
+                            "Skips all discovery; ignores --seed-only/--frontier-only/--limit.")
     run_p.add_argument("--curated",          action="store_true",
                        help="Use the hand-curated showcase demo queue (5 models: ONNX, XLA, CV, fail, 4-chip finale)")
     run_p.add_argument("--backend",          choices=["auto", "forge", "xla", "mixed"], default="auto",
@@ -1918,6 +1921,7 @@ def main():
         args.frontier_only = False
         args.staples = False
         args.rerun_compiled = False
+        args.model = None
         args.curated = False
         args.backend = "auto"
         args.auto_quit = 0
@@ -1973,6 +1977,7 @@ def main():
             frontier_only=args.frontier_only,
             staples=args.staples,
             rerun_compiled=getattr(args, "rerun_compiled", False),
+            single_model=getattr(args, "model", None),
             curated=getattr(args, "curated", False),
             backend=args.backend,
             auto_quit_secs=getattr(args, "auto_quit", 0),
@@ -2000,7 +2005,35 @@ def main():
     _banner(run_number, num_chips, get_hardware_summary(hw))
 
     # ── Queue building ────────────────────────────────────────────────────────
-    if getattr(args, "curated", False):
+    if getattr(args, "model", None):
+        # Single-model mode: build a one-item frontier queue, skip all discovery.
+        _model_id = args.model.strip()
+        try:
+            from huggingface_hub import model_info as _hf_model_info
+            _info = _hf_model_info(_model_id)
+            _task = _info.pipeline_tag or "text-generation"
+            _dl   = getattr(_info, "downloads", 0) or 0
+            _ca   = getattr(_info, "created_at", None)
+            _ca_s = _ca.isoformat() if _ca else None
+        except Exception:
+            _task, _dl, _ca_s = "text-generation", 0, None
+        _item = {
+            "model_id":      _model_id,
+            "display_name":  _model_id.split("/")[-1],
+            "task":          _task,
+            "source":        "huggingface",
+            "rarity":        "common",
+            "hf_downloads":  _dl,
+            "hf_created_at": _ca_s,
+            "mesh_chips":    1,
+            "loader_module": None,
+            "loader_class":  None,
+            "is_frontier":   True,
+        }
+        _section(f"SINGLE MODEL  {_model_id}")
+        _model_row(_item)
+        chip_queues = [[_item]] + [[] for _ in range(num_chips - 1)]
+    elif getattr(args, "curated", False):
         chip_queues, _ = _build_curated_queue(num_chips)
     else:
         chip_queues = build_queues(

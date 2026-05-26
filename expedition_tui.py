@@ -519,6 +519,7 @@ class SetupScreen(Screen):
         self._parallel_downloads   = app.parallel_downloads
         self._staples              = app.staples
         self._rerun_compiled       = getattr(app, "rerun_compiled", False)
+        self._single_model         = getattr(app, "single_model", None)
         self._curated              = getattr(app, "curated", False)
         self._backend              = getattr(app, "backend", "auto")
         self._xla_mesh             = getattr(app, "xla_mesh", 1)
@@ -731,6 +732,37 @@ class SetupScreen(Screen):
             BESTIARY_PATH,
         )
         from lib.expedition.bestiary import Bestiary
+
+        # ── Single-model shortcut (--model HF_ID) ────────────────────────────
+        if self._single_model:
+            _model_id = self._single_model.strip()
+            _log(f"[bold cyan]⚡ Single-model mode — {_model_id}[/]")
+            try:
+                from huggingface_hub import model_info as _hf_model_info
+                _info = _hf_model_info(_model_id)
+                _task = _info.pipeline_tag or "text-generation"
+                _dl   = getattr(_info, "downloads", 0) or 0
+                _ca   = getattr(_info, "created_at", None)
+                _ca_s = _ca.isoformat() if _ca else None
+            except Exception:
+                _task, _dl, _ca_s = "text-generation", 0, None
+            _item = {
+                "model_id":      _model_id,
+                "display_name":  _model_id.split("/")[-1],
+                "task":          _task,
+                "source":        "huggingface",
+                "rarity":        "common",
+                "hf_downloads":  _dl,
+                "hf_created_at": _ca_s,
+                "mesh_chips":    1,
+                "loader_module": None,
+                "loader_class":  None,
+                "is_frontier":   True,
+            }
+            _log(f"  [dim]{_task}  {_dl:,} downloads[/]")
+            chip_queues = [[_item]] + [[] for _ in range(self._chips - 1)]
+            app.call_from_thread(self._advance_to_run, chip_queues)
+            return
 
         # ── Curated showcase queue ────────────────────────────────────────────
         if self._curated:
@@ -2217,6 +2249,7 @@ class ExpeditionTUI(App[None]):
         parallel_downloads:     int   = 4,
         staples:                bool  = False,
         rerun_compiled:         bool  = False,
+        single_model:           str | None = None,
         curated:                bool  = False,
         backend:                str   = "auto",
         auto_quit_secs:         int   = 0,
@@ -2246,6 +2279,7 @@ class ExpeditionTUI(App[None]):
         self.parallel_downloads   = parallel_downloads
         self.staples              = staples or rerun_compiled
         self.rerun_compiled       = rerun_compiled
+        self.single_model         = single_model
         self.curated              = curated
         self.backend              = backend
         self.auto_quit_secs       = auto_quit_secs
