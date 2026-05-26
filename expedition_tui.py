@@ -518,6 +518,7 @@ class SetupScreen(Screen):
         self._session_download_max = app.session_download_max
         self._parallel_downloads   = app.parallel_downloads
         self._staples              = app.staples
+        self._rerun_compiled       = getattr(app, "rerun_compiled", False)
         self._curated              = getattr(app, "curated", False)
         self._backend              = getattr(app, "backend", "auto")
         self._xla_mesh             = getattr(app, "xla_mesh", 1)
@@ -790,8 +791,9 @@ class SetupScreen(Screen):
         # ── HF frontier discovery (slow — network) ────────────────────────────
         if not self._seed_only:
             _log("[cyan]⚙ Querying HuggingFace frontier (may take 30-60s)...[/]")
+            _frontier_compiled = set() if self._rerun_compiled else compiled_ids
             frontier_items = _scan_frontier(
-                compiled_ids,
+                _frontier_compiled,
                 forge_ids,
                 min_downloads    = self._min_downloads,
                 min_likes        = self._min_likes,
@@ -2205,6 +2207,7 @@ class ExpeditionTUI(App[None]):
         session_download_max:   float = 0.0,
         parallel_downloads:     int   = 4,
         staples:                bool  = False,
+        rerun_compiled:         bool  = False,
         curated:                bool  = False,
         backend:                str   = "auto",
         auto_quit_secs:         int   = 0,
@@ -2232,7 +2235,8 @@ class ExpeditionTUI(App[None]):
         self.max_cache_gb         = max_cache_gb
         self.session_download_max = session_download_max
         self.parallel_downloads   = parallel_downloads
-        self.staples              = staples
+        self.staples              = staples or rerun_compiled
+        self.rerun_compiled       = rerun_compiled
         self.curated              = curated
         self.backend              = backend
         self.auto_quit_secs       = auto_quit_secs
