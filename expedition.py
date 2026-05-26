@@ -1082,10 +1082,39 @@ def build_queues(
     if limit > 0:
         all_items = all_items[:limit]
 
-    # Round-robin distribution across chips.
+    # Split JAX/Flax models onto the last chip before round-robining the rest.
+    #
+    # All chips run expedition_worker.py (forge worker).  When a forge worker
+    # encounters a JAX item it calls _dispatch_xla_item(), which spawns the
+    # expedition_worker_xla.py subprocess under the forge worker's environment
+    # (TT_VISIBLE_DEVICES=<chip_id>).  If multiple chips dispatch XLA at the
+    # same time — even with the fcntl serialisation lock — the subprocess
+    # inherits whichever TT device that chip owns, which causes PJRT
+    # initialisation to fight over ethernet resources and time out.
+    #
+    # Concentrating all JAX models on chip N-1 means exactly ONE chip ever
+    # calls _dispatch_xla_item.  There's no lock contention, and the XLA
+    # subprocess always initialises against the same TT device.
+    def _is_jax(it: dict) -> bool:
+        return (
+            (it.get("library") or "").lower() in ("jax", "flax")
+            or it.get("model_id", "").split("/")[-1].lower() in ("jax", "flax")
+        )
+
+    jax_items  = [it for it in all_items if     _is_jax(it)]
+    pt_items   = [it for it in all_items if not _is_jax(it)]
+
+    xla_chip = num_chips - 1          # last chip is the designated XLA dispatch chip
+    forge_chips = max(1, num_chips - 1) if jax_items else num_chips
+
     chip_queues: list[list[dict]] = [[] for _ in range(num_chips)]
-    for i, item in enumerate(all_items):
-        chip_queues[i % num_chips].append(item)
+
+    # Non-JAX items round-robin across forge chips (all chips if no JAX items).
+    for i, item in enumerate(pt_items):
+        chip_queues[i % forge_chips].append(item)
+
+    # JAX items all go to the last chip.
+    chip_queues[xla_chip].extend(jax_items)
 
     return chip_queues
 
