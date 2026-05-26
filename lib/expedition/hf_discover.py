@@ -644,10 +644,12 @@ def build_dynamic_loader(model: FrontierModel) -> Optional[Callable]:
             _vl_cache["input_ids"]    = probe["input_ids"]
             _vl_cache["pixel_values"] = probe["pixel_values"]
 
-            # image_sizes captured as a concrete Python tensor — NOT forwarded as
-            # a forge-traced input.  The model's internal round()/int() calls on
-            # image dimensions work correctly on real values but crash on fake tensors.
-            _image_sizes_const = probe["image_sizes"]
+            # image_sizes as a plain Python list-of-lists — NOT a tensor.
+            # The model indexes into it (image_sizes[i][0]) and calls round()/int()
+            # on the result.  A tensor would return 0-dim scalar tensors from
+            # indexing, which still raises "doesn't define __round__".
+            # .tolist() gives [[h, w]] so every element is a real Python int.
+            _image_sizes_const = probe["image_sizes"].tolist()
 
             class _VLForgeWrapper(_nn.Module):
                 """Wraps a vision-language model for forge compilation.
