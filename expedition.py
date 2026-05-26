@@ -1839,6 +1839,9 @@ def main():
     run_p.add_argument("--model",            type=str, default=None, metavar="HF_ID",
                        help="Run a single specific HuggingFace model (e.g. llava-hf/llava-v1.6-mistral-7b-hf). "
                             "Skips all discovery; ignores --seed-only/--frontier-only/--limit.")
+    run_p.add_argument("--no-permafail",    action="store_true",
+                       help="Bypass the permanent-failure gate. Useful when retrying a model whose "
+                            "previous failure was a fixable bug rather than a genuine compile barrier.")
     run_p.add_argument("--curated",          action="store_true",
                        help="Use the hand-curated showcase demo queue (5 models: ONNX, XLA, CV, fail, 4-chip finale)")
     run_p.add_argument("--backend",          choices=["auto", "forge", "xla", "mixed"], default="auto",
@@ -1921,6 +1924,7 @@ def main():
         args.frontier_only = False
         args.staples = False
         args.rerun_compiled = False
+        args.no_permafail = False
         args.model = None
         args.curated = False
         args.backend = "auto"
@@ -1978,6 +1982,7 @@ def main():
             staples=args.staples,
             rerun_compiled=getattr(args, "rerun_compiled", False),
             single_model=getattr(args, "model", None),
+            no_permafail=getattr(args, "no_permafail", False),
             curated=getattr(args, "curated", False),
             backend=args.backend,
             auto_quit_secs=getattr(args, "auto_quit", 0),

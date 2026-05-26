@@ -1475,7 +1475,8 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                bench_shapes: bool = False,
                ephemeral: bool = False,
                evict_failures: bool = False,
-               run_total: int = 0) -> None:
+               run_total: int = 0,
+               no_permafail: bool = False) -> None:
     """Main entry point for the per-chip worker.
 
     Loads the queue, iterates over every model, runs the full pipeline
@@ -1627,7 +1628,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
         _bf = bestiary.failed.get(item.model_id, {})
         _bf_cat = _bf.get("error_category", "")
         _bf_att = _bf.get("attempts", 0)
-        if _bf_cat in _RUNTIME_PERM_FAIL_CATS or _bf_att >= 3:
+        if not no_permafail and (_bf_cat in _RUNTIME_PERM_FAIL_CATS or _bf_att >= 3):
             score = compute_score(False, is_first_ever, rarity, newness,
                                   hud.state.streak, mesh_chips=item.mesh_chips)
             hud.record_failure(item.model_id)
@@ -1934,6 +1935,9 @@ if __name__ == "__main__":
                              "unless the model earns a gold-star rating.")
     parser.add_argument("--evict-failures", action="store_true",
                         help="With --ephemeral, also evict weights for failed models.")
+    parser.add_argument("--no-permafail", action="store_true",
+                        help="Bypass the permanent-failure gate. Use when retrying a model whose "
+                             "previous failure was a fixable bug, not a genuine compile barrier.")
     args = parser.parse_args()
     if not args.queue and not args.model_json:
         parser.error("one of --queue or --model-json is required")
@@ -1952,4 +1956,5 @@ if __name__ == "__main__":
         ephemeral=args.ephemeral,
         evict_failures=args.evict_failures,
         run_total=args.run_total,
+        no_permafail=args.no_permafail,
     )

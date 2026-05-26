@@ -1331,6 +1331,8 @@ class RunScreen(Screen):
                 cmd += ["--bench-passes", str(self.app.bench_passes)]
             if self.app.bench_shapes:
                 cmd.append("--bench-shapes")
+            if self.app.no_permafail:
+                cmd.append("--no-permafail")
             _chip_total = len(self.chip_queues[chip_id]) if chip_id < len(self.chip_queues) else 0
             if _chip_total > 0:
                 cmd += ["--run-total", str(_chip_total)]
@@ -1381,6 +1383,8 @@ class RunScreen(Screen):
             _bench_args += ["--bench-passes", str(self.app.bench_passes)]
         if self.app.bench_shapes:
             _bench_args.append("--bench-shapes")
+        if self.app.no_permafail:
+            _bench_args.append("--no-permafail")
         # Per-chip queue depth for progress bar accuracy.  chip_queues[chip_id]
         # holds the pre-planned allocation; may be 0 for chips added mid-run.
         _chip_total = len(self.chip_queues[chip_id]) if chip_id < len(self.chip_queues) else 0
@@ -1496,6 +1500,8 @@ class RunScreen(Screen):
             _sq_bench_args += ["--bench-passes", str(self.app.bench_passes)]
         if self.app.bench_shapes:
             _sq_bench_args.append("--bench-shapes")
+        if self.app.no_permafail:
+            _sq_bench_args.append("--no-permafail")
 
         proc = await asyncio.create_subprocess_exec(
             python_exe, worker_path,
@@ -2256,6 +2262,7 @@ class ExpeditionTUI(App[None]):
         confirm:                bool  = False,
         bench_passes:           int   = 0,
         bench_shapes:           bool  = False,
+        no_permafail:           bool  = False,
         xla_mesh:               int   = 1,
         **kwargs,
     ) -> None:
@@ -2287,6 +2294,7 @@ class ExpeditionTUI(App[None]):
         # Inline benchmark flags forwarded to worker subprocesses.
         self.bench_passes         = bench_passes
         self.bench_shapes         = bench_shapes
+        self.no_permafail         = no_permafail
         # Number of chips for JAX/XLA multi-chip shard_map dispatch.
         self.xla_mesh             = xla_mesh
 
