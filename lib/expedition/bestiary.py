@@ -506,15 +506,57 @@ class Bestiary:
     # ── persistence ───────────────────────────────────────────────────────────
 
     def save(self) -> None:
-        """Write current state to disk via an atomic rename.
+        """Write current state to disk via a read-merge-write cycle under an
+        exclusive file lock, then an atomic rename.
 
-        Writes to a sibling .tmp file first, then renames into place, so a
-        crash during save never leaves a truncated or corrupt bestiary.json.
+        Four chip workers share a single bestiary.json.  A plain overwrite
+        creates a last-writer-wins race: worker B loads the file before worker A
+        saves, then B's save discards A's compiled entries.  The lock + merge
+        strategy eliminates this:
+
+          1. Open (or create) a lock file and acquire an exclusive flock.
+          2. Re-read the on-disk file inside the lock so we see every save that
+             landed between our last load and now.
+          3. Merge: compiled/failed/chip_totals from disk take precedence for
+             keys we didn't touch in this process; our in-memory changes win for
+             keys we own.
+          4. Write the merged state to a .tmp sibling and rename into place.
+          5. Release the lock.
+
+        The lock file (.bestiary.lock) is never deleted — it is a stable
+        sentinel; its content is irrelevant.
         """
+        import fcntl as _fcntl
+
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self._data, indent=2), encoding="utf-8")
-        tmp.replace(self.path)
+        lock_path = self.path.with_name(".bestiary.lock")
+
+        with open(lock_path, "w") as _lock:
+            _fcntl.flock(_lock, _fcntl.LOCK_EX)
+            try:
+                # Re-read on-disk state captured after we last loaded.
+                try:
+                    disk_text = self.path.read_text(encoding="utf-8")
+                    disk = json.loads(disk_text)
+                except (FileNotFoundError, json.JSONDecodeError):
+                    disk = {"compiled": {}, "failed": {}, "chip_totals": {}}
+
+                # Merge: union all keys; our in-memory value wins on conflict
+                # (we are the authoritative writer for models we just ran).
+                merged = {
+                    "compiled":    {**disk.get("compiled",    {}), **self._data["compiled"]},
+                    "failed":      {**disk.get("failed",      {}), **self._data["failed"]},
+                    "chip_totals": {**disk.get("chip_totals", {}), **self._data["chip_totals"]},
+                }
+
+                tmp = self.path.with_suffix(".tmp")
+                tmp.write_text(json.dumps(merged, indent=2), encoding="utf-8")
+                tmp.replace(self.path)
+
+                # Keep our in-memory view consistent with what we wrote.
+                self._data = merged
+            finally:
+                _fcntl.flock(_lock, _fcntl.LOCK_UN)
 
     def save_artifact(
         self,

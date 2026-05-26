@@ -1,5 +1,5 @@
 {
-  "_note": "Example bestiary — real compile results from actual TT hardware runs. Copy to bestiary.json to bootstrap a fresh environment.",
+  "_note": "Example bestiary \u2014 real compile results from actual TT hardware runs. Copy to bestiary.json to bootstrap a fresh environment.",
   "compiled": {
     "alexnet/pytorch": {
       "first_compiled": "2026-05-11T22:12:08.672757+00:00",
@@ -15,7 +15,9 @@
       "artifact": "top-3: class_281 11.08, class_285 9.83, class_187 9.06",
       "first_voice": "top-3: class_420 7.84, class_870 6.90, class_889 6.89",
       "backend": "forge",
-      "backends_succeeded": ["forge"],
+      "backends_succeeded": [
+        "forge"
+      ],
       "best_compile_s": 2.982,
       "best_infer_s": 0.169,
       "throughput_unit": "ms/sample",
@@ -35,8 +37,10 @@
       "artifact": "top-3: class_21 5.90, class_22 5.25, class_23 5.04",
       "first_voice": "top-3: class_812 2.44, class_51 2.11, class_488 1.97",
       "backend": "forge",
-      "backends_succeeded": ["forge"],
-      "best_compile_s": 40.050,
+      "backends_succeeded": [
+        "forge"
+      ],
+      "best_compile_s": 40.05,
       "best_infer_s": 14.017,
       "throughput_unit": "ms/sample",
       "best_throughput": 14017.485
@@ -55,7 +59,9 @@
       "artifact": "top-3: class_281 17.22, class_282 15.69, class_285 15.40",
       "first_voice": "top-3: class_568 8.72, class_523 7.36, class_697 7.18",
       "backend": "forge",
-      "backends_succeeded": ["forge"],
+      "backends_succeeded": [
+        "forge"
+      ],
       "best_compile_s": 10.453,
       "best_infer_s": 0.484,
       "throughput_unit": "ms/sample",
@@ -75,7 +81,9 @@
       "artifact": "top-3: class_282 1.74, class_281 -1.60, class_761 -4.70",
       "first_voice": "top-3: class_516 -0.88, class_669 -1.96, class_419 -2.39",
       "backend": "forge",
-      "backends_succeeded": ["forge"],
+      "backends_succeeded": [
+        "forge"
+      ],
       "best_compile_s": 10.825,
       "best_infer_s": 0.342,
       "throughput_unit": "ms/sample",
@@ -95,7 +103,9 @@
       "artifact": "top-3: class_281 10.27, class_282 8.02, class_285 7.82",
       "first_voice": "top-3: class_568 6.49, class_434 5.83, class_593 5.71",
       "backend": "forge",
-      "backends_succeeded": ["forge"],
+      "backends_succeeded": [
+        "forge"
+      ],
       "best_compile_s": 22.893,
       "best_infer_s": 48.111,
       "throughput_unit": "ms/sample",
@@ -115,7 +125,9 @@
       "artifact": "top-3: class_642 7.83, class_401 7.66, class_420 5.54",
       "first_voice": "top-3: class_642 7.83, class_401 7.66, class_420 5.54",
       "backend": "forge",
-      "backends_succeeded": ["forge"]
+      "backends_succeeded": [
+        "forge"
+      ]
     },
     "densenet/pytorch": {
       "first_compiled": "2026-05-13T16:23:28.165779+00:00",
@@ -131,7 +143,9 @@
       "artifact": "top-3: class_281 13.65, class_285 11.66, class_282 11.58",
       "first_voice": "top-3: class_281 13.86, class_285 13.00, class_282 11.57",
       "backend": "forge",
-      "backends_succeeded": ["forge"]
+      "backends_succeeded": [
+        "forge"
+      ]
     },
     "deit/pytorch": {
       "first_compiled": "2026-05-13T22:24:03.211581+00:00",
@@ -147,13 +161,15 @@
       "artifact": "top-3: class_281 6.20, class_282 5.27, class_285 4.77",
       "first_voice": "top-3: class_850 4.76, class_568 4.66, class_523 4.63",
       "backend": "forge",
-      "backends_succeeded": ["forge"]
+      "backends_succeeded": [
+        "forge"
+      ]
     },
     "efficientnet_lite/pytorch": {
       "first_compiled": "2026-05-13T22:24:26.673659+00:00",
       "first_chip": 1,
       "run": 67,
-      "best_time_s": 11.870,
+      "best_time_s": 11.87,
       "successes": 3,
       "source": "tt-forge-models",
       "task": "cv_image_cls",
@@ -163,7 +179,9 @@
       "artifact": "top-3: class_281 11.45, class_282 10.53, class_285 9.68",
       "first_voice": "top-3: class_401 6.02, class_887 5.69, class_400 4.96",
       "backend": "forge",
-      "backends_succeeded": ["forge"],
+      "backends_succeeded": [
+        "forge"
+      ],
       "best_compile_s": 11.974,
       "best_infer_s": 1.173,
       "throughput_unit": "ms/sample",
@@ -183,7 +201,9 @@
       "artifact": "shape=(1, 256, 50257) dtype=torch.float32 range=[-130.25, -38.52]",
       "first_voice": "",
       "backend": "forge",
-      "backends_succeeded": ["forge"]
+      "backends_succeeded": [
+        "forge"
+      ]
     },
     "bloom/causal_lm/jax": {
       "first_compiled": "2026-05-13T16:52:05.685765+00:00",
@@ -197,9 +217,11 @@
       "hf_downloads": null,
       "hf_created_at": null,
       "artifact": "shape=(4, 32, 250880)  max=20.889  mean=-1.991",
-      "first_voice": "→ to (31%) | the (23%) | for (11%)",
+      "first_voice": "\u2192 to (31%) | the (23%) | for (11%)",
       "backend": "xla",
-      "backends_succeeded": ["xla"],
+      "backends_succeeded": [
+        "xla"
+      ],
       "best_compile_s": 3.276,
       "best_infer_s": 0.033,
       "throughput_unit": "tokens/sec",
@@ -218,7 +240,9 @@
       "hf_created_at": null,
       "artifact": "shape=(1, 32, 250880) dtype=torch.float32 range=[-11.48, 18.88]",
       "backend": "forge",
-      "backends_succeeded": ["forge"]
+      "backends_succeeded": [
+        "forge"
+      ]
     },
     "albert/question_answering/pytorch": {
       "first_compiled": "2026-05-07T23:40:43.691972+00:00",
@@ -233,7 +257,9 @@
       "hf_created_at": null,
       "artifact": "shape=(1, 32) dtype=torch.float32 range=[-1.01, -0.48]",
       "backend": "forge",
-      "backends_succeeded": ["forge"]
+      "backends_succeeded": [
+        "forge"
+      ]
     },
     "albert/sequence_classification/pytorch": {
       "first_compiled": "2026-05-11T18:05:33.339948+00:00",
@@ -248,7 +274,9 @@
       "hf_created_at": null,
       "artifact": "shape=(1, 2) dtype=torch.float32 range=[0.08, 0.58]",
       "backend": "forge",
-      "backends_succeeded": ["forge"]
+      "backends_succeeded": [
+        "forge"
+      ]
     },
     "allam/causal_lm/pytorch": {
       "first_compiled": "2026-05-11T18:27:23.602651+00:00",
@@ -263,7 +291,9 @@
       "hf_created_at": null,
       "artifact": "shape=(1, 32, 64000) dtype=torch.float32 range=[-23.56, 10.82]",
       "backend": "forge",
-      "backends_succeeded": ["forge"]
+      "backends_succeeded": [
+        "forge"
+      ]
     },
     "albert/masked_lm/pytorch": {
       "first_compiled": "2026-05-12T00:44:25.619591+00:00",
@@ -278,7 +308,9 @@
       "hf_created_at": null,
       "artifact": "shape=(1, 32, 30000) dtype=torch.float32 range=[-32.28, 16.52]",
       "backend": "forge",
-      "backends_succeeded": ["forge"]
+      "backends_succeeded": [
+        "forge"
+      ]
     },
     "autoencoder/image_classification/onnx": {
       "first_compiled": "2026-05-26T15:18:34.693345+00:00",
@@ -294,7 +326,9 @@
       "artifact": "shape=(1, 784) dtype=torch.float32 range=[-0.18, 0.19]",
       "first_voice": "",
       "backend": "forge",
-      "backends_succeeded": ["forge"],
+      "backends_succeeded": [
+        "forge"
+      ],
       "mesh_chips": 1,
       "best_compile_s": 2.413,
       "best_infer_s": 5.115,
@@ -315,10 +349,12 @@
       "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-1.95, 9.07]",
       "first_voice": "",
       "backend": "forge",
-      "backends_succeeded": ["forge"],
+      "backends_succeeded": [
+        "forge"
+      ],
       "mesh_chips": 1,
       "best_compile_s": 26.661,
-      "best_infer_s": 50.440,
+      "best_infer_s": 50.44,
       "throughput_unit": "ms/sample",
       "best_throughput": 50440.318
     },
@@ -336,7 +372,9 @@
       "artifact": "shape=(1, 32, 51200) dtype=torch.float32 range=[-13.90, 14.00]",
       "first_voice": "",
       "backend": "forge",
-      "backends_succeeded": ["forge"],
+      "backends_succeeded": [
+        "forge"
+      ],
       "mesh_chips": 1,
       "best_compile_s": 48.003,
       "best_infer_s": 7.695,
@@ -357,9 +395,11 @@
       "artifact": "shape=(1, 32, 128256) dtype=torch.float32 range=[-17.48, 22.31]",
       "first_voice": "",
       "backend": "forge",
-      "backends_succeeded": ["forge"],
+      "backends_succeeded": [
+        "forge"
+      ],
       "mesh_chips": 1,
-      "best_compile_s": 31.340,
+      "best_compile_s": 31.34,
       "best_infer_s": 4.423,
       "throughput_unit": "tokens/sec",
       "best_throughput": 7.24
@@ -378,9 +418,11 @@
       "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-2.69, 8.41]",
       "first_voice": "",
       "backend": "forge",
-      "backends_succeeded": ["forge"],
+      "backends_succeeded": [
+        "forge"
+      ],
       "mesh_chips": 1,
-      "best_compile_s": 568.560,
+      "best_compile_s": 568.56,
       "best_infer_s": 2.896,
       "throughput_unit": "ms/sample",
       "best_throughput": 2896.16
@@ -399,9 +441,11 @@
       "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-0.04, 0.04]",
       "first_voice": "",
       "backend": "forge",
-      "backends_succeeded": ["forge"],
+      "backends_succeeded": [
+        "forge"
+      ],
       "mesh_chips": 1,
-      "best_compile_s": 6.610,
+      "best_compile_s": 6.61,
       "best_infer_s": 0.253,
       "throughput_unit": "ms/sample",
       "best_throughput": 252.98
@@ -420,9 +464,11 @@
       "artifact": "shape=(1, 1029, 85) dtype=torch.float32 range=[0.00, 232.38]",
       "first_voice": "",
       "backend": "forge",
-      "backends_succeeded": ["forge"],
+      "backends_succeeded": [
+        "forge"
+      ],
       "mesh_chips": 1,
-      "best_compile_s": 26.200,
+      "best_compile_s": 26.2,
       "best_infer_s": 0.564,
       "throughput_unit": "ms/sample",
       "best_throughput": 563.56
@@ -438,9 +484,11 @@
       "rarity": "legendary",
       "hf_downloads": 10000000,
       "hf_created_at": null,
-      "artifact": "→ would (40%) | could (13%) | was (12%)",
+      "artifact": "\u2192 would (40%) | could (13%) | was (12%)",
       "backend": "forge",
-      "backends_succeeded": ["forge"]
+      "backends_succeeded": [
+        "forge"
+      ]
     },
     "microsoft/resnet-50": {
       "first_compiled": "2026-05-12T17:01:08.112704+00:00",
@@ -455,13 +503,15 @@
       "hf_created_at": "2023-01-01T00:00:00Z",
       "artifact": "top-3: class_980 7.73, class_117 -3.70, class_577 -3.77",
       "backend": "forge",
-      "backends_succeeded": ["forge"]
+      "backends_succeeded": [
+        "forge"
+      ]
     },
     "ULTR0N/SentienceTrial1": {
       "first_compiled": "2026-04-28T21:50:00.311940+00:00",
       "first_chip": 3,
       "run": 6,
-      "best_time_s": 11.850,
+      "best_time_s": 11.85,
       "successes": 1,
       "source": "huggingface",
       "task": "text-generation",
@@ -470,7 +520,9 @@
       "hf_created_at": "2026-04-25T01:54:26+00:00",
       "artifact": "shape=(1, 32, 32000) dtype=torch.float32 range=[-4.11, 8.22]",
       "backend": "forge",
-      "backends_succeeded": ["forge"]
+      "backends_succeeded": [
+        "forge"
+      ]
     },
     "lumasik/quark-1-248m-base": {
       "first_compiled": "2026-04-27T20:22:22.880015+00:00",
@@ -485,7 +537,9 @@
       "hf_created_at": "2026-04-25T22:01:31+00:00",
       "artifact": "shape=(1, 32, 32000) dtype=torch.float32 range=[-26.88, 11.49]",
       "backend": "forge",
-      "backends_succeeded": ["forge"]
+      "backends_succeeded": [
+        "forge"
+      ]
     },
     "nsega/distilbert-base-uncased-finetuned-squad-d5716d28": {
       "first_compiled": "2026-04-27T20:10:58.837359+00:00",
@@ -500,7 +554,331 @@
       "hf_created_at": "2026-04-26T16:33:06+00:00",
       "artifact": "shape=(1, 32, 30522) dtype=torch.float32 range=[-6.59, 3.97]",
       "backend": "forge",
-      "backends_succeeded": ["forge"]
+      "backends_succeeded": [
+        "forge"
+      ]
+    },
+    "gemma_lora/pytorch": {
+      "first_compiled": "2026-05-26T08:20:27.607988+00:00",
+      "first_chip": 3,
+      "run": 102,
+      "best_time_s": 47.106,
+      "successes": 2,
+      "source": "huggingface",
+      "task": "nlp_causal_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 39.206,
+      "best_infer_s": 7.686,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 4.163
+    },
+    "phi3/token_cls/pytorch": {
+      "first_compiled": "2026-05-26T08:28:49.230803+00:00",
+      "first_chip": 2,
+      "run": 102,
+      "best_time_s": 63.262,
+      "successes": 2,
+      "source": "huggingface",
+      "task": "nlp_token_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 60.649,
+      "best_infer_s": 2.562,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 7.417
+    },
+    "qwen_2_5_coder/pytorch": {
+      "first_compiled": "2026-05-26T08:32:05.801637+00:00",
+      "first_chip": 2,
+      "run": 102,
+      "best_time_s": 40.5,
+      "successes": 2,
+      "source": "huggingface",
+      "task": "nlp_causal_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 38.563,
+      "best_infer_s": 1.881,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 17.009
+    },
+    "qwen_2_5_lora/causal_lm/pytorch": {
+      "first_compiled": "2026-05-26T08:33:26.202566+00:00",
+      "first_chip": 2,
+      "run": 102,
+      "best_time_s": 63.458,
+      "successes": 2,
+      "source": "huggingface",
+      "task": "nlp_causal_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 59.479,
+      "best_infer_s": 3.834,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 8.347
+    },
+    "qwen_3/embedding/pytorch": {
+      "first_compiled": "2026-05-26T08:35:15.671723+00:00",
+      "first_chip": 2,
+      "run": 102,
+      "best_time_s": 52.997,
+      "successes": 2,
+      "source": "huggingface",
+      "task": "nlp_embed_gen",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 51.324,
+      "best_infer_s": 1.612,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 1611.787
+    },
+    "rcnn/pytorch": {
+      "first_compiled": "2026-05-26T08:34:56.152810+00:00",
+      "first_chip": 0,
+      "run": 102,
+      "best_time_s": 3.72,
+      "successes": 2,
+      "source": "torchvision",
+      "task": "cv_object_det",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 3.489,
+      "best_infer_s": 0.178,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 177.674
+    },
+    "roberta/pytorch": {
+      "first_compiled": "2026-05-26T08:37:09.797256+00:00",
+      "first_chip": 2,
+      "run": 102,
+      "best_time_s": 11.002,
+      "successes": 2,
+      "source": "huggingface",
+      "task": "nlp_text_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 10.42,
+      "best_infer_s": 0.532,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 5.635
+    },
+    "segformer/image_classification/onnx": {
+      "first_compiled": "2026-05-26T08:40:58.864392+00:00",
+      "first_chip": 3,
+      "run": 102,
+      "best_time_s": 28.699,
+      "successes": 2,
+      "source": "huggingface",
+      "task": "cv_image_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 27.637,
+      "best_infer_s": 1.061,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 1061.417
+    },
+    "speecht5/pytorch": {
+      "first_compiled": "2026-05-26T08:42:20.367071+00:00",
+      "first_chip": 1,
+      "run": 102,
+      "best_time_s": 25.269,
+      "successes": 2,
+      "source": "huggingface",
+      "task": "mm_tts",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 24.408,
+      "best_infer_s": 0.781,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 781.476
+    },
+    "swin/image_classification/pytorch": {
+      "first_compiled": "2026-05-26T08:47:16.737942+00:00",
+      "first_chip": 0,
+      "run": 102,
+      "best_time_s": 61.571,
+      "successes": 2,
+      "source": "torchvision",
+      "task": "cv_image_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 59.906,
+      "best_infer_s": 1.59,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 1590.051
+    },
+    "t5/causal_lm/onnx": {
+      "first_compiled": "2026-05-26T08:47:50.696831+00:00",
+      "first_chip": 2,
+      "run": 102,
+      "best_time_s": 69.606,
+      "successes": 2,
+      "source": "huggingface",
+      "task": "nlp_causal_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 68.916,
+      "best_infer_s": 0.622,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 824.896
+    },
+    "vgg19_unet/pytorch": {
+      "first_compiled": "2026-05-26T08:48:53.748460+00:00",
+      "first_chip": 1,
+      "run": 102,
+      "best_time_s": 8.257,
+      "successes": 2,
+      "source": "custom",
+      "task": "cv_image_seg",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 7.34,
+      "best_infer_s": 0.835,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 834.664
+    },
+    "wide_resnet/pytorch": {
+      "first_compiled": "2026-05-26T08:51:53.353441+00:00",
+      "first_chip": 1,
+      "run": 102,
+      "best_time_s": 10.989,
+      "successes": 2,
+      "source": "torch_hub",
+      "task": "cv_image_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 10.389,
+      "best_infer_s": 0.553,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 553.153
+    },
+    "xglm/pytorch": {
+      "first_compiled": "2026-05-26T08:54:15.592525+00:00",
+      "first_chip": 0,
+      "run": 102,
+      "best_time_s": 35.893,
+      "successes": 2,
+      "source": "huggingface",
+      "task": "nlp_causal_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 27.321,
+      "best_infer_s": 8.483,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 3.772
     }
   },
   "failed": {
