@@ -47,7 +47,7 @@ nav .gh-link {
 }
 nav .gh-link:hover { border-color: var(--teal); color: var(--teal2); }
 
-section { max-width: 1200px; margin: 0 auto; padding: 3.5rem 2rem; }
+section { max-width: 100%; margin: 0 auto; padding: 3.5rem 2.5rem; }
 h2 {
   font-family: var(--mono); letter-spacing: -0.02em; color: var(--teal);
   font-size: 1.5rem; margin-bottom: 1.5rem;
@@ -98,7 +98,7 @@ a:hover { color: var(--teal2); }
 .lb-table th.sort-desc::after { content: ' ▼'; color: var(--gold); }
 .lb-table td {
   padding: 0.45rem 0.75rem; border-bottom: 1px solid var(--bg2);
-  color: var(--text); vertical-align: top;
+  color: var(--text); vertical-align: top; word-break: break-word;
 }
 .lb-table tr:hover td { background: var(--bg2); }
 .lb-table tr:last-child td { border-bottom: none; }
@@ -228,7 +228,7 @@ footer {
       directional, not apples-to-apples.
     </p>
     <div style="overflow-x:auto">
-    <table class="lb-table" style="max-width:900px">
+    <table class="lb-table">
       <thead>
         <tr>
           <th>Model</th>
