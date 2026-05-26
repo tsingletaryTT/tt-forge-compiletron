@@ -1841,9 +1841,9 @@ def main():
     run_p.add_argument("--confirm",              action="store_true",
                        help="Pause on setup screen and wait for ENTER before starting "
                             "(default: auto-start immediately)")
-    run_p.add_argument("--bench-passes", type=int, default=0, metavar="N",
+    run_p.add_argument("--bench-passes", type=int, default=5, metavar="N",
                        help="Inline bench: run 2 warm-up + N timed inference passes "
-                            "after each successful compile. Default 0 (disabled).")
+                            "after each successful compile. Default 5.")
     run_p.add_argument("--bench-shapes", action="store_true",
                        help="Also sweep input shapes after bench passes. "
                             "Requires --bench-passes > 0.")
@@ -1890,7 +1890,7 @@ def main():
         args.max_cache_gb = 0.0
         args.session_download_max = 0.0
         args.parallel_downloads = 4
-        args.bench_passes = 0
+        args.bench_passes = 5
         args.bench_shapes = False
         args.ephemeral = False
         args.evict_failures = False
