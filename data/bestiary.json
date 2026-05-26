@@ -3666,9 +3666,15 @@
     },
     "llava-hf/llava-onevision-qwen2-0.5b-ov-hf": {
       "run_first_failed": 114,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "NotImplementedError: The following operators are not implemented: ['aten::_convolution_mode']",
       "error_category": "forge_missing_op"
+    },
+    "llava-hf/llava-v1.6-mistral-7b-hf": {
+      "error_category": "forge_internal",
+      "last_error": "RuntimeError: Generated MLIR module failed verification. ttir.typecast op result shape (1, 1191, 4096) does not match expected shape after broadcasting (1, 1191, 1) \u2014 forge MLIR codegen bug with masked_scatter+expand in LlavaNextModel.forward()",
+      "attempts": 1,
+      "run": "manual"
     }
   },
   "chip_totals": {

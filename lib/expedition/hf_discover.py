@@ -773,15 +773,116 @@ def build_dynamic_loader(model: FrontierModel) -> Optional[Callable]:
 
             wrapped = _VLForgeWrapper(inner)
             wrapped.config = inner.config
+
+            _vl_inner_model = getattr(inner, 'model', inner)
+
             # Override pack_image_features only for LlavaOnevisionModel — it has
             # an extra math.sqrt on shape values that breaks forge tracing.
             # LlavaNextModel and others have simpler implementations that only
             # need the unpad_image patch above.
-            _vl_inner_model = getattr(inner, 'model', inner)
             if type(_vl_inner_model).__name__ == 'LlavaOnevisionModel':
                 _vl_inner_model.pack_image_features = _types.MethodType(
                     _safe_pack_image_features, _vl_inner_model
                 )
+
+            # LlavaNextForConditionalGeneration.forward() accesses
+            # outputs.past_key_values / outputs.hidden_states on the return value
+            # of self.model().  Forge's tracer converts ModelOutput dataclasses to
+            # plain tuples, so those attribute accesses fail with
+            # "tuple has no attribute 'past_key_values'".
+            # Fix: replace the CausalLM forward with a minimal version that only
+            # computes logits and never accesses named fields on the inner output.
+            if type(inner).__name__ == 'LlavaNextForConditionalGeneration':
+                def _forge_safe_lnx_forward(self_lnx, input_ids, pixel_values=None,
+                                             image_sizes=None, **_ignored):
+                    """Minimal forward for forge — returns logits tensor only."""
+                    inner_out = self_lnx.model(
+                        input_ids,
+                        pixel_values=pixel_values,
+                        image_sizes=image_sizes,
+                        vision_feature_layer=self_lnx.config.vision_feature_layer,
+                        vision_feature_select_strategy=(
+                            self_lnx.config.vision_feature_select_strategy
+                        ),
+                        use_cache=False,
+                    )
+                    # inner_out[0] = last_hidden_state (works for tuple AND ModelOutput)
+                    return self_lnx.lm_head(inner_out[0])
+
+                inner.forward = _types.MethodType(_forge_safe_lnx_forward, inner)
+
+                # pack_image_features returns (image_features, feature_lens) where
+                # feature_lens is a 1D int64 tensor created via torch.tensor().
+                # Forge registers it as a constant and generates a concatenation node
+                # for it; tvm_to_python then crashes accessing inp_shape[2] on a 1D
+                # shape.  The caller (LlavaNextModel.forward) never uses feature_lens,
+                # so we can safely return None in its place.
+                _lnx_inner_model = getattr(inner, 'model', inner)  # LlavaNextModel
+
+                def _lnx_pack_no_feature_lens(self_m, image_features, image_sizes,
+                                               vision_feature_select_strategy=None,
+                                               image_newline=None):
+                    """Same as LlavaNextModel.pack_image_features but skips creating
+                    the feature_lens tensor, which confuses forge's TVM backend."""
+                    import transformers.models.llava_next.modeling_llava_next as _lnx_m
+                    new_image_features = []
+                    for image_idx, image_feature in enumerate(image_features):
+                        if int(image_feature.shape[0]) > 1:
+                            base_image_feature = image_feature[0]
+                            image_feature = image_feature[1:]
+                            height = width = (self_m.config.vision_config.image_size
+                                              // self_m.config.vision_config.patch_size)
+                            num_patch_h, num_patch_w = _lnx_m.get_anyres_image_grid_shape(
+                                image_sizes[image_idx],
+                                self_m.config.image_grid_pinpoints,
+                                self_m.config.vision_config.image_size,
+                            )
+                            image_feature = image_feature.view(
+                                num_patch_h, num_patch_w, height, width, -1
+                            )
+                            image_feature = image_feature.permute(4, 0, 2, 1, 3).contiguous()
+                            image_feature = image_feature.flatten(1, 2).flatten(2, 3)
+                            image_feature = _lnx_m.unpad_image(
+                                image_feature, image_sizes[image_idx]
+                            )
+                            if image_newline is not None:
+                                image_feature = torch.cat(
+                                    (
+                                        image_feature,
+                                        image_newline[:, None, None]
+                                        .expand(*image_feature.shape[:-1], 1)
+                                        .to(image_feature.device, image_feature.dtype),
+                                    ),
+                                    dim=-1,
+                                )
+                            image_feature = image_feature.flatten(1, 2).transpose(0, 1)
+                            image_feature = torch.cat(
+                                (base_image_feature, image_feature), dim=0
+                            )
+                        else:
+                            image_feature = image_feature[0]
+                            if image_newline is not None:
+                                image_feature = torch.cat(
+                                    (image_feature, image_newline[None].to(image_feature)),
+                                    dim=0,
+                                )
+                        new_image_features.append(image_feature)
+                    # Avoid torch.cat([single_tensor]) — forge generates a single-input
+                    # concatenation node and tvm_to_python then accesses inp_shape[2]
+                    # on a 2D shape, raising IndexError.  With one image, skip the cat.
+                    if len(new_image_features) == 1:
+                        image_features = new_image_features[0]
+                    else:
+                        image_features = torch.cat(new_image_features, dim=0)
+                    # Return None for feature_lens — caller doesn't use it and the
+                    # torch.tensor() call confuses forge's TVM graph compiler.
+                    return image_features, None
+
+                if hasattr(_lnx_inner_model, 'pack_image_features'):
+                    _lnx_inner_model.pack_image_features = _types.MethodType(
+                        _lnx_pack_no_feature_lens, _lnx_inner_model
+                    )
+
             return wrapped
 
         loader.__name__ = f"load_{_vl_model_id.replace('/', '_')}"
