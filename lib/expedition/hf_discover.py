@@ -601,30 +601,114 @@ def build_dynamic_loader(model: FrontierModel) -> Optional[Callable]:
     loader._input_type = input_type
     loader._model_id = model_id
 
-    # Vision-language models (image-text-to-text) need both pixel_values and
-    # input_ids. A plain image dummy tensor fed to the embedding layer causes
-    # "Expected Long/Int but got FloatTensor". Attach _load_inputs so the worker
-    # uses processor-built tensors instead of the generic image dummy.
+    # Vision-language models (image-text-to-text) need special handling:
+    # 1. The loader returns a _VLForgeWrapper that maps (input_ids, pixel_values)
+    #    positionally to kwargs, strips non-tensor outputs (DynamicCache), and
+    #    bakes image_sizes as a Python constant so forge never traces it.
+    # 2. image_sizes MUST NOT be a forge-traced tensor: the model uses it for
+    #    control flow (round(size/patch_size)) which raises TypeError on fake
+    #    tensors.  We compute it once from the probe image and capture it in the
+    #    wrapper closure so it's a real Python value during forge tracing.
+    # 3. _load_inputs uses the chat template so image placeholder tokens appear
+    #    in input_ids; without them forward() raises "image tokens do not match".
     if tag == "image-text-to-text":
-        def _load_inputs_vl():
+        _vl_model_id = model_id   # capture for closures below
+        _vl_cache: dict = {}      # shared between loader() and _load_inputs_vl()
+
+        _original_loader = loader
+
+        def loader():
             import torch
+            import torch.nn as _nn
             import transformers
-            proc = transformers.AutoProcessor.from_pretrained(
-                model_id, trust_remote_code=True
-            )
-            # Minimal 224×224 white image + a short text prompt.
-            dummy_image = torch.ones(3, 224, 224)
             from PIL import Image as _Image
             import numpy as _np
+
+            inner = _original_loader()   # load the raw VL model
+
+            # Build probe inputs once; cache for _load_inputs_vl() reuse.
+            proc = transformers.AutoProcessor.from_pretrained(
+                _vl_model_id, trust_remote_code=True
+            )
             pil_img = _Image.fromarray(
                 (_np.ones((224, 224, 3)) * 255).astype(_np.uint8)
             )
-            inputs = proc(
-                images=pil_img,
-                text="Describe this image.",
-                return_tensors="pt",
+            conversation = [{"role": "user", "content": [
+                {"type": "image"},
+                {"type": "text", "text": "Describe this image."},
+            ]}]
+            prompt = proc.apply_chat_template(conversation, add_generation_prompt=True)
+            probe = proc(images=pil_img, text=prompt, return_tensors="pt")
+
+            # Cache probe tensors so _load_inputs_vl doesn't re-run the processor.
+            _vl_cache["input_ids"]    = probe["input_ids"]
+            _vl_cache["pixel_values"] = probe["pixel_values"]
+
+            # image_sizes captured as a concrete Python tensor — NOT forwarded as
+            # a forge-traced input.  The model's internal round()/int() calls on
+            # image dimensions work correctly on real values but crash on fake tensors.
+            _image_sizes_const = probe["image_sizes"]
+
+            class _VLForgeWrapper(_nn.Module):
+                """Wraps a vision-language model for forge compilation.
+
+                Forward takes only (input_ids, pixel_values) so forge never
+                traces image_sizes.  image_sizes is baked as a Python constant
+                in the closure, keeping round()/int() calls concrete.
+                """
+                def __init__(self, model):
+                    super().__init__()
+                    self.model = model
+
+                def forward(self, input_ids, pixel_values):
+                    out = self.model(
+                        input_ids=input_ids,
+                        pixel_values=pixel_values,
+                        image_sizes=_image_sizes_const,   # constant, not traced
+                        use_cache=False,
+                    )
+                    # return_dict=False → tuple; keep only tensor elements.
+                    if isinstance(out, (tuple, list)):
+                        tensors = [o for o in out if isinstance(o, torch.Tensor)]
+                        return tensors[0] if len(tensors) == 1 else tuple(tensors)
+                    return out
+
+            wrapped = _VLForgeWrapper(inner)
+            wrapped.config = inner.config
+            return wrapped
+
+        loader.__name__ = f"load_{_vl_model_id.replace('/', '_')}"
+        loader._input_type = input_type
+        loader._model_id = _vl_model_id
+
+        def _load_inputs_vl():
+            # Reuse probe tensors computed in loader() if available.
+            if _vl_cache:
+                return {
+                    "input_ids":    _vl_cache["input_ids"],
+                    "pixel_values": _vl_cache["pixel_values"],
+                }
+            # Fallback: loader() wasn't called yet — compute fresh.
+            import transformers
+            from PIL import Image as _Image
+            import numpy as _np
+
+            proc = transformers.AutoProcessor.from_pretrained(
+                _vl_model_id, trust_remote_code=True
             )
-            return {k: v for k, v in inputs.items() if isinstance(v, torch.Tensor)}
+            pil_img = _Image.fromarray(
+                (_np.ones((224, 224, 3)) * 255).astype(_np.uint8)
+            )
+            conversation = [{"role": "user", "content": [
+                {"type": "image"},
+                {"type": "text", "text": "Describe this image."},
+            ]}]
+            prompt = proc.apply_chat_template(conversation, add_generation_prompt=True)
+            inputs = proc(images=pil_img, text=prompt, return_tensors="pt")
+            return {
+                "input_ids":    inputs["input_ids"],
+                "pixel_values": inputs["pixel_values"],
+            }
 
         loader._load_inputs = _load_inputs_vl
 
