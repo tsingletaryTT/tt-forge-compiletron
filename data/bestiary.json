@@ -3663,6 +3663,12 @@
       "attempts": 1,
       "last_error": "ImportError: cannot import name 'ZImageTransformer2DModel' from 'diffusers' (/home/ttuser/.tenstorrent-venv/lib/python3.12/site-packages/diffusers/__init__.py)",
       "error_category": "other"
+    },
+    "llava-hf/llava-onevision-qwen2-0.5b-ov-hf": {
+      "run_first_failed": 114,
+      "attempts": 1,
+      "last_error": "NotImplementedError: The following operators are not implemented: ['aten::_convolution_mode']",
+      "error_category": "forge_missing_op"
     }
   },
   "chip_totals": {

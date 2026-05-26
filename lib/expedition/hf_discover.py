@@ -676,7 +676,17 @@ def build_dynamic_loader(model: FrontierModel) -> Optional[Callable]:
                     pad = (curr_w - new_w) // 2
                     return tensor[:, :, pad:curr_w - pad]
 
-            _llava_mod.unpad_image = _safe_unpad_image
+            # Patch unpad_image in every llava-family module that defines it.
+            for _lmod_name in ('llava_onevision', 'llava_next', 'llava'):
+                try:
+                    import importlib as _il
+                    _lm = _il.import_module(
+                        f'transformers.models.{_lmod_name}.modeling_{_lmod_name}'
+                    )
+                    if hasattr(_lm, 'unpad_image'):
+                        _lm.unpad_image = _safe_unpad_image
+                except (ImportError, AttributeError):
+                    pass
 
             def _safe_pack_image_features(self, image_features, image_sizes,
                                            image_newline=None,
@@ -763,12 +773,15 @@ def build_dynamic_loader(model: FrontierModel) -> Optional[Callable]:
 
             wrapped = _VLForgeWrapper(inner)
             wrapped.config = inner.config
-            # Bind the int()-safe pack_image_features to the inner model object
-            # (LlavaOnevisionModel lives at inner.model for the *ForConditionalGeneration)
+            # Override pack_image_features only for LlavaOnevisionModel — it has
+            # an extra math.sqrt on shape values that breaks forge tracing.
+            # LlavaNextModel and others have simpler implementations that only
+            # need the unpad_image patch above.
             _vl_inner_model = getattr(inner, 'model', inner)
-            _vl_inner_model.pack_image_features = _types.MethodType(
-                _safe_pack_image_features, _vl_inner_model
-            )
+            if type(_vl_inner_model).__name__ == 'LlavaOnevisionModel':
+                _vl_inner_model.pack_image_features = _types.MethodType(
+                    _safe_pack_image_features, _vl_inner_model
+                )
             return wrapped
 
         loader.__name__ = f"load_{_vl_model_id.replace('/', '_')}"
