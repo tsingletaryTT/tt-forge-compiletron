@@ -1,0 +1,366 @@
+diff --git a/forge/forge/module.py b/forge/forge/module.py
+index 03a846d8..a9dd5e59 100644
+--- a/forge/forge/module.py
++++ b/forge/forge/module.py
+@@ -1,21 +1,48 @@
+ # SPDX-FileCopyrightText: © 2024 Tenstorrent AI ULC
+ 
+ # SPDX-License-Identifier: Apache-2.0
++from __future__ import annotations  # keep tf.xxx / jnp.xxx in annotations as strings
++
++import os
+ from abc import ABC, abstractmethod
+-from typing import Optional, Tuple, List, Dict, TypeAlias, Union
++from typing import Any, Optional, Tuple, List, Dict, TypeAlias, Union
+ from collections import OrderedDict
+ import itertools
+ 
+-import flax
+-import jax.numpy as jnp
+ import numpy as np
+ import onnx
+ from onnx import numpy_helper
+-import paddle
+ import torch
+-import tensorflow as tf
+ from loguru import logger
+-from transformers import FlaxPreTrainedModel
++
++# When FORGE_PYTORCH_ONLY=1, skip TF/JAX/Paddle to avoid LLVM symbol conflicts.
++# libTTMLIRCompiler.so exports all LLVM symbols via --whole-archive; TF's own
++# statically-linked LLVM runs global C++ constructors (CommandLineParser
++# registration) that corrupt our CommandLineParser's SmallPtrSet, causing a
++# SIGSEGV.  PyTorch-only compilation needs none of these optional frameworks.
++_forge_skip_optional = os.environ.get("FORGE_PYTORCH_ONLY", "").lower() in ("1", "true", "yes")
++
++if not _forge_skip_optional:
++    try:
++        import tensorflow as tf
++    except Exception:
++        from forge._framework_stubs import tf_stub as tf
++    try:
++        import flax
++        import jax.numpy as jnp
++        from transformers import FlaxPreTrainedModel
++    except Exception:
++        from forge._framework_stubs import flax_stub as flax, jnp_stub as jnp
++        from forge._framework_stubs import _NI as FlaxPreTrainedModel
++    try:
++        import paddle
++    except Exception:
++        from forge._framework_stubs import paddle_stub as paddle
++else:
++    from forge._framework_stubs import (
++        tf_stub as tf, paddle_stub as paddle,
++        flax_stub as flax, jnp_stub as jnp, _NI as FlaxPreTrainedModel,
++    )
+ 
+ import forge
+ from .forgeglobal import lazy_trace_data
+@@ -270,7 +297,7 @@ class TFModule(Module):
+ 
+         super().__init__(name)
+ 
+-        if not isinstance(module, (tf.keras.Model, tf.keras.layers.Layer)):
++        if tf is not None and not isinstance(module, (tf.keras.Model, tf.keras.layers.Layer)):
+             raise RuntimeError("tf.keras module expected, got " + str(type(module)))
+ 
+         self.module = module
+@@ -1027,29 +1054,35 @@ def wrap_module(module, name: str) -> Module:
+     """
+     if isinstance(module, torch.nn.Module):
+         return PyTorchModule(name, module)
+-    elif isinstance(module, tf.keras.Model):
++    elif tf is not None and isinstance(module, tf.keras.Model):
+         return TFModule(name, module)
+     elif isinstance(module, ForgeModule):
+         return module
+-    elif isinstance(module, paddle.nn.Layer):
++    elif paddle is not None and isinstance(module, paddle.nn.Layer):
+         return PaddleModule(name, module)
+     elif isinstance(module, onnx.onnx_ml_pb2.ModelProto):
+         return OnnxModule(name, module)
+     elif isinstance(module, forge.module.OnnxModule):
+         return module
+-    elif isinstance(module, (flax.linen.Module, FlaxPreTrainedModel)):
++    elif (flax is not None and FlaxPreTrainedModel is not None
++          and isinstance(module, (flax.linen.Module, FlaxPreTrainedModel))):
+         return JaxModule(name, module)
+     else:
+         raise RuntimeError("Unsupported module type: " + str(type(module)))
+ 
+ 
+-FrameworkModule: TypeAlias = (
+-    torch.nn.Module
+-    | tf.keras.Model
+-    | paddle.nn.Layer
+-    | onnx.onnx_ml_pb2.ModelProto
+-    | OnnxModule
+-    | flax.linen.Module
+-    | FlaxPreTrainedModel
+-)
++# Build the FrameworkModule union type only when all optional frameworks are
++# available; fall back to Any so type checkers still work in skipped envs.
++if tf is not None and paddle is not None and flax is not None and FlaxPreTrainedModel is not None:
++    FrameworkModule: TypeAlias = (
++        torch.nn.Module
++        | tf.keras.Model
++        | paddle.nn.Layer
++        | onnx.onnx_ml_pb2.ModelProto
++        | OnnxModule
++        | flax.linen.Module
++        | FlaxPreTrainedModel
++    )
++else:
++    FrameworkModule = Any
+ AnyModule: TypeAlias = FrameworkModule | ForgeModule
+diff --git a/forge/forge/python_codegen.py b/forge/forge/python_codegen.py
+index 0a9224f1..010b8f56 100644
+--- a/forge/forge/python_codegen.py
++++ b/forge/forge/python_codegen.py
+@@ -1,12 +1,22 @@
+ # SPDX-FileCopyrightText: © 2024 Tenstorrent AI ULC
+ 
+ # SPDX-License-Identifier: Apache-2.0
++from __future__ import annotations
++
+ import os
+ 
+ import torch
+ import numpy as np
+-import tensorflow as tf
+ from loguru import logger
++
++_forge_skip_optional = os.environ.get("FORGE_PYTORCH_ONLY", "").lower() in ("1", "true", "yes")
++if not _forge_skip_optional:
++    try:
++        import tensorflow as tf
++    except Exception:
++        tf = None
++else:
++    tf = None
+ import forge
+ from forge.tensor import forge_dataformat_to_pytorch_dtype
+ 
+@@ -117,9 +127,7 @@ class PythonWriter:
+ 
+ 
+ class ForgeWriter(PythonWriter):
+-    incompatible_np_float_types = [
+-        tf.bfloat16,
+-    ]
++    incompatible_np_float_types = [tf.bfloat16] if tf is not None else []
+ 
+     def __init__(
+         self,
+@@ -1075,9 +1083,7 @@ class ForgeWriter(PythonWriter):
+ 
+ 
+ class PyTorchWriter(PythonWriter):
+-    incompatible_np_float_types = [
+-        tf.bfloat16,
+-    ]
++    incompatible_np_float_types = [tf.bfloat16] if tf is not None else []
+ 
+     def __init__(self, module_name, source_framework):
+         super().__init__(module_name)
+diff --git a/forge/forge/tensor.py b/forge/forge/tensor.py
+index ab956d8b..84d6a1e8 100644
+--- a/forge/forge/tensor.py
++++ b/forge/forge/tensor.py
+@@ -1,21 +1,46 @@
+ # SPDX-FileCopyrightText: © 2024 Tenstorrent AI ULC
+ 
+ # SPDX-License-Identifier: Apache-2.0
++from __future__ import annotations  # keep optional-framework types in annotations as strings
+ 
++import os
+ from typing import Union, Tuple, List, Optional, Dict, TypeAlias
+ from forge.tvm_utils import map_pt_dtype_to_pd, map_tf_dtype_to_pt, map_pd_dtype_to_pt
+ 
+-import paddle
+ import torch
+-import tensorflow as tf
+ import numpy as np
+ from loguru import logger
+ import copy
+-import jax
+-import jax.numpy as jnp
+ import json
+ 
+-import keras
++# When FORGE_PYTORCH_ONLY=1 skip TF/JAX/Paddle/Keras to avoid LLVM symbol
++# conflicts with libTTMLIRCompiler.so.  Stub classes keep isinstance() checks
++# in method bodies safe (they simply never match PyTorch tensors).
++_forge_skip_optional = os.environ.get("FORGE_PYTORCH_ONLY", "").lower() in ("1", "true", "yes")
++
++if not _forge_skip_optional:
++    try:
++        import tensorflow as tf
++    except Exception:
++        from forge._framework_stubs import tf_stub as tf
++    try:
++        import paddle
++    except Exception:
++        from forge._framework_stubs import paddle_stub as paddle
++    try:
++        import jax
++        import jax.numpy as jnp
++    except Exception:
++        from forge._framework_stubs import jax_stub as jax, jnp_stub as jnp
++    try:
++        import keras
++    except Exception:
++        from forge._framework_stubs import keras_stub as keras
++else:
++    from forge._framework_stubs import (
++        tf_stub as tf, paddle_stub as paddle,
++        jax_stub as jax, jnp_stub as jnp, keras_stub as keras,
++    )
+ 
+ from .forgeglobal import TILE_DIM, align_up_tile, round_up_div
+ from forge._C import DataFormat
+diff --git a/forge/forge/tvm_unique_op_generation.py b/forge/forge/tvm_unique_op_generation.py
+index 7fcbbf3c..7a0691e0 100644
+--- a/forge/forge/tvm_unique_op_generation.py
++++ b/forge/forge/tvm_unique_op_generation.py
+@@ -12,8 +12,18 @@ import ast
+ 
+ import torch
+ import onnx
+-import flax
+-from transformers.modeling_flax_utils import FlaxPreTrainedModel
++
++_forge_skip_optional = os.environ.get("FORGE_PYTORCH_ONLY", "").lower() in ("1", "true", "yes")
++if not _forge_skip_optional:
++    try:
++        import flax
++        from transformers.modeling_flax_utils import FlaxPreTrainedModel
++    except Exception:
++        flax = None
++        FlaxPreTrainedModel = None
++else:
++    flax = None
++    FlaxPreTrainedModel = None
+ 
+ import forge
+ from forge.python_codegen import ForgeWriter, forge_df_from_str, pytorch_df_from_str
+diff --git a/forge/forge/tvm_utils.py b/forge/forge/tvm_utils.py
+index 124c6fe4..d800fc0f 100644
+--- a/forge/forge/tvm_utils.py
++++ b/forge/forge/tvm_utils.py
+@@ -1,51 +1,72 @@
+ # SPDX-FileCopyrightText: © 2024 Tenstorrent AI ULC
+ 
+ # SPDX-License-Identifier: Apache-2.0
+-import paddle
+-import tensorflow as tf
++import os
+ import torch
+ import numpy as np
+ 
+-tf_to_pt_type_map = {
+-    tf.bfloat16: torch.bfloat16,
+-    tf.bool: torch.bool,
+-    tf.complex128: torch.complex128,
+-    tf.complex64: torch.complex64,
+-    tf.double: torch.double,
+-    tf.float16: torch.float16,
+-    tf.float32: torch.float32,
+-    tf.float64: torch.float64,
+-    tf.half: torch.half,
+-    tf.int16: torch.int16,
+-    tf.int32: torch.int32,
+-    tf.int64: torch.int64,
+-    tf.int8: torch.int8,
+-    tf.qint16: torch.qint32,  # No torch.qint16.
+-    tf.qint32: torch.qint32,
+-    tf.qint8: torch.qint8,
+-    tf.quint16: None,  # No torch.quint16.
+-    tf.quint8: torch.quint8,
+-    tf.resource: None,  # No torch.resource.
+-    tf.string: None,  # No torch.string
+-    tf.uint16: None,  # No torch.uint16
+-    tf.uint32: None,  # No torch.uint16
+-    tf.uint64: None,  # No torch.uint16
+-    tf.uint8: torch.uint8,
+-    tf.variant: None,  # No torch.uint16
+-}
+-
+-pd_to_pt_type_map = {
+-    paddle.bfloat16: torch.bfloat16,
+-    paddle.bool: torch.bool,
+-    paddle.float16: torch.float16,
+-    paddle.float32: torch.float32,
+-    paddle.float64: torch.float64,
+-    paddle.int8: torch.int8,
+-    paddle.int16: torch.int16,
+-    paddle.int32: torch.int32,
+-    paddle.int64: torch.int64,
+-    paddle.uint8: torch.uint8,
+-}
++# When FORGE_PYTORCH_ONLY=1, skip TF/Paddle imports to avoid LLVM symbol
++# conflicts between libTTMLIRCompiler.so (--whole-archive LLVM) and TF's
++# own statically-linked LLVM, whose global constructors cause a SmallPtrSet
++# assertion crash when both copies of the CommandLineParser are visible.
++_skip_optional = os.environ.get("FORGE_PYTORCH_ONLY", "").lower() in ("1", "true", "yes")
++
++if not _skip_optional:
++    try:
++        import tensorflow as tf
++        tf_to_pt_type_map = {
++            tf.bfloat16: torch.bfloat16,
++            tf.bool: torch.bool,
++            tf.complex128: torch.complex128,
++            tf.complex64: torch.complex64,
++            tf.double: torch.double,
++            tf.float16: torch.float16,
++            tf.float32: torch.float32,
++            tf.float64: torch.float64,
++            tf.half: torch.half,
++            tf.int16: torch.int16,
++            tf.int32: torch.int32,
++            tf.int64: torch.int64,
++            tf.int8: torch.int8,
++            tf.qint16: torch.qint32,  # No torch.qint16.
++            tf.qint32: torch.qint32,
++            tf.qint8: torch.qint8,
++            tf.quint16: None,  # No torch.quint16.
++            tf.quint8: torch.quint8,
++            tf.resource: None,  # No torch.resource.
++            tf.string: None,  # No torch.string
++            tf.uint16: None,  # No torch.uint16
++            tf.uint32: None,  # No torch.uint32
++            tf.uint64: None,  # No torch.uint64
++            tf.uint8: torch.uint8,
++            tf.variant: None,  # No torch.variant
++        }
++    except Exception:
++        tf = None
++        tf_to_pt_type_map = {}
++
++    try:
++        import paddle
++        pd_to_pt_type_map = {
++            paddle.bfloat16: torch.bfloat16,
++            paddle.bool: torch.bool,
++            paddle.float16: torch.float16,
++            paddle.float32: torch.float32,
++            paddle.float64: torch.float64,
++            paddle.int8: torch.int8,
++            paddle.int16: torch.int16,
++            paddle.int32: torch.int32,
++            paddle.int64: torch.int64,
++            paddle.uint8: torch.uint8,
++        }
++    except Exception:
++        paddle = None
++        pd_to_pt_type_map = {}
++else:
++    tf = None
++    paddle = None
++    tf_to_pt_type_map = {}
++    pd_to_pt_type_map = {}
+ 
+ 
+ def map_tf_dtype_to_pt(tf_dtype):
