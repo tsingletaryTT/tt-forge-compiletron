@@ -600,4 +600,32 @@ def build_dynamic_loader(model: FrontierModel) -> Optional[Callable]:
     loader.__name__ = f"load_{model_id.replace('/', '_')}"
     loader._input_type = input_type
     loader._model_id = model_id
+
+    # Vision-language models (image-text-to-text) need both pixel_values and
+    # input_ids. A plain image dummy tensor fed to the embedding layer causes
+    # "Expected Long/Int but got FloatTensor". Attach _load_inputs so the worker
+    # uses processor-built tensors instead of the generic image dummy.
+    if tag == "image-text-to-text":
+        def _load_inputs_vl():
+            import torch
+            import transformers
+            proc = transformers.AutoProcessor.from_pretrained(
+                model_id, trust_remote_code=True
+            )
+            # Minimal 224×224 white image + a short text prompt.
+            dummy_image = torch.ones(3, 224, 224)
+            from PIL import Image as _Image
+            import numpy as _np
+            pil_img = _Image.fromarray(
+                (_np.ones((224, 224, 3)) * 255).astype(_np.uint8)
+            )
+            inputs = proc(
+                images=pil_img,
+                text="Describe this image.",
+                return_tensors="pt",
+            )
+            return {k: v for k, v in inputs.items() if isinstance(v, torch.Tensor)}
+
+        loader._load_inputs = _load_inputs_vl
+
     return loader
