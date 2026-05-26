@@ -340,9 +340,15 @@ footer {
 
     <!-- ── Failed models ─────────────────────────────────────────────── -->
     <h2 id="failed">Still Hunting</h2>
-    <p>Models that have resisted compilation so far. Error categories drive the
-       permanent-failure gate — models in <code>xla_runtime_error</code>, <code>unsupported_arch</code>,
-       and similar hard categories are skipped on future runs.</p>
+    <p>Models where forge or XLA hit a genuine compilation or runtime barrier.
+       Environment-only failures (SIGSEGV crashes, missing local packages, gated access, routing errors)
+       are hidden by default — they reflect local setup, not hardware capability.</p>
+
+    <div class="filter-row">
+      <span class="filter-label">Filter:</span>
+      <button class="filter-btn" id="failed-env-toggle">Show env/infra errors</button>
+    </div>
+    <div id="failed-env-note" style="font-size:0.78rem;color:var(--muted);margin-bottom:0.75rem;font-family:var(--mono)"></div>
 
     <div style="overflow-x:auto">
     <table class="lb-table" id="failed-table">
@@ -440,9 +446,13 @@ footer {
       if (m.run > maxRun) maxRun = m.run;
     });
 
+    var envFailCount  = failedList.filter(_isEnvError).length;
+    var compileFailCount = failedList.length - envFailCount;
+
     var pills = [
-      { num: compiledList.length, lbl: 'compiled models' },
-      { num: failedList.length,   lbl: 'still hunting' },
+      { num: compiledList.length,  lbl: 'compiled models' },
+      { num: compileFailCount,     lbl: 'compilation failures' },
+      { num: envFailCount,         lbl: 'env/infra errors (hidden)' },
       { num: totalRuns,           lbl: 'total successful runs' },
       { num: maxRun,              lbl: 'expeditions run' },
       { num: backends['forge'] || 0, lbl: 'via forge (PyTorch)' },
@@ -593,8 +603,61 @@ footer {
   }
 
   // ── Failed table ────────────────────────────────────────────────────────
+  // Categories that reflect local setup/environment, not forge/xla capability
+  var _LOCAL_ENV_CATS = {
+    'missing_dependency': true,
+    'model_access':       true,
+    'loader_missing':     true,
+    'wrong_backend':      true,
+    'quantized_format':   true,
+    'unsupported_backend':true,
+  };
+  var _failedData    = [];
+  var _failedShowEnv = false;
+
+  function _isEnvError(m) {
+    if (_LOCAL_ENV_CATS[m.error_category || '']) return true;
+    // SIGSEGV process kills live in 'other' category
+    return String(m.last_error || '').indexOf('SIGSEGV') !== -1;
+  }
+
   function renderFailed(list) {
-    list.sort(function(a, b) {
+    _failedData = list;
+    var envCount = list.filter(_isEnvError).length;
+
+    var toggleBtn = document.getElementById('failed-env-toggle');
+    var envNote   = document.getElementById('failed-env-note');
+
+    function updateToggleState() {
+      if (_failedShowEnv) {
+        toggleBtn.textContent = 'Hide env/infra errors';
+        toggleBtn.classList.add('active');
+        envNote.textContent = '';
+      } else {
+        toggleBtn.textContent = 'Show ' + envCount + ' env/infra errors';
+        toggleBtn.classList.remove('active');
+        envNote.textContent = envCount + ' failures hidden: SIGSEGV crashes, missing local packages, ' +
+          'access-gated models, backend routing errors. These reflect local setup, not hardware limits.';
+      }
+    }
+
+    updateToggleState();
+
+    toggleBtn.addEventListener('click', function() {
+      _failedShowEnv = !_failedShowEnv;
+      updateToggleState();
+      drawFailed();
+    });
+
+    drawFailed();
+  }
+
+  function drawFailed() {
+    var list = _failedShowEnv
+      ? _failedData
+      : _failedData.filter(function(m) { return !_isEnvError(m); });
+
+    list = list.slice().sort(function(a, b) {
       return (b.attempts || 0) - (a.attempts || 0);
     });
 
@@ -612,7 +675,7 @@ footer {
     });
 
     document.getElementById('failed-body').innerHTML = html ||
-      '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:2rem">No failures recorded.</td></tr>';
+      '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:2rem">No compilation failures recorded.</td></tr>';
   }
 
   // ── Sort helper ─────────────────────────────────────────────────────────
