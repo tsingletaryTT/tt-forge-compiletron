@@ -60,10 +60,9 @@ forge_parallel_*/
 # XLA venv
 xla-venv/
 
-# Local data (bestiary/expeditions persist separately)
+# Local data (expeditions persist separately; bestiary.json is tracked)
 data/artifacts/
 data/runs/run_[0-9]*.json
-data/bestiary.json
 data/expeditions/
 
 # Claude artifacts
