@@ -651,12 +651,98 @@ def build_dynamic_loader(model: FrontierModel) -> Optional[Callable]:
             # .tolist() gives [[h, w]] so every element is a real Python int.
             _image_sizes_const = probe["image_sizes"].tolist()
 
+            # ── Patch shape-arithmetic in pack_image_features / unpad_image ───
+            # forge's tracing makes tensor.shape return proxy values that don't
+            # implement __round__.  Monkey-patch at the module level so that
+            # unpad_image and pack_image_features use int() before any Python
+            # math (round, math.sqrt) that requires plain Python ints.
+            import math as _math
+            import types as _types
+            import transformers.models.llava_onevision.modeling_llava_onevision as _llava_mod
+
+            def _safe_unpad_image(tensor, original_size):
+                if not isinstance(original_size, (list, tuple)):
+                    original_size = original_size.tolist()
+                orig_h, orig_w = int(original_size[0]), int(original_size[1])
+                curr_h, curr_w = int(tensor.shape[1]), int(tensor.shape[2])
+                if (orig_w / orig_h) > (curr_w / curr_h):
+                    sf = curr_w / orig_w
+                    new_h = int(round(orig_h * sf, 7))
+                    pad = (curr_h - new_h) // 2
+                    return tensor[:, pad:curr_h - pad, :]
+                else:
+                    sf = curr_h / orig_h
+                    new_w = int(round(orig_w * sf, 7))
+                    pad = (curr_w - new_w) // 2
+                    return tensor[:, :, pad:curr_w - pad]
+
+            _llava_mod.unpad_image = _safe_unpad_image
+
+            def _safe_pack_image_features(self, image_features, image_sizes,
+                                           image_newline=None,
+                                           vision_aspect_ratio="anyres_max_9"):
+                new_image_features = []
+                feature_lens = []
+                for image_idx, image_feature in enumerate(image_features):
+                    if int(image_feature.shape[0]) > 1:
+                        base_image_feature = image_feature[0]
+                        image_feature = image_feature[1:]
+                        height = width = (self.config.vision_config.image_size
+                                          // self.config.vision_config.patch_size)
+                        num_patch_h, num_patch_w = _llava_mod.get_anyres_image_grid_shape(
+                            image_sizes[image_idx],
+                            self.config.image_grid_pinpoints,
+                            self.config.vision_config.image_size,
+                        )
+                        image_feature = image_feature.view(num_patch_h, num_patch_w, height, width, -1)
+                        image_feature = image_feature.permute(4, 0, 2, 1, 3).contiguous()
+                        image_feature = image_feature.flatten(1, 2).flatten(2, 3)
+                        image_feature = _safe_unpad_image(image_feature, image_sizes[image_idx])
+                        max_patches = int(vision_aspect_ratio.strip("anyres_max_"))
+                        # int() cast prevents math.sqrt crashing on proxy shape values
+                        c_h = int(image_feature.shape[1])
+                        c_w = int(image_feature.shape[2])
+                        ratio = _math.sqrt(c_h * c_w / (max_patches * height ** 2))
+                        if ratio > 1.1:
+                            image_feature = torch.nn.functional.interpolate(
+                                image_feature[None],
+                                [int(c_h // ratio), int(c_w // ratio)],
+                                mode="bilinear",
+                            )[0]
+                        if image_newline is not None:
+                            image_feature = torch.cat(
+                                (image_feature,
+                                 image_newline[:, None, None]
+                                 .expand(*image_feature.shape[:-1], 1)
+                                 .to(image_feature.device, image_feature.dtype)),
+                                dim=-1,
+                            )
+                        image_feature = image_feature.flatten(1, 2).transpose(0, 1)
+                        image_feature = torch.cat((base_image_feature, image_feature), dim=0)
+                    else:
+                        image_feature = image_feature[0]
+                        if image_newline is not None:
+                            image_feature = torch.cat(
+                                (image_feature, image_newline[None].to(image_feature)), dim=0
+                            )
+                    new_image_features.append(image_feature)
+                    feature_lens.append(image_feature.size(0))
+                image_features = torch.cat(new_image_features, dim=0)
+                feature_lens = torch.tensor(feature_lens, dtype=torch.long,
+                                             device=image_features.device)
+                return image_features, feature_lens
+
             class _VLForgeWrapper(_nn.Module):
                 """Wraps a vision-language model for forge compilation.
 
                 Forward takes only (input_ids, pixel_values) so forge never
                 traces image_sizes.  image_sizes is baked as a Python constant
                 in the closure, keeping round()/int() calls concrete.
+
+                pack_image_features is overridden on the inner model instance
+                to int()-cast all shape accesses before Python math (round,
+                math.sqrt) — forge's tracing can return proxy values from
+                .shape that don't implement __round__.
                 """
                 def __init__(self, model):
                     super().__init__()
@@ -677,6 +763,12 @@ def build_dynamic_loader(model: FrontierModel) -> Optional[Callable]:
 
             wrapped = _VLForgeWrapper(inner)
             wrapped.config = inner.config
+            # Bind the int()-safe pack_image_features to the inner model object
+            # (LlavaOnevisionModel lives at inner.model for the *ForConditionalGeneration)
+            _vl_inner_model = getattr(inner, 'model', inner)
+            _vl_inner_model.pack_image_features = _types.MethodType(
+                _safe_pack_image_features, _vl_inner_model
+            )
             return wrapped
 
         loader.__name__ = f"load_{_vl_model_id.replace('/', '_')}"
