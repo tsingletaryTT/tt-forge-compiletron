@@ -1305,12 +1305,21 @@ class RunScreen(Screen):
             with self.app.suspend():
                 subprocess.run(cmd, env=env, stdin=subprocess.DEVNULL)
             self._rally_in_progress = False
-            # Update state counters — do NOT call _on_chip_free/_dispatch_next/_on_all_done,
-            # which would flash the RunScreen grid and show the countdown before pushing
-            # WaveFinaleScreen.  Go straight to the finale instead.
+
+            # Absorb the RALLY result into RunState so SummaryScreen sees it.
+            _absorb_csv_row(self._run_state, chip_id, results_path, is_sq=False)
+
             for cid in mesh_chip_ids:
                 self._free_chips.add(cid)
                 self._done_count += 1
+
+            # If the main pool still has work, resume dispatching — RALLY may
+            # fire mid-run (e.g. --rerun-compiled), not just as the finale.
+            if self._model_pool:
+                self._dispatch_next()
+                return
+
+            # Pool exhausted: this was the finale. Go to WaveFinaleScreen.
             if not self._all_done:
                 self._all_done = True
                 self.app.push_screen(WaveFinaleScreen(
