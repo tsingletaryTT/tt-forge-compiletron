@@ -155,17 +155,22 @@
       "first_chip": 3,
       "run": 14,
       "best_time_s": 9.413544654846191,
-      "successes": 3,
+      "successes": 4,
       "source": "huggingface",
       "task": "nlp_text_cls",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "shape=(1, 2) dtype=torch.float32 range=[0.08, 0.58]",
+      "artifact": "shape=(1, 2) dtype=torch.float32 range=[0.17, 0.47]",
       "backend": "forge",
       "backends_succeeded": [
         "forge"
-      ]
+      ],
+      "best_compile_s": 10.315874576568604,
+      "best_infer_s": 1.5278618335723877,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 1.309,
+      "first_voice": ""
     },
     "allam/causal_lm/pytorch": {
       "first_compiled": "2026-05-11T18:27:23.602651+00:00",
@@ -206,30 +211,35 @@
       "first_chip": 0,
       "run": 16,
       "best_time_s": 27.08126211166382,
-      "successes": 3,
+      "successes": 4,
       "source": "huggingface",
       "task": "nlp_causal_lm",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "shape=(1, 32, 250880) dtype=torch.float32 range=[-11.48, 18.88]",
+      "artifact": "shape=(1, 32, 250880) dtype=torch.float32 range=[-14.02, 18.49]",
       "backend": "forge",
       "backends_succeeded": [
         "forge"
-      ]
+      ],
+      "best_compile_s": 29.28151559829712,
+      "best_infer_s": 13.184977769851685,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 2.427,
+      "first_voice": ""
     },
     "alexnet/pytorch": {
       "first_compiled": "2026-05-11T22:12:08.672757+00:00",
       "first_chip": 0,
       "run": 17,
       "best_time_s": 2.7909421920776367,
-      "successes": 24,
+      "successes": 25,
       "source": "torchvision",
       "task": "cv_image_cls",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "top-3: class_281 11.08, class_285 9.83, class_187 9.06",
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-4.25, 6.11]",
       "backend": "forge",
       "backends_succeeded": [
         "forge"
@@ -245,22 +255,22 @@
       "first_chip": 2,
       "run": 17,
       "best_time_s": 22.46720242500305,
-      "successes": 19,
+      "successes": 20,
       "source": "huggingface",
       "task": "cv_image_cls",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "top-3: class_21 5.90, class_22 5.25, class_23 5.04",
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-2.16, 5.91]",
       "backend": "forge",
       "backends_succeeded": [
         "forge"
       ],
       "first_voice": "top-3: class_812 2.44, class_51 2.11, class_488 1.97",
-      "best_compile_s": 40.04952621459961,
-      "best_infer_s": 14.017484903335571,
+      "best_compile_s": 23.959306001663208,
+      "best_infer_s": 8.288463354110718,
       "throughput_unit": "ms/sample",
-      "best_throughput": 14017.485
+      "best_throughput": 8288.463
     },
     "bge_1_5/embedding_generation/pytorch": {
       "first_compiled": "2026-05-11T22:29:16.734555+00:00",
@@ -335,35 +345,44 @@
       "first_chip": 2,
       "run": 47,
       "best_time_s": 11.52592945098877,
-      "successes": 2,
+      "successes": 3,
       "source": "tt-forge-models",
       "task": "image-classification",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "top-3: class_642 7.83, class_401 7.66, class_420 5.54",
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-2.41, 6.28]",
       "backend": "forge",
       "backends_succeeded": [
         "forge"
-      ]
+      ],
+      "best_compile_s": 14.08296537399292,
+      "best_infer_s": 27.14986228942871,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 27149.862,
+      "first_voice": ""
     },
     "densenet/pytorch": {
       "first_compiled": "2026-05-13T16:23:28.165779+00:00",
       "first_chip": 2,
       "run": 47,
       "best_time_s": 40.65670371055603,
-      "successes": 4,
+      "successes": 5,
       "source": "tt-forge-models",
       "task": "image-classification",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "top-3: class_281 13.65, class_285 11.66, class_282 11.58",
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-5.72, 13.65]",
       "backend": "forge",
       "backends_succeeded": [
         "forge"
       ],
-      "first_voice": "top-3: class_281 13.86, class_285 13.00, class_282 11.57"
+      "first_voice": "top-3: class_281 13.86, class_285 13.00, class_282 11.57",
+      "best_compile_s": 43.36659502983093,
+      "best_infer_s": 26.94740629196167,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 26947.406
     },
     "bloom/causal_lm/jax": {
       "first_compiled": "2026-05-13T16:52:05.685765+00:00",
@@ -393,13 +412,13 @@
       "first_chip": 3,
       "run": 51,
       "best_time_s": 10.482332468032837,
-      "successes": 6,
+      "successes": 7,
       "source": "tt-forge-models",
       "task": "image-classification",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "top-3: class_281 17.22, class_282 15.69, class_285 15.40",
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-6.88, 6.43]",
       "backend": "forge",
       "backends_succeeded": [
         "forge"
@@ -415,13 +434,13 @@
       "first_chip": 0,
       "run": 56,
       "best_time_s": 10.45112681388855,
-      "successes": 4,
+      "successes": 5,
       "source": "tt-forge-models",
       "task": "image-classification",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "top-3: class_282 1.74, class_281 -1.60, class_761 -4.70",
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-11.80, -2.46]",
       "backend": "forge",
       "backends_succeeded": [
         "forge"
@@ -437,13 +456,13 @@
       "first_chip": 0,
       "run": 56,
       "best_time_s": 20.11131525039673,
-      "successes": 12,
+      "successes": 13,
       "source": "tt-forge-models",
       "task": "image-classification",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "top-3: class_281 10.27, class_282 8.02, class_285 7.82",
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-2.42, 3.35]",
       "backend": "forge",
       "backends_succeeded": [
         "forge"
@@ -477,31 +496,35 @@
       "first_chip": 1,
       "run": 67,
       "best_time_s": 9.863290786743164,
-      "successes": 1,
+      "successes": 2,
       "source": "tt-forge-models",
       "task": "image-classification",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "top-3: class_281 6.20, class_282 5.27, class_285 4.77",
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-0.68, 0.96]",
       "first_voice": "top-3: class_850 4.76, class_568 4.66, class_523 4.63",
       "backend": "forge",
       "backends_succeeded": [
         "forge"
-      ]
+      ],
+      "best_compile_s": 10.028836965560913,
+      "best_infer_s": 0.5095748901367188,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 509.575
     },
     "efficientnet_lite/pytorch": {
       "first_compiled": "2026-05-13T22:24:26.673659+00:00",
       "first_chip": 1,
       "run": 67,
       "best_time_s": 11.869760036468506,
-      "successes": 3,
+      "successes": 4,
       "source": "tt-forge-models",
       "task": "image-classification",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "top-3: class_281 11.45, class_282 10.53, class_285 9.68",
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-3.39, 7.44]",
       "first_voice": "top-3: class_401 6.02, class_887 5.69, class_400 4.96",
       "backend": "forge",
       "backends_succeeded": [
@@ -538,20 +561,20 @@
       "first_compiled": "2026-05-20T14:57:19.447318+00:00",
       "first_chip": 2,
       "run": 73,
-      "best_time_s": 5.170739412307739,
-      "successes": 1,
+      "best_time_s": 2.545340061187744,
+      "successes": 2,
       "source": "custom",
       "task": "cv_img_to_img",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "shape=(1, 784) dtype=torch.float32 range=[-0.21, 0.18]",
+      "artifact": "shape=(1, 784) dtype=torch.float32 range=[-0.17, 0.17]",
       "first_voice": "",
       "backend": "forge",
       "backends_succeeded": [
         "forge"
       ],
-      "best_compile_s": 5.078556060791016,
+      "best_compile_s": 2.451343059539795,
       "best_infer_s": 0.09218335151672363,
       "throughput_unit": "ms/sample",
       "best_throughput": 92.183
@@ -694,7 +717,7 @@
       "first_chip": 3,
       "run": 73,
       "best_time_s": 39.88489246368408,
-      "successes": 1,
+      "successes": 2,
       "source": "torchvision",
       "task": "cv_image_cls",
       "rarity": "familiar",
@@ -707,9 +730,9 @@
         "forge"
       ],
       "best_compile_s": 39.8849,
-      "best_infer_s": 77.2177,
+      "best_infer_s": 55.57783770561218,
       "throughput_unit": "ms/sample",
-      "best_throughput": 77217.738
+      "best_throughput": 55577.838
     },
     "gemma/codegemma/pytorch": {
       "first_compiled": "2026-05-20T16:39:47.076527+00:00",
@@ -737,45 +760,45 @@
       "first_compiled": "2026-05-20T16:40:19.599465+00:00",
       "first_chip": 0,
       "run": 77,
-      "best_time_s": 17.12840437889099,
-      "successes": 1,
+      "best_time_s": 15.52092719078064,
+      "successes": 2,
       "source": "huggingface",
       "task": "nlp_text_cls",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "shape=(1, 2) dtype=torch.float32 range=[-1.88, 0.52]",
+      "artifact": "shape=(1, 2) dtype=torch.float32 range=[-1.80, 2.50]",
       "first_voice": "",
       "backend": "forge",
       "backends_succeeded": [
         "forge"
       ],
       "best_compile_s": 9.698171854019165,
-      "best_infer_s": 7.430232524871826,
+      "best_infer_s": 3.502661943435669,
       "throughput_unit": "tokens/sec",
-      "best_throughput": 0.269
+      "best_throughput": 0.571
     },
     "hrnet/pytorch": {
       "first_compiled": "2026-05-20T16:41:03.079209+00:00",
       "first_chip": 0,
       "run": 77,
-      "best_time_s": 37.893696784973145,
-      "successes": 1,
+      "best_time_s": 36.78894925117493,
+      "successes": 2,
       "source": "timm",
       "task": "cv_keypoint_det",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-5.74, 9.16]",
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-4.45, 6.18]",
       "first_voice": "",
       "backend": "forge",
       "backends_succeeded": [
         "forge"
       ],
       "best_compile_s": 15.08296537399292,
-      "best_infer_s": 22.810731410980225,
+      "best_infer_s": 17.71310591697693,
       "throughput_unit": "ms/sample",
-      "best_throughput": 22810.731
+      "best_throughput": 17713.106
     },
     "beit/image_classification/jax": {
       "first_compiled": "2026-05-20T16:43:01.746404+00:00",
@@ -1149,37 +1172,37 @@
       "first_compiled": "2026-05-26T15:27:02.147445+00:00",
       "first_chip": 2,
       "run": 102,
-      "best_time_s": 55.69839429855347,
-      "successes": 1,
+      "best_time_s": 54.61356449127197,
+      "successes": 2,
       "source": "huggingface",
       "task": "nlp_causal_lm",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "shape=(1, 32, 51200) dtype=torch.float32 range=[-13.90, 14.00]",
+      "artifact": "shape=(1, 32, 51200) dtype=torch.float32 range=[-13.64, 18.20]",
       "first_voice": "",
       "backend": "forge",
       "backends_succeeded": [
         "forge"
       ],
       "mesh_chips": 1,
-      "best_compile_s": 48.00340008735657,
-      "best_infer_s": 7.694994211196899,
+      "best_compile_s": 47.62862229347229,
+      "best_infer_s": 6.984942197799683,
       "throughput_unit": "tokens/sec",
-      "best_throughput": 4.159
+      "best_throughput": 4.581
     },
     "llama_lora/causal_lm/pytorch": {
       "first_compiled": "2026-05-26T17:09:58.471050+00:00",
       "first_chip": 2,
       "run": 103,
       "best_time_s": 35.76659083366394,
-      "successes": 1,
+      "successes": 2,
       "source": "huggingface",
       "task": "nlp_causal_lm",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "shape=(1, 32, 128256) dtype=torch.float32 range=[-17.48, 22.31]",
+      "artifact": "shape=(1, 32, 128256) dtype=torch.float32 range=[-12.13, 14.70]",
       "first_voice": "",
       "backend": "forge",
       "backends_succeeded": [
@@ -1219,7 +1242,7 @@
       "first_chip": 2,
       "run": 103,
       "best_time_s": 6.8636133670806885,
-      "successes": 1,
+      "successes": 2,
       "source": "osmr",
       "task": "cv_image_cls",
       "rarity": "familiar",
@@ -1242,20 +1265,20 @@
       "first_chip": 0,
       "run": 103,
       "best_time_s": 26.76539182662964,
-      "successes": 1,
+      "successes": 2,
       "source": "custom",
       "task": "cv_object_det",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "shape=(1, 1029, 85) dtype=torch.float32 range=[0.00, 232.38]",
+      "artifact": "shape=(1, 1029, 85) dtype=torch.float32 range=[0.00, 234.25]",
       "first_voice": "",
       "backend": "forge",
       "backends_succeeded": [
         "forge"
       ],
       "mesh_chips": 1,
-      "best_compile_s": 26.201830625534058,
+      "best_compile_s": 26.07303500175476,
       "best_infer_s": 0.563561201095581,
       "throughput_unit": "ms/sample",
       "best_throughput": 563.561
@@ -1288,13 +1311,13 @@
       "first_chip": 2,
       "run": 102,
       "best_time_s": 63.262,
-      "successes": 2,
+      "successes": 3,
       "source": "huggingface",
       "task": "nlp_token_cls",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "",
+      "artifact": "shape=(1, 19, 2) dtype=torch.float32 range=[-0.96, 2.00]",
       "first_voice": "",
       "backend": "forge",
       "backends_succeeded": [
@@ -1311,13 +1334,13 @@
       "first_chip": 2,
       "run": 102,
       "best_time_s": 40.5,
-      "successes": 2,
+      "successes": 3,
       "source": "huggingface",
       "task": "nlp_causal_lm",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "",
+      "artifact": "shape=(1, 32, 151936) dtype=torch.float32 range=[-14.84, 19.08]",
       "first_voice": "",
       "backend": "forge",
       "backends_succeeded": [
@@ -1357,13 +1380,13 @@
       "first_chip": 2,
       "run": 102,
       "best_time_s": 52.997,
-      "successes": 2,
+      "successes": 3,
       "source": "huggingface",
       "task": "nlp_embed_gen",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "",
+      "artifact": "shape=(1, 32, 1024) dtype=torch.float32 range=[-26.21, 37.49]",
       "first_voice": "",
       "backend": "forge",
       "backends_succeeded": [
@@ -1403,13 +1426,13 @@
       "first_chip": 2,
       "run": 102,
       "best_time_s": 11.002,
-      "successes": 2,
+      "successes": 3,
       "source": "huggingface",
       "task": "nlp_text_cls",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "",
+      "artifact": "shape=(1, 3) dtype=torch.float32 range=[-2.95, 3.13]",
       "first_voice": "",
       "backend": "forge",
       "backends_succeeded": [
@@ -1449,13 +1472,13 @@
       "first_chip": 1,
       "run": 102,
       "best_time_s": 25.269,
-      "successes": 2,
+      "successes": 3,
       "source": "huggingface",
       "task": "mm_tts",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "",
+      "artifact": "shape=(1, 2, 80) dtype=torch.float32 range=[-4.07, -2.52]",
       "first_voice": "",
       "backend": "forge",
       "backends_succeeded": [
@@ -1495,13 +1518,13 @@
       "first_chip": 2,
       "run": 102,
       "best_time_s": 69.606,
-      "successes": 2,
+      "successes": 3,
       "source": "huggingface",
       "task": "nlp_causal_lm",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "",
+      "artifact": "shape=(1, 513, 32128) dtype=torch.float32 range=[-40.99, -2.32]",
       "first_voice": "",
       "backend": "forge",
       "backends_succeeded": [
@@ -1541,13 +1564,13 @@
       "first_chip": 1,
       "run": 102,
       "best_time_s": 10.989,
-      "successes": 2,
+      "successes": 3,
       "source": "torch_hub",
       "task": "cv_image_cls",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "",
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-4.26, 7.23]",
       "first_voice": "",
       "backend": "forge",
       "backends_succeeded": [
@@ -1581,6 +1604,52 @@
       "best_infer_s": 8.483,
       "throughput_unit": "tokens/sec",
       "best_throughput": 3.772
+    },
+    "ahammad115566/smeft-qwen-7b": {
+      "first_compiled": "2026-05-26T20:03:04.778308+00:00",
+      "first_chip": 0,
+      "run": 105,
+      "best_time_s": 65.65539073944092,
+      "successes": 2,
+      "source": "huggingface",
+      "task": "text-generation",
+      "rarity": "common",
+      "hf_downloads": 139,
+      "hf_created_at": "2026-05-25T21:42:55+00:00",
+      "artifact": "shape=(1, 32, 152064) dtype=torch.float32 range=[-17.42, 14.90]",
+      "first_voice": "\u2192 | (2%) | d\u0131 (2%)",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 4,
+      "best_compile_s": 60.937663555145264,
+      "best_infer_s": 4.717727184295654,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 6.783
+    },
+    "SpiceeChat/Bio2Tags-Lite": {
+      "first_compiled": "2026-05-26T20:15:38.568612+00:00",
+      "first_chip": 2,
+      "run": 106,
+      "best_time_s": 62.140515089035034,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "text-generation",
+      "rarity": "common",
+      "hf_downloads": 69,
+      "hf_created_at": "2026-05-25T18:12:37+00:00",
+      "artifact": "shape=(1, 32, 49152) dtype=torch.float32 range=[-23.61, 24.22]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 55.40218782424927,
+      "best_infer_s": 6.738327264785767,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 4.749
     }
   },
   "failed": {
@@ -2745,9 +2814,9 @@
     },
     "sam/pytorch": {
       "run_first_failed": 95,
-      "attempts": 2,
-      "last_error": "cannot import name 'BucketNotFoundError' from 'huggingface_hub.errors' (/opt/ttforge-toolchain/venv/lib/python3.12/site-packages/huggingface_hub/errors.py)",
-      "error_category": "other"
+      "attempts": 3,
+      "last_error": "ModuleNotFoundError: No module named 'transformers.utils.output_capturing'",
+      "error_category": "missing_dependency"
     },
     "siglip/image_text_similarity/pytorch": {
       "run_first_failed": 95,
@@ -2955,8 +3024,8 @@
     },
     "stable_diffusion_unet/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
-      "last_error": "Failed to import diffusers.models.unets.unet_2d_condition because of the following error (look up to see its traceback):\nFailed to import diffusers.loaders.peft because of the following error (look up to see its traceback):\ncannot import name 'BucketNotFoundError' from 'huggingface_hub.errors' (/opt/ttforge-toolchain/venv/lib/python3.12/site-packages/huggingface_hub/errors.py)",
+      "attempts": 2,
+      "last_error": "TypeError: UNet2DConditionModel.forward() missing 1 required positional argument: 'encoder_hidden_states'",
       "error_category": "other"
     },
     "t5/causal_lm/onnx": {
@@ -2985,9 +3054,9 @@
     },
     "ssd512/object_detection/pytorch": {
       "run_first_failed": 96,
-      "attempts": 1,
-      "last_error": "numpy.core.multiarray failed to import",
-      "error_category": "other"
+      "attempts": 2,
+      "last_error": "ValueError: IRD_LF_CACHE environment variable is not set. Please set it to the address of the IRD LF cache.",
+      "error_category": "missing_dependency"
     },
     "stereo/pytorch": {
       "run_first_failed": 96,
@@ -3315,13 +3384,13 @@
     },
     "mgp_str_base/image_classification/onnx": {
       "run_first_failed": 100,
-      "attempts": 2,
+      "attempts": 3,
       "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
       "error_category": "other"
     },
     "mlp_mixer/image_classification/onnx": {
       "run_first_failed": 100,
-      "attempts": 2,
+      "attempts": 3,
       "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
       "error_category": "other"
     },
@@ -3381,31 +3450,31 @@
     },
     "detr/object_detection/onnx": {
       "run_first_failed": 102,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
       "error_category": "other"
     },
     "dla/image_classification/onnx": {
       "run_first_failed": 102,
-      "attempts": 2,
+      "attempts": 3,
       "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
       "error_category": "other"
     },
     "ghostnet/image_classification/onnx": {
       "run_first_failed": 102,
-      "attempts": 2,
+      "attempts": 3,
       "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
       "error_category": "other"
     },
     "glpn_kitti/image_classification/onnx": {
       "run_first_failed": 102,
-      "attempts": 2,
+      "attempts": 3,
       "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
       "error_category": "other"
     },
     "hidream_i1/pytorch": {
       "run_first_failed": 102,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "ImportError: cannot import name 'HiDreamImageTransformer2DModel' from 'diffusers' (/home/ttuser/.tenstorrent-venv/lib/python3.12/site-packages/diffusers/__init__.py)",
       "error_category": "other"
     },
@@ -3423,7 +3492,7 @@
     },
     "mnist/image_classification/onnx": {
       "run_first_failed": 102,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "InvalidGraph: [ONNXRuntimeError] : 10 : INVALID_GRAPH : This is an invalid model. Type Error: Type 'tensor(bfloat16)' of input parameter (input) of operator (Conv) in node (/conv1/Conv) is invalid.",
       "error_category": "other"
     },
@@ -3441,7 +3510,7 @@
     },
     "segformer/semantic_segmentation/onnx": {
       "run_first_failed": 102,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
       "error_category": "other"
     },
@@ -3459,13 +3528,13 @@
     },
     "stable_diffusion_xl/text_to_image/onnx": {
       "run_first_failed": 102,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "ValueError: This protobuf of onnx model is too large (>2GB). Call check_model with model path instead.",
       "error_category": "other"
     },
     "detr/segmentation/onnx": {
       "run_first_failed": 103,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
       "error_category": "other"
     },
@@ -3492,26 +3561,128 @@
       "attempts": 1,
       "last_error": "ValueError: IRD_LF_CACHE environment variable is not set. Please set it to the address of the IRD LF cache.",
       "error_category": "missing_dependency"
+    },
+    "Felldude/Ministral-3-3B-Uncensored-FP8": {
+      "run_first_failed": 106,
+      "attempts": 1,
+      "last_error": "KeyError: 'ministral3'",
+      "error_category": "other"
+    },
+    "SoufianeMS/ynov-llama3-chatbot": {
+      "run_first_failed": 106,
+      "attempts": 1,
+      "last_error": "PackageNotFoundError: No package metadata was found for bitsandbytes",
+      "error_category": "quantized_format"
+    },
+    "alexnet/image_classification/onnx": {
+      "run_first_failed": 106,
+      "attempts": 1,
+      "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
+      "error_category": "other"
+    },
+    "deit/image_classification/onnx": {
+      "run_first_failed": 106,
+      "attempts": 1,
+      "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
+      "error_category": "other"
+    },
+    "efficientnet/image_classification/onnx": {
+      "run_first_failed": 106,
+      "attempts": 1,
+      "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
+      "error_category": "other"
+    },
+    "glpn_kitti/depth_estimation/onnx": {
+      "run_first_failed": 106,
+      "attempts": 1,
+      "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
+      "error_category": "other"
+    },
+    "omnigen/pytorch": {
+      "run_first_failed": 106,
+      "attempts": 1,
+      "last_error": "ImportError: cannot import name 'OmniGenTransformer2DModel' from 'diffusers' (/home/ttuser/.tenstorrent-venv/lib/python3.12/site-packages/diffusers/__init__.py)",
+      "error_category": "other"
+    },
+    "qwen_3_5/causal_lm/pytorch": {
+      "run_first_failed": 106,
+      "attempts": 1,
+      "last_error": "ValueError: The checkpoint you are trying to load has model type `qwen3_5` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.\n\nYou can update Transformers with the command `pip install --upgrade tr",
+      "error_category": "unsupported_arch"
+    },
+    "regnet/image_classification/onnx": {
+      "run_first_failed": 106,
+      "attempts": 1,
+      "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
+      "error_category": "other"
+    },
+    "resnext/image_classification/onnx": {
+      "run_first_failed": 106,
+      "attempts": 1,
+      "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
+      "error_category": "other"
+    },
+    "sana/pytorch": {
+      "run_first_failed": 106,
+      "attempts": 1,
+      "last_error": "TypeError: Unsupported shape type in unflatten: <class 'tvm.relay.expr.Call'> with value floor_divide(32 /* span=C.graph: aten::size, jit._trace.TopLevelTracedModule: diffusers.models.transformers.sana_transformer.SanaTransformer2DModel:::0:0 */, 1 /* span=C.graph: aten::floor_divide, jit._trace.TopLevelTraced",
+      "error_category": "other"
+    },
+    "sdxl_lightning/pytorch": {
+      "run_first_failed": 106,
+      "attempts": 1,
+      "last_error": "IndexError: tuple index out of range",
+      "error_category": "shape_mismatch"
+    },
+    "ssd300_vgg16/object_detection/onnx": {
+      "run_first_failed": 106,
+      "attempts": 1,
+      "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
+      "error_category": "other"
+    },
+    "ssdlite320_mobilenetv3/object_detection/onnx": {
+      "run_first_failed": 106,
+      "attempts": 1,
+      "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
+      "error_category": "other"
+    },
+    "swin/image_classification/onnx": {
+      "run_first_failed": 106,
+      "attempts": 1,
+      "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
+      "error_category": "other"
+    },
+    "vilt/question_answering/onnx": {
+      "run_first_failed": 106,
+      "attempts": 1,
+      "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
+      "error_category": "other"
+    },
+    "z_image/pytorch": {
+      "run_first_failed": 106,
+      "attempts": 1,
+      "last_error": "ImportError: cannot import name 'ZImageTransformer2DModel' from 'diffusers' (/home/ttuser/.tenstorrent-venv/lib/python3.12/site-packages/diffusers/__init__.py)",
+      "error_category": "other"
     }
   },
   "chip_totals": {
     "0": {
-      "pts": 18387,
-      "first_evers": 24,
+      "pts": 22192,
+      "first_evers": 25,
       "best_streak": 4
     },
     "2": {
-      "pts": 13950,
+      "pts": 14570,
       "first_evers": 21,
-      "best_streak": 1
+      "best_streak": 2
     },
     "3": {
-      "pts": 3100,
+      "pts": 3225,
       "first_evers": 8,
-      "best_streak": 1
+      "best_streak": 4
     },
     "1": {
-      "pts": 6290,
+      "pts": 6600,
       "first_evers": 6,
       "best_streak": 2
     }
