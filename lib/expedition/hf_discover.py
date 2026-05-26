@@ -52,6 +52,7 @@ _TAG_TO_AUTO = {
     "image-to-text":                ("AutoModelForVision2Seq",            "image"),
     "visual-question-answering":    ("AutoModelForVision2Seq",            "image"),
     "image-captioning":             ("AutoModelForVision2Seq",            "image"),
+    "image-text-to-text":           ("AutoModelForVision2Seq",            "image"),
 }
 
 # Substrings that hint at large Mixture-of-Experts architectures — these
