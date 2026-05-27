@@ -53,3 +53,15 @@ with the XLA worker's `_do_init=False` patch.
 
 ## Stale /dev/shm segments
 After a crashed run: `find /dev/shm -name 'sm_segment.tt-quietbox.*.0' -delete` before re-running.
+
+## Harness Hardening — Env-Fix (2026-05-27)
+
+**Goal:** Stop the harness from being the failure reason. ~60 models were in permafail for env/infra reasons.
+
+**What was fixed:**
+1. **Dataset pre-warm** — `_warm_hf_datasets()` runs at expedition startup, repairs the `huggingface/cats-image` blob symlink, clears 23 stale ONNX entries.
+2. **Env fingerprint + auto-reset** — `record_failure()` stores torch/transformers/hub versions; `clear_stale_env_failures()` auto-removes version-mismatch entries when env is upgraded.
+3. **wrong_backend** removed from `_RUNTIME_PERM_FAIL_CATS` — 21 JAX models retry via XLA instead of staying locked out permanently.
+4. **IRD_LF_CACHE pre-flight** — `_IRD_DEPENDENT_PREFIXES` frozenset lets 13 seed models fail fast (< 1s) instead of downloading weights then crashing.
+
+**Key files:** `lib/expedition/bestiary.py`, `lib/expedition/expedition_worker.py`, `tests/test_bestiary_envfix.py`
