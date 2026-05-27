@@ -427,6 +427,20 @@ class Bestiary:
         # Always recompute so the category stays in sync if the error changes.
         entry["error_category"] = _classify_error(error)[0]
 
+    def clear_entries_matching(self, *, error_contains: str) -> list[str]:
+        """Remove all failed entries whose last_error contains error_contains.
+
+        Returns the list of model_ids that were removed, so callers can log
+        what was cleared.  Does not call save() — caller must persist.
+        """
+        to_remove = [
+            mid for mid, entry in self._data["failed"].items()
+            if error_contains in entry.get("last_error", "")
+        ]
+        for mid in to_remove:
+            del self._data["failed"][mid]
+        return to_remove
+
     def failure_stats(self) -> list[dict]:
         """Aggregate all-time failures by error category, sorted by count desc.
 
