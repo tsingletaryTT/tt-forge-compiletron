@@ -113,3 +113,9 @@ def test_clear_stale_env_failures_does_not_clear_non_version_other(tmp_path):
     cleared = b.clear_stale_env_failures(new_fp)
     assert cleared == []
     assert "model/dim_err" in b.failed
+
+
+def test_warm_hf_datasets_is_importable():
+    """_warm_hf_datasets must be importable without running forge or hardware."""
+    from lib.expedition.expedition_worker import _warm_hf_datasets
+    assert callable(_warm_hf_datasets)

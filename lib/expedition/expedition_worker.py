@@ -656,6 +656,35 @@ _CUSTOM_DEP_MAP: dict[str, str] = {
 }
 
 
+def _warm_hf_datasets(bestiary: "Bestiary") -> None:
+    """Ensure the huggingface/cats-image dataset blob is present in the local cache.
+
+    Many ONNX loaders in tt-forge-models call load_dataset("huggingface/cats-image")
+    and directly access the image blob.  The HF hub may have the parquet index cached
+    but the image blob missing, causing FileNotFoundError mid-compile.  One access of
+    ds[0]["image"] populates the blob; force_redownload recovers a broken cache.
+
+    Also auto-clears any bestiary entries that failed with the cats_image.jpeg error,
+    since those models are sound forge candidates now that the cache is repaired.
+    """
+    try:
+        from datasets import load_dataset
+        try:
+            ds = load_dataset("huggingface/cats-image", split="test")
+            _ = ds[0]["image"]  # triggers blob download if missing
+        except FileNotFoundError:
+            ds = load_dataset("huggingface/cats-image", split="test",
+                              download_mode="force_redownload")
+            _ = ds[0]["image"]
+        cleared = bestiary.clear_entries_matching(error_contains="cats_image.jpeg")
+        if cleared:
+            print(f"  {GREEN}✓ dataset warm-up cleared {len(cleared)} stale cats-image entries{RESET}")
+            bestiary.save()
+    except Exception as exc:
+        # Fail open — a missing dataset must never block the expedition.
+        print(f"  {YELLOW}⚠ dataset warm-up skipped: {exc}{RESET}")
+
+
 def _preflight_arch_check(item: "QueueItem") -> tuple[bool, str]:
     """Fetch config.json only and detect unsupported architectures before any weight download.
 
@@ -1550,6 +1579,19 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
     print(f"\n{BOLD}{CYAN}{'═'*80}{RESET}")
     print(f"{BOLD}{CYAN}  EXPEDITION CHIP {chip_id}  ·  {len(queue)} models queued  ·  run #{run_number:03d}{RESET}")
     print(f"{BOLD}{CYAN}{'═'*80}{RESET}\n")
+
+    # ── Startup pre-flight: dataset cache warmup + stale env entry cleanup ──
+    # Warm the cats-image dataset blob before any model dispatch so ONNX loaders
+    # that call load_dataset("huggingface/cats-image") don't hit FileNotFoundError.
+    # Also auto-clear bestiary entries that failed for version-mismatch reasons
+    # when the current env is newer than the env recorded at failure time.
+    from lib.expedition.bestiary import _current_env_fingerprint
+    _env_fp = _current_env_fingerprint()
+    _warm_hf_datasets(bestiary)
+    _stale_cleared = bestiary.clear_stale_env_failures(_env_fp)
+    if _stale_cleared:
+        print(f"  {GREEN}✓ env upgrade cleared {len(_stale_cleared)} stale failure entries{RESET}")
+        bestiary.save()
 
     results: list[dict] = []
     # Snapshot cache before any downloads so we only evict what this run fetched.
