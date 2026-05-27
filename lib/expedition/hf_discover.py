@@ -611,6 +611,130 @@ def build_dynamic_loader(model: FrontierModel) -> Optional[Callable]:
     #    wrapper closure so it's a real Python value during forge tracing.
     # 3. _load_inputs uses the chat template so image placeholder tokens appear
     #    in input_ids; without them forward() raises "image tokens do not match".
+
+    # image-to-text models (GIT, BLIP-2, etc.) concatenate visual and text tokens
+    # directly in the transformer — no masked_scatter, no image_sizes.
+    # The wrapper just maps positional (input_ids, pixel_values) to kwargs.
+    if tag == "image-to-text":
+        _it_model_id = model_id
+        _it_cache: dict = {}
+        _it_original_loader = loader
+
+        def loader():
+            import torch
+            import torch.nn as _nn
+            import transformers
+            from PIL import Image as _Image
+            import numpy as _np
+
+            inner = _it_original_loader()
+
+            proc = transformers.AutoProcessor.from_pretrained(
+                _it_model_id, trust_remote_code=True
+            )
+            pil_img = _Image.fromarray(
+                (_np.ones((224, 224, 3)) * 255).astype(_np.uint8)
+            )
+            # text="" is valid for image captioning models; they generate from image alone
+            try:
+                inputs = proc(images=pil_img, text="a photo of", return_tensors="pt")
+            except TypeError:
+                inputs = proc(images=pil_img, return_tensors="pt")
+                inputs["input_ids"] = torch.zeros(1, 1, dtype=torch.long)
+
+            _it_cache["input_ids"]    = inputs.get(
+                "input_ids", torch.zeros(1, 1, dtype=torch.long)
+            )
+            _it_cache["pixel_values"] = inputs["pixel_values"]
+
+            class _ITForgeWrapper(_nn.Module):
+                """Wraps an image-to-text model for forge compilation.
+
+                Accepts (input_ids, pixel_values) positionally so forge can
+                trace with concrete sample tensors.  Strips non-tensor outputs
+                (past_key_values, hidden_states) from the result.
+                """
+                def __init__(self, model):
+                    super().__init__()
+                    self.model = model
+
+                def forward(self, input_ids, pixel_values):
+                    out = self.model(
+                        input_ids=input_ids,
+                        pixel_values=pixel_values,
+                        use_cache=False,
+                    )
+                    if isinstance(out, (tuple, list)):
+                        tensors = [o for o in out if isinstance(o, torch.Tensor)]
+                        return tensors[0] if len(tensors) == 1 else tuple(tensors)
+                    return out
+
+            wrapped = _ITForgeWrapper(inner)
+            wrapped.config = inner.config
+
+            # GitModel.create_attention_mask calls torch.full(..., fill_value=False)
+            # which JIT tracing rejects — aten::full has no registration for bool
+            # fill_value.  Patch it to pre-compute the mask with torch.zeros so
+            # the call never reaches aten::full with a bool argument.
+            _git_model = getattr(inner, 'git', None) or getattr(inner, 'model', None)
+            if _git_model is not None and hasattr(_git_model, 'create_attention_mask'):
+                import types as _types_it
+                _orig_cam = _git_model.create_attention_mask
+
+                def _patched_create_attention_mask(
+                    tgt, memory, tgt_mask, past_key_values_length,
+                    memory_key_padding_mask=None,
+                ):
+                    # Replace the torch.full(size, fill_value=False) call that JIT
+                    # can't trace by computing a zero-filled bool mask up front.
+                    if memory_key_padding_mask is None:
+                        memory_key_padding_mask = torch.zeros(
+                            (memory.shape[0], memory.shape[1]),
+                            dtype=torch.bool,
+                            device=memory.device,
+                        )
+                    return _orig_cam(
+                        tgt, memory, tgt_mask, past_key_values_length,
+                        memory_key_padding_mask,
+                    )
+
+                _git_model.create_attention_mask = _patched_create_attention_mask
+
+            return wrapped
+
+        loader.__name__ = f"load_{_it_model_id.replace('/', '_')}"
+        loader._input_type = "image"
+        loader._model_id   = _it_model_id
+
+        def _load_inputs_it():
+            if _it_cache:
+                return {
+                    "input_ids":    _it_cache["input_ids"],
+                    "pixel_values": _it_cache["pixel_values"],
+                }
+            import transformers
+            from PIL import Image as _Image
+            import numpy as _np
+            import torch as _torch
+
+            proc = transformers.AutoProcessor.from_pretrained(
+                _it_model_id, trust_remote_code=True
+            )
+            pil_img = _Image.fromarray(
+                (_np.ones((224, 224, 3)) * 255).astype(_np.uint8)
+            )
+            try:
+                inputs = proc(images=pil_img, text="a photo of", return_tensors="pt")
+            except TypeError:
+                inputs = proc(images=pil_img, return_tensors="pt")
+                inputs["input_ids"] = _torch.zeros(1, 1, dtype=_torch.long)
+            return {
+                "input_ids":    inputs.get("input_ids", _torch.zeros(1, 1, dtype=_torch.long)),
+                "pixel_values": inputs["pixel_values"],
+            }
+
+        loader._load_inputs = _load_inputs_it
+
     if tag == "image-text-to-text":
         _vl_model_id = model_id   # capture for closures below
         _vl_cache: dict = {}      # shared between loader() and _load_inputs_vl()

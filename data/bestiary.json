@@ -3666,9 +3666,9 @@
     },
     "llava-hf/llava-onevision-qwen2-0.5b-ov-hf": {
       "run_first_failed": 114,
-      "attempts": 2,
-      "last_error": "NotImplementedError: The following operators are not implemented: ['aten::_convolution_mode']",
-      "error_category": "forge_missing_op"
+      "attempts": 3,
+      "last_error": "ValueError: Unrecognized configuration class <class 'transformers.models.llava_onevision.configuration_llava_onevision.LlavaOnevisionConfig'> for this kind of AutoModel: FlaxAutoModelForCausalLM.\nModel type should be one of BartConfig, BertConfig, BigBirdConfig, BloomConfig, ElectraConfig, GemmaConfig, GPT2Conf",
+      "error_category": "other"
     },
     "llava-hf/llava-v1.6-mistral-7b-hf": {
       "error_category": "forge_internal",

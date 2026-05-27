@@ -50,6 +50,24 @@ warnings.filterwarnings("ignore")
 # the PyTorch-only compilation pipeline used here.
 os.environ["FORGE_PYTORCH_ONLY"] = "1"
 
+# cv2 (OpenCV) is compiled against NumPy 1.x in some toolchain venvs.  When
+# the host Python has NumPy 2.x, cv2's C extension fails during import with
+# "AttributeError: _ARRAY_API not found" — a partial-init crash that corrupts
+# global C-level state (numpy's C API vtable).  The corruption later triggers
+# a SIGSEGV inside forge's TVM C++ optimizer.  Stubbing cv2 before any
+# transformers import fires prevents the partial init.
+import sys as _sys_guard
+if "cv2" not in _sys_guard.modules:
+    import types as _types_guard, importlib.util as _ilu
+    _cv2_stub = _types_guard.ModuleType("cv2")
+    _cv2_stub.__version__ = "0.0.0-stub"
+    # Python 3.12 validates __spec__ is not None when the module is retrieved
+    # from sys.modules via import. Provide a minimal spec so the import succeeds.
+    _cv2_stub.__spec__ = _ilu.spec_from_loader("cv2", loader=None)
+    _sys_guard.modules["cv2"] = _cv2_stub
+    del _types_guard, _ilu, _cv2_stub
+del _sys_guard
+
 # forge._C (the PyTorch extension) must be loaded BEFORE TensorFlow or any
 # other GPU library, because TF's global C++ constructors allocate GPU memory
 # that interferes with TT Metal's device init when they share the same process.
