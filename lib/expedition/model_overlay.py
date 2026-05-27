@@ -6,7 +6,9 @@ packages via --system-site-packages. Installs go into the overlay only. The over
 is destroyed after the model finishes (success or fail). The base env is never touched.
 """
 from __future__ import annotations
-import shutil, venv
+import hashlib
+import shutil
+import subprocess as _sp
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -35,19 +37,39 @@ def create_overlay(
         ModelOverlay with path and python interpreter ready to use.
     """
     import tempfile
-    safe_name = model_id.replace("/", "_")
+    # 8-char sha1 suffix prevents collision when model_id values differ only by
+    # separator (e.g. "org/model-name" vs "org_model-name" both become the same
+    # slug without the hash).
+    safe_name = (
+        model_id.replace("/", "_").replace(" ", "-")
+        + "_"
+        + hashlib.sha1(model_id.encode()).hexdigest()[:8]
+    )
     if overlay_root is None:
         overlay_root = Path(tempfile.gettempdir())
     overlay_path = overlay_root / f"compiletron-overlay-{safe_name}"
     # Remove any stale overlay from a previous crashed run.
     if overlay_path.exists():
         shutil.rmtree(overlay_path, ignore_errors=True)
-    venv.create(
-        str(overlay_path),
-        system_site_packages=True,
-        symlinks=True,
-        with_pip=False,
-    )
+    # Root the new venv to base_venv's interpreter so it inherits exactly the
+    # forge/XLA packages.  Using subprocess avoids venv.create() which always
+    # roots to the *currently running* Python, ignoring base_venv entirely.
+    try:
+        _sp.run(
+            [
+                str(base_venv / "bin" / "python3"),
+                "-m", "venv",
+                str(overlay_path),
+                "--system-site-packages",
+                "--symlinks",
+            ],
+            check=True,
+            capture_output=True,
+        )
+    except Exception:
+        # Clean up any partial directory so the next attempt starts fresh.
+        shutil.rmtree(overlay_path, ignore_errors=True)
+        raise
     python = overlay_path / "bin" / "python3"
     return ModelOverlay(path=overlay_path, python=python, base_venv=base_venv)
 

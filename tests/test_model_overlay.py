@@ -22,8 +22,11 @@ def test_create_overlay_uses_tmp_by_default():
     if not base.exists():
         pytest.skip("forge base venv not present")
     overlay = create_overlay("gliner/pytorch", base_venv=base)
-    assert str(overlay.path).startswith("/tmp/")
-    destroy_overlay(overlay)
+    try:
+        assert str(overlay.path).startswith("/tmp/")
+    finally:
+        # Ensure the overlay is cleaned up even if the assertion above fails.
+        destroy_overlay(overlay)
 
 
 def test_destroy_overlay_is_idempotent(tmp_path):
