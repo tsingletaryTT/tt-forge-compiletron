@@ -691,15 +691,20 @@ def _warm_hf_datasets(bestiary: "Bestiary") -> None:
 #   ValueError: IRD_LF_CACHE environment variable is not set
 # Fail fast before any download attempt when IRD_LF_CACHE is absent.
 _IRD_DEPENDENT_PREFIXES: frozenset[str] = frozenset({
+    "arnold",
+    "bevdepth",
     "bevformer",
     "centernet",
+    "detr3d",
+    "fuyu",
     "maptr",
     "monodepth2",
     "mplug_owl2",
     "petr",
     "ssd512",
     "ultra_fast_lane_detection_v2",
-    "whisper",     # audio_classification/onnx variant uses IRD cache
+    # whisper: only audio_classification/onnx variant needs IRD, not pytorch/jax —
+    # prefix-based guard would falsely block valid variants, so exclude it here.
     "yolov3",
     "yolov4",
 })

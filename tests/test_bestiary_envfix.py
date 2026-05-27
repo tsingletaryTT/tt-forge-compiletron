@@ -137,3 +137,44 @@ def test_ird_preflight_symbols_exist():
     assert "bevformer" in _IRD_DEPENDENT_PREFIXES
     assert "centernet" in _IRD_DEPENDENT_PREFIXES
     assert "yolov3" in _IRD_DEPENDENT_PREFIXES
+    # All four spec-listed prefixes that were initially missing must be present.
+    assert "bevdepth" in _IRD_DEPENDENT_PREFIXES
+    assert "detr3d" in _IRD_DEPENDENT_PREFIXES
+    assert "arnold" in _IRD_DEPENDENT_PREFIXES
+    assert "fuyu" in _IRD_DEPENDENT_PREFIXES
+
+
+def test_ird_preflight_guard_fires_without_env(monkeypatch):
+    """Guard returns (True, error) for IRD model when IRD_LF_CACHE is unset."""
+    import os
+    from unittest.mock import MagicMock
+    from lib.expedition.expedition_worker import _preflight_arch_check
+
+    monkeypatch.delenv("IRD_LF_CACHE", raising=False)
+
+    item = MagicMock()
+    item.model_id = "bevformer/pytorch"
+    item.is_frontier = False
+
+    skip, reason = _preflight_arch_check(item)
+    assert skip is True
+    assert "missing_dependency" in reason
+    assert "IRD_LF_CACHE" in reason
+
+
+def test_ird_preflight_guard_passes_with_env(monkeypatch):
+    """Guard does not fire for IRD model when IRD_LF_CACHE is set."""
+    import os
+    from unittest.mock import MagicMock
+    from lib.expedition.expedition_worker import _preflight_arch_check
+
+    monkeypatch.setenv("IRD_LF_CACHE", "http://ird.internal/cache")
+
+    item = MagicMock()
+    item.model_id = "bevformer/pytorch"
+    item.is_frontier = False
+
+    skip, reason = _preflight_arch_check(item)
+    # With IRD_LF_CACHE set the IRD guard doesn't fire; seed (non-frontier) model
+    # then hits the is_frontier gate and returns (False, "").
+    assert skip is False
