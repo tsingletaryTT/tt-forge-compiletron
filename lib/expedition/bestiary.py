@@ -474,7 +474,7 @@ class Bestiary:
         Only clears entries that meet ALL THREE conditions:
           1. Have a stored env_fingerprint that differs from current_fingerprint.
           2. Have error_category in {other, api_mismatch, missing_dependency}.
-          3. Have a version-signal keyword in last_error (>=, <=, <, >, required, version).
+          3. Have a version-signal keyword in last_error (>=, <=, required, version).
 
         This prevents clearing hardware failures (forge_internal, SIGSEGV) that
         happen to have env fingerprints, while clearing genuine env-version errors.
