@@ -129,3 +129,11 @@ def test_wrong_backend_not_in_perm_fail_cats():
     # Quick textual check is reliable enough here
     assert "wrong_backend" not in src.split("_RUNTIME_PERM_FAIL_CATS")[1].split("}")[0], \
         "wrong_backend must not appear inside _RUNTIME_PERM_FAIL_CATS"
+
+
+def test_ird_preflight_symbols_exist():
+    """_IRD_DEPENDENT_PREFIXES must exist and contain known IRD models."""
+    from lib.expedition.expedition_worker import _IRD_DEPENDENT_PREFIXES
+    assert "bevformer" in _IRD_DEPENDENT_PREFIXES
+    assert "centernet" in _IRD_DEPENDENT_PREFIXES
+    assert "yolov3" in _IRD_DEPENDENT_PREFIXES

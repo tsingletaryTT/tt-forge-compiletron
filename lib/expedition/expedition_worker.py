@@ -685,6 +685,26 @@ def _warm_hf_datasets(bestiary: "Bestiary") -> None:
         print(f"  {YELLOW}⚠ dataset warm-up skipped: {exc}{RESET}")
 
 
+# Seed model ID prefixes whose loaders call tt-forge-models/tools/utils.py _get_file(),
+# which requires the IRD_LF_CACHE env var (a Tenstorrent-internal file server URL).
+# Without it these models download large weights then crash mid-run with:
+#   ValueError: IRD_LF_CACHE environment variable is not set
+# Fail fast before any download attempt when IRD_LF_CACHE is absent.
+_IRD_DEPENDENT_PREFIXES: frozenset[str] = frozenset({
+    "bevformer",
+    "centernet",
+    "maptr",
+    "monodepth2",
+    "mplug_owl2",
+    "petr",
+    "ssd512",
+    "ultra_fast_lane_detection_v2",
+    "whisper",     # audio_classification/onnx variant uses IRD cache
+    "yolov3",
+    "yolov4",
+})
+
+
 def _preflight_arch_check(item: "QueueItem") -> tuple[bool, str]:
     """Fetch config.json only and detect unsupported architectures before any weight download.
 
@@ -692,13 +712,25 @@ def _preflight_arch_check(item: "QueueItem") -> tuple[bool, str]:
     are not installed in the forge/XLA environment (mamba_ssm, simamba, RWKV, etc.).
     Config files are a few KB — this check costs ~1 second and zero weight bandwidth.
 
+    Also checks IRD_LF_CACHE for seed models that call tt-forge-models/tools/utils.py
+    _get_file(), failing fast before any weight download when the env var is absent.
+
     Fails open on any exception (network blip, config absent) — a transient error
-    must never block a valid model.  Only runs for frontier models.
+    must never block a valid model.  Architecture (config.json) checks only run for
+    frontier models; IRD guard runs for all models.
 
     Returns:
         (False, "")        — architecture looks fine, or check inconclusive
         (True, error_str)  — architecture will fail; record and skip the model
     """
+    # IRD_LF_CACHE guard applies to seed models too (not just frontier).
+    # Check this before the frontier-only return below.
+    model_prefix = item.model_id.split("/")[0]
+    if model_prefix in _IRD_DEPENDENT_PREFIXES and not os.environ.get("IRD_LF_CACHE"):
+        return (True,
+                f"missing_dependency: IRD_LF_CACHE env var not set "
+                f"(model '{item.model_id}' requires Tenstorrent internal file cache)")
+
     if not item.is_frontier:
         return False, ""
     try:
@@ -1721,23 +1753,24 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                              "error": _gated_err, "pts": score.pts})
             continue
 
-        # ── Architecture preflight ───────────────────────────────────────────
-        # Fetch config.json only (a few KB) and check for custom-class deps
-        # not installed in the forge/XLA env (mamba_ssm, simamba, RWKV, etc.).
-        # Catches Simamba-style models before any multi-GB weight download.
-        if item.is_frontier:
-            _bad_arch, _arch_err = _preflight_arch_check(item)
-            if _bad_arch:
-                elapsed = time.time() - start
-                score = compute_score(False, is_first_ever, rarity, newness,
-                                      hud.state.streak, mesh_chips=item.mesh_chips)
-                hud.record_failure(item.model_id)
-                bestiary.record_failure(item.model_id, run_number, _arch_err)
-                hud.write_status()
-                bestiary.save()
-                results.append({"model": item.model_id, "status": "failed",
-                                 "error": _arch_err, "pts": score.pts})
-                continue
+        # ── Architecture / IRD preflight ─────────────────────────────────────
+        # For frontier models: fetch config.json only (a few KB) and check for
+        # custom-class deps not installed in the forge/XLA env.  Catches
+        # Simamba-style models before any multi-GB weight download.
+        # For all models: check IRD_LF_CACHE env var for seed models that call
+        # tt-forge-models/tools/utils.py _get_file() — fail fast before download.
+        _bad_arch, _arch_err = _preflight_arch_check(item)
+        if _bad_arch:
+            elapsed = time.time() - start
+            score = compute_score(False, is_first_ever, rarity, newness,
+                                  hud.state.streak, mesh_chips=item.mesh_chips)
+            hud.record_failure(item.model_id)
+            bestiary.record_failure(item.model_id, run_number, _arch_err)
+            hud.write_status()
+            bestiary.save()
+            results.append({"model": item.model_id, "status": "failed",
+                             "error": _arch_err, "pts": score.pts})
+            continue
 
         # ── JAX/Flax → XLA worker dispatch ──────────────────────────────────────
         # JAX models must compile via the XLA backend (expedition_worker_xla.py).
