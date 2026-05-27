@@ -96,3 +96,20 @@ def test_current_env_fingerprint_returns_dict():
     assert "torch" in fp
     assert "transformers" in fp
     assert "huggingface_hub" in fp
+
+
+def test_clear_stale_env_failures_does_not_clear_non_version_other(tmp_path):
+    """An 'other' entry with > in error text must NOT be cleared on env change."""
+    old_fp = {"torch": "2.5.1", "transformers": "4.52.4", "huggingface_hub": "1.15.0"}
+    new_fp = {"torch": "2.5.1", "transformers": "4.52.4", "huggingface_hub": "0.36.2"}
+    b = _make_bestiary(tmp_path, {
+        "model/dim_err": {
+            "last_error": "RuntimeError: dimension 5 > max 3",
+            "error_category": "other",
+            "attempts": 2,
+            "env_fingerprint": old_fp,
+        },
+    })
+    cleared = b.clear_stale_env_failures(new_fp)
+    assert cleared == []
+    assert "model/dim_err" in b.failed

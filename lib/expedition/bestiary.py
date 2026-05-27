@@ -225,6 +225,7 @@ def _current_env_fingerprint() -> dict[str, str]:
     Used to detect when the environment has changed since a failure was recorded,
     so those failures can be auto-cleared on the next run.
     """
+    import importlib
     result: dict[str, str] = {}
     for pkg, attr in (
         ("torch",           "__version__"),
@@ -232,7 +233,6 @@ def _current_env_fingerprint() -> dict[str, str]:
         ("huggingface_hub", "__version__"),
     ):
         try:
-            import importlib
             mod = importlib.import_module(pkg)
             result[pkg] = getattr(mod, attr, "unknown")
         except ImportError:
@@ -482,7 +482,11 @@ class Bestiary:
         Returns the list of model_ids removed.  Caller must call save().
         """
         _ELIGIBLE_CATS = {"other", "api_mismatch", "missing_dependency"}
-        _VERSION_SIGNALS = (">=", "<=", "<", ">", "required", "version")
+        # Bare "<" and ">" are intentionally excluded — they match any error that
+        # contains a comparison operator (e.g. "dimension 5 > max 3"), which would
+        # produce false positives.  Real version errors always contain >=, <=,
+        # "required", or "version".
+        _VERSION_SIGNALS = (">=", "<=", "required", "version")
 
         to_remove = []
         for mid, entry in self._data["failed"].items():
