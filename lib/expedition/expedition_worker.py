@@ -1678,11 +1678,15 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
         # Reload bestiary here so models added to perm-fail mid-run are caught
         # before any download begins. Prevents waste when guardian adds entries
         # during an active expedition (e.g. wan/pytorch, qwen_2/causal_lm).
+        # NOTE: "wrong_backend" is intentionally NOT in this set.
+        # JAX models that reach the forge worker should be retried — the router
+        # re-routes them to XLA on the next dispatch attempt.  The standard
+        # attempts >= 3 gate still catches persistent bounce loops.
         _RUNTIME_PERM_FAIL_CATS = {
             "forge_internal", "unsupported_arch", "loader_missing",
             "missing_dependency", "unsupported_backend", "xla_runtime_error",
             "api_mismatch", "shape_mismatch", "forge_missing_op",
-            "model_access", "wrong_backend", "model_bug",
+            "model_access", "model_bug",
         }
         bestiary = Bestiary(path=bestiary_path)
         _bf = bestiary.failed.get(item.model_id, {})

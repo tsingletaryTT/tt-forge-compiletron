@@ -119,3 +119,13 @@ def test_warm_hf_datasets_is_importable():
     """_warm_hf_datasets must be importable without running forge or hardware."""
     from lib.expedition.expedition_worker import _warm_hf_datasets
     assert callable(_warm_hf_datasets)
+
+
+def test_wrong_backend_not_in_perm_fail_cats():
+    """wrong_backend must not be in _RUNTIME_PERM_FAIL_CATS so JAX models get retried."""
+    import ast, pathlib
+    src = pathlib.Path("lib/expedition/expedition_worker.py").read_text()
+    # Find the set literal assigned to _RUNTIME_PERM_FAIL_CATS
+    # Quick textual check is reliable enough here
+    assert "wrong_backend" not in src.split("_RUNTIME_PERM_FAIL_CATS")[1].split("}")[0], \
+        "wrong_backend must not appear inside _RUNTIME_PERM_FAIL_CATS"
