@@ -320,6 +320,7 @@ class Bestiary:
         throughput: float = 0.0,
         throughput_unit: str = "",
         mesh_chips: int = 1,
+        pip_deps: list[str] = (),
     ) -> None:
         """Record a successful compilation.
 
@@ -357,6 +358,10 @@ class Bestiary:
                            "ms/sample" (lower is better). Zero means not measured.
             throughput_unit: Unit string for throughput, e.g. "tokens/sec" or
                            "ms/sample". Empty string when throughput is not measured.
+            pip_deps:      Optional list of extra pip packages that were installed
+                           before this model compiled successfully (e.g. ["gliner",
+                           "surya-ocr"]). Stored on first success only; ignored on
+                           subsequent calls unless the field is absent.
         """
         now = datetime.now(timezone.utc).isoformat()
         if model_id not in self._data["compiled"]:
@@ -379,6 +384,10 @@ class Bestiary:
                 "backends_succeeded": [backend],
                 "mesh_chips": mesh_chips,
             }
+            # Record the pip packages required for this model on first success.
+            # Only stored when provided; absent field means "no extra deps known".
+            if pip_deps:
+                self._data["compiled"][model_id]["pip_deps"] = list(pip_deps)
         entry = self._data["compiled"][model_id]
         entry["successes"] += 1
         # Track the fastest compilation time across all chips/runs.
@@ -422,9 +431,15 @@ class Bestiary:
         entry.setdefault("backends_succeeded", [entry.get("backend", "forge")])
         if backend not in entry["backends_succeeded"]:
             entry["backends_succeeded"].append(backend)
+        # Record pip_deps on subsequent successes only if not already stored.
+        # This preserves the original dep list rather than overwriting with an
+        # empty default on re-runs that don't pass pip_deps.
+        if pip_deps and "pip_deps" not in entry:
+            entry["pip_deps"] = list(pip_deps)
 
     def record_failure(self, model_id: str, run: int, error: str,
-                       env_fingerprint: dict[str, str] | None = None) -> None:
+                       env_fingerprint: dict[str, str] | None = None,
+                       missing_packages: list[str] = ()) -> None:
         """Track a failed compilation attempt for retry-interest purposes.
 
         Failures are stored separately from compiled models. They are NOT used
@@ -435,9 +450,12 @@ class Bestiary:
             model_id:        HuggingFace model identifier.
             run:             Sequential run number within the current expedition session.
             error:           String representation of the exception or error message.
-            env_fingerprint: Optional dict from _current_env_fingerprint(). When provided,
-                             stored on the entry so clear_stale_env_failures() can detect
-                             environment upgrades.
+            env_fingerprint:  Optional dict from _current_env_fingerprint(). When provided,
+                              stored on the entry so clear_stale_env_failures() can detect
+                              environment upgrades.
+            missing_packages: Optional list of pip package names that were identified as
+                              missing (e.g. from a ModuleNotFoundError). Accumulated across
+                              calls — each call unions the new packages with any already stored.
         """
         if model_id not in self._data["failed"]:
             self._data["failed"][model_id] = {
@@ -453,6 +471,11 @@ class Bestiary:
         entry["error_category"] = _classify_error(error)[0]
         if env_fingerprint is not None:
             entry["env_fingerprint"] = env_fingerprint
+        # Accumulate missing packages across multiple failure records.
+        # Uses a set-union so duplicate package names are deduplicated.
+        if missing_packages:
+            existing = entry.get("missing_packages", [])
+            entry["missing_packages"] = list(set(existing) | set(missing_packages))
 
     def clear_entries_matching(self, *, error_contains: str) -> list[str]:
         """Remove all failed entries whose last_error contains error_contains.
@@ -505,6 +528,28 @@ class Bestiary:
         for mid in to_remove:
             del self._data["failed"][mid]
         return to_remove
+
+    def missing_dep_report(self) -> list[dict]:
+        """Return a ranked list of packages blocking failed models.
+
+        Aggregates the missing_packages field across all failed entries.
+        Returns list of dicts sorted descending by count:
+            [{"package": str, "count": int, "models": list[str]}, ...]
+
+        Only models with at least one entry in missing_packages contribute.
+        Models that lack the field entirely are silently skipped.
+        """
+        from collections import defaultdict
+        tally: dict[str, list[str]] = defaultdict(list)
+        for mid, entry in self._data["failed"].items():
+            for pkg in entry.get("missing_packages", []):
+                tally[pkg].append(mid)
+        return sorted(
+            [{"package": pkg, "count": len(models), "models": models}
+             for pkg, models in tally.items()],
+            key=lambda x: x["count"],
+            reverse=True,
+        )
 
     def failure_stats(self) -> list[dict]:
         """Aggregate all-time failures by error category, sorted by count desc.
