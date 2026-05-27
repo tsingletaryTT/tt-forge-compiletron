@@ -219,6 +219,27 @@ def _classify_error(error: str) -> tuple[str, str, str]:
     return _CATEGORY_OTHER
 
 
+def _current_env_fingerprint() -> dict[str, str]:
+    """Return a dict of key library versions installed in the current Python env.
+
+    Used to detect when the environment has changed since a failure was recorded,
+    so those failures can be auto-cleared on the next run.
+    """
+    result: dict[str, str] = {}
+    for pkg, attr in (
+        ("torch",           "__version__"),
+        ("transformers",    "__version__"),
+        ("huggingface_hub", "__version__"),
+    ):
+        try:
+            import importlib
+            mod = importlib.import_module(pkg)
+            result[pkg] = getattr(mod, attr, "unknown")
+        except ImportError:
+            result[pkg] = "not_installed"
+    return result
+
+
 class Bestiary:
     """Persistent store for all Expedition Mode compilation history.
 
@@ -402,7 +423,8 @@ class Bestiary:
         if backend not in entry["backends_succeeded"]:
             entry["backends_succeeded"].append(backend)
 
-    def record_failure(self, model_id: str, run: int, error: str) -> None:
+    def record_failure(self, model_id: str, run: int, error: str,
+                       env_fingerprint: dict[str, str] | None = None) -> None:
         """Track a failed compilation attempt for retry-interest purposes.
 
         Failures are stored separately from compiled models. They are NOT used
@@ -410,9 +432,12 @@ class Bestiary:
         but they inform future run decisions (e.g. skip models that always fail).
 
         Args:
-            model_id: HuggingFace model identifier.
-            run:      Sequential run number within the current expedition session.
-            error:    String representation of the exception or error message.
+            model_id:        HuggingFace model identifier.
+            run:             Sequential run number within the current expedition session.
+            error:           String representation of the exception or error message.
+            env_fingerprint: Optional dict from _current_env_fingerprint(). When provided,
+                             stored on the entry so clear_stale_env_failures() can detect
+                             environment upgrades.
         """
         if model_id not in self._data["failed"]:
             self._data["failed"][model_id] = {
@@ -426,6 +451,8 @@ class Bestiary:
         entry["last_error"] = error
         # Always recompute so the category stays in sync if the error changes.
         entry["error_category"] = _classify_error(error)[0]
+        if env_fingerprint is not None:
+            entry["env_fingerprint"] = env_fingerprint
 
     def clear_entries_matching(self, *, error_contains: str) -> list[str]:
         """Remove all failed entries whose last_error contains error_contains.
@@ -437,6 +464,40 @@ class Bestiary:
             mid for mid, entry in self._data["failed"].items()
             if error_contains in entry.get("last_error", "")
         ]
+        for mid in to_remove:
+            del self._data["failed"][mid]
+        return to_remove
+
+    def clear_stale_env_failures(self, current_fingerprint: dict[str, str]) -> list[str]:
+        """Remove failed entries whose environment has changed since failure was recorded.
+
+        Only clears entries that meet ALL THREE conditions:
+          1. Have a stored env_fingerprint that differs from current_fingerprint.
+          2. Have error_category in {other, api_mismatch, missing_dependency}.
+          3. Have a version-signal keyword in last_error (>=, <=, <, >, required, version).
+
+        This prevents clearing hardware failures (forge_internal, SIGSEGV) that
+        happen to have env fingerprints, while clearing genuine env-version errors.
+
+        Returns the list of model_ids removed.  Caller must call save().
+        """
+        _ELIGIBLE_CATS = {"other", "api_mismatch", "missing_dependency"}
+        _VERSION_SIGNALS = (">=", "<=", "<", ">", "required", "version")
+
+        to_remove = []
+        for mid, entry in self._data["failed"].items():
+            stored_fp = entry.get("env_fingerprint")
+            if not stored_fp:
+                continue
+            if stored_fp == current_fingerprint:
+                continue
+            if entry.get("error_category") not in _ELIGIBLE_CATS:
+                continue
+            err = entry.get("last_error", "")
+            if not any(sig in err for sig in _VERSION_SIGNALS):
+                continue
+            to_remove.append(mid)
+
         for mid in to_remove:
             del self._data["failed"][mid]
         return to_remove

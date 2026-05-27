@@ -29,3 +29,70 @@ def test_clear_entries_matching_leaves_no_match_untouched(tmp_path):
     removed = b.clear_entries_matching(error_contains="cats_image.jpeg")
     assert removed == []
     assert "model/c" in b.failed
+
+
+def test_record_failure_stores_env_fingerprint(tmp_path):
+    b = _make_bestiary(tmp_path, {})
+    fingerprint = {"torch": "2.5.1", "transformers": "4.52.4", "huggingface_hub": "0.36.2"}
+    b.record_failure("model/x", run=1, error="ImportError: some version error",
+                     env_fingerprint=fingerprint)
+    assert b.failed["model/x"]["env_fingerprint"] == fingerprint
+
+
+def test_clear_stale_env_failures_clears_on_version_change(tmp_path):
+    b = _make_bestiary(tmp_path, {
+        "model/hub_old": {
+            "last_error": "ImportError: huggingface-hub>=0.30.0,<1.0 required but found 1.15.0",
+            "error_category": "other",
+            "attempts": 3,
+            "env_fingerprint": {"torch": "2.5.1", "transformers": "4.52.4", "huggingface_hub": "1.15.0"},
+        },
+        "model/segfault": {
+            "last_error": "SIGSEGV: forge.compile() killed by signal 11",
+            "error_category": "forge_internal",
+            "attempts": 3,
+            "env_fingerprint": {"torch": "2.5.1", "transformers": "4.52.4", "huggingface_hub": "1.15.0"},
+        },
+        "model/no_fp": {
+            "last_error": "ImportError: version mismatch >= something",
+            "error_category": "other",
+            "attempts": 2,
+            # no env_fingerprint — should be left alone
+        },
+    })
+    current = {"torch": "2.5.1", "transformers": "4.52.4", "huggingface_hub": "0.36.2"}
+    cleared = b.clear_stale_env_failures(current)
+
+    # hub_old: matches — version changed + category + version-signal in error
+    assert "model/hub_old" not in b.failed
+    assert "model/hub_old" in cleared
+
+    # segfault: forge_internal not in eligible categories — must NOT be cleared
+    assert "model/segfault" in b.failed
+
+    # no_fp: no stored fingerprint — must NOT be cleared
+    assert "model/no_fp" in b.failed
+
+
+def test_clear_stale_env_failures_no_change_when_env_same(tmp_path):
+    fp = {"torch": "2.5.1", "transformers": "4.52.4", "huggingface_hub": "0.36.2"}
+    b = _make_bestiary(tmp_path, {
+        "model/y": {
+            "last_error": "ImportError: version >= 1.0 required",
+            "error_category": "api_mismatch",
+            "attempts": 2,
+            "env_fingerprint": fp,
+        },
+    })
+    cleared = b.clear_stale_env_failures(fp)  # same fingerprint
+    assert "model/y" in b.failed
+    assert cleared == []
+
+
+def test_current_env_fingerprint_returns_dict():
+    from lib.expedition.bestiary import _current_env_fingerprint
+    fp = _current_env_fingerprint()
+    assert isinstance(fp, dict)
+    assert "torch" in fp
+    assert "transformers" in fp
+    assert "huggingface_hub" in fp
