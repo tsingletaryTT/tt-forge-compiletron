@@ -1751,7 +1751,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             score = compute_score(False, is_first_ever, rarity, newness,
                                   hud.state.streak, mesh_chips=item.mesh_chips)
             hud.record_failure(item.model_id)
-            bestiary.record_failure(item.model_id, run_number, _gated_err)
+            bestiary.record_failure(item.model_id, run_number, _gated_err, env_fingerprint=_env_fp)
             hud.write_status()
             bestiary.save()
             results.append({"model": item.model_id, "status": "failed",
@@ -1770,7 +1770,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             score = compute_score(False, is_first_ever, rarity, newness,
                                   hud.state.streak, mesh_chips=item.mesh_chips)
             hud.record_failure(item.model_id)
-            bestiary.record_failure(item.model_id, run_number, _arch_err)
+            bestiary.record_failure(item.model_id, run_number, _arch_err, env_fingerprint=_env_fp)
             hud.write_status()
             bestiary.save()
             results.append({"model": item.model_id, "status": "failed",
@@ -1809,7 +1809,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                 score = compute_score(False, is_first_ever, rarity, newness, hud.state.streak,
                                       mesh_chips=item.mesh_chips)
                 hud.record_failure(item.model_id)
-                bestiary.record_failure(item.model_id, run_number, str(e))
+                bestiary.record_failure(item.model_id, run_number, str(e), env_fingerprint=_env_fp)
                 hud.write_status()
                 results.append({"model": item.model_id, "status": "failed",
                                 "error": str(e), "pts": score.pts})
@@ -1950,7 +1950,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             hud.record_failure(item.model_id)
             # XLA-dispatched failures are already in the bestiary from the subprocess.
             if not _item_is_jax:
-                bestiary.record_failure(item.model_id, run_number, error_str)
+                bestiary.record_failure(item.model_id, run_number, error_str, env_fingerprint=_env_fp)
             results.append({"model": item.model_id, "status": "failed",
                             "error": error_str, "pts": score.pts})
 
