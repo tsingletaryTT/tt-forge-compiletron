@@ -74,9 +74,12 @@ def test_parse_requirements_empty_file(tmp_path):
 
 def test_install_requirements_calls_pip(tmp_path, monkeypatch):
     """install_requirements invokes pip for each parsed package."""
-    import subprocess
+    import lib.expedition.model_overlay as _mod
     calls = []
-    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: calls.append(cmd))
+    # Patch _sp (the module-level `import subprocess as _sp` alias) so the
+    # monkeypatch intercepts the call regardless of how subprocess is imported
+    # elsewhere.
+    monkeypatch.setattr(_mod._sp, "run", lambda cmd, **kw: calls.append(cmd))
 
     base = pathlib.Path("/opt/ttforge-toolchain/venv")
     overlay = ModelOverlay(

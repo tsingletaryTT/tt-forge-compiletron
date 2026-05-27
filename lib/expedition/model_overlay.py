@@ -87,6 +87,13 @@ _PROTECTED_PACKAGES = frozenset({
     "jax", "jaxlib", "flax",
 })
 
+# Pre-normalised form of _PROTECTED_PACKAGES (lowercase, hyphens → underscores).
+# Built once at import time so _parse_requirements avoids recreating the set on
+# every requirements line.
+_PROTECTED_NORMALIZED: frozenset[str] = frozenset(
+    p.lower().replace("-", "_") for p in _PROTECTED_PACKAGES
+)
+
 
 def _parse_requirements(req_file: Path) -> list[str]:
     """Parse a requirements.txt and return safe-to-install package specs.
@@ -112,7 +119,7 @@ def _parse_requirements(req_file: Path) -> list[str]:
         # Extract top-level package name (before any version specifier or extras)
         top = line.split("[")[0].split("=")[0].split(">")[0].split("<")[0].split("!")[0].strip()
         top_lower = top.lower().replace("-", "_")
-        if top_lower in {p.lower().replace("-", "_") for p in _PROTECTED_PACKAGES}:
+        if top_lower in _PROTECTED_NORMALIZED:
             continue
         pkgs.append(line)
     return pkgs
@@ -127,12 +134,11 @@ def install_requirements(overlay: ModelOverlay, req_file: Path) -> list[str]:
     Returns list of package specs that were passed to pip (regardless of
     whether install succeeded).
     """
-    import subprocess
     pkgs = _parse_requirements(req_file)
     if not pkgs:
         return []
     try:
-        subprocess.run(
+        _sp.run(
             [str(overlay.python), "-m", "pip", "install", "-q", "--no-build-isolation",
              *pkgs],
             timeout=120,
