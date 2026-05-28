@@ -255,22 +255,22 @@
       "first_chip": 2,
       "run": 17,
       "best_time_s": 22.46720242500305,
-      "successes": 20,
+      "successes": 21,
       "source": "huggingface",
       "task": "cv_image_cls",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-2.16, 5.91]",
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-2.24, 5.64]",
       "backend": "forge",
       "backends_succeeded": [
         "forge"
       ],
       "first_voice": "top-3: class_812 2.44, class_51 2.11, class_488 1.97",
       "best_compile_s": 23.959306001663208,
-      "best_infer_s": 8.288463354110718,
+      "best_infer_s": 2.4489800930023193,
       "throughput_unit": "ms/sample",
-      "best_throughput": 8288.463
+      "best_throughput": 2448.98
     },
     "bge_1_5/embedding_generation/pytorch": {
       "first_compiled": "2026-05-11T22:29:16.734555+00:00",
@@ -1650,6 +1650,328 @@
       "best_infer_s": 6.738327264785767,
       "throughput_unit": "tokens/sec",
       "best_throughput": 4.749
+    },
+    "ovo456/my_awesome_food_model": {
+      "first_compiled": "2026-05-28T15:40:32.837130+00:00",
+      "first_chip": 3,
+      "run": 126,
+      "best_time_s": 18.741721868515015,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "image-classification",
+      "rarity": "common",
+      "hf_downloads": 54,
+      "hf_created_at": "2026-05-27T08:59:11+00:00",
+      "artifact": "top-3: class_69 0.27, class_16 0.23, class_70 0.22",
+      "first_voice": "top-3: class_53 0.29, class_6 0.25, class_99 0.16",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 10.254859685897827,
+      "best_infer_s": 8.486862182617188,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 8486.862
+    },
+    "NovaCorp/Ultimate-RPG.System-3.2-1B": {
+      "first_compiled": "2026-05-28T15:40:55.717048+00:00",
+      "first_chip": 0,
+      "run": 126,
+      "best_time_s": 41.172765493392944,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "text-generation",
+      "rarity": "common",
+      "hf_downloads": 102,
+      "hf_created_at": "2026-05-27T21:11:02+00:00",
+      "artifact": "shape=(1, 32, 128256) dtype=torch.float32 range=[-19.19, 21.85]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 28.55342388153076,
+      "best_infer_s": 12.619341611862183,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 2.536
+    },
+    "bert/masked_lm/pytorch": {
+      "first_compiled": "2026-05-28T15:41:42.876517+00:00",
+      "first_chip": 2,
+      "run": 126,
+      "best_time_s": 25.206636905670166,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_masked_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 30522) dtype=torch.float32 range=[-18.91, 8.41]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 22.63703227043152,
+      "best_infer_s": 2.5696046352386475,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 12.453
+    },
+    "bert/sentence_embedding_generation/pytorch": {
+      "first_compiled": "2026-05-28T15:42:11.803356+00:00",
+      "first_chip": 2,
+      "run": 126,
+      "best_time_s": 11.503280401229858,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_embed_gen",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 768) dtype=torch.float32 range=[-13.76, 3.92]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 11.081559181213379,
+      "best_infer_s": 0.4217212200164795,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 421.721
+    },
+    "bert/question_answering/pytorch": {
+      "first_compiled": "2026-05-28T15:42:39.049024+00:00",
+      "first_chip": 0,
+      "run": 126,
+      "best_time_s": 29.925528287887573,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_qa",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32) dtype=torch.float32 range=[-4.66, -4.43]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 24.99430823326111,
+      "best_infer_s": 4.931220054626465,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 4931.22
+    },
+    "bert/sequence_classification/pytorch": {
+      "first_compiled": "2026-05-28T15:42:46.889543+00:00",
+      "first_chip": 3,
+      "run": 126,
+      "best_time_s": 11.402515172958374,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_text_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 2) dtype=torch.float32 range=[-1.34, 1.40]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 10.972753524780273,
+      "best_infer_s": 0.4297616481781006,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 4.654
+    },
+    "bert/token_classification/pytorch": {
+      "first_compiled": "2026-05-28T15:43:10.443826+00:00",
+      "first_chip": 1,
+      "run": 126,
+      "best_time_s": 22.130022048950195,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_token_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 9) dtype=torch.float32 range=[-3.66, 11.16]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 21.1324725151062,
+      "best_infer_s": 0.9975495338439941,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 32.079
+    },
+    "codegen/pytorch": {
+      "first_compiled": "2026-05-28T15:44:10.259723+00:00",
+      "first_chip": 2,
+      "run": 126,
+      "best_time_s": 46.59317183494568,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_causal_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 51200) dtype=torch.float32 range=[-10.63, 16.89]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 38.35139203071594,
+      "best_infer_s": 8.241779804229736,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 3.883
+    },
+    "deit/image_classification/onnx": {
+      "first_compiled": "2026-05-28T15:47:31.197126+00:00",
+      "first_chip": 1,
+      "run": 126,
+      "best_time_s": 42.30193829536438,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "cv_image_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-1.52, 6.20]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 40.9290497303009,
+      "best_infer_s": 1.3728885650634766,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 1372.889
+    },
+    "detr/object_detection/onnx": {
+      "first_compiled": "2026-05-28T15:51:06.735382+00:00",
+      "first_chip": 2,
+      "run": 126,
+      "best_time_s": 122.70870447158813,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "cv_object_det",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 100, 92) dtype=torch.float32 range=[-22.33, 14.67]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 89.71979260444641,
+      "best_infer_s": 32.988911867141724,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 32988.912
+    },
+    "distilbert/masked_lm/pytorch": {
+      "first_compiled": "2026-05-28T15:51:17.816549+00:00",
+      "first_chip": 0,
+      "run": 126,
+      "best_time_s": 7.817266225814819,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_masked_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 28996) dtype=torch.float32 range=[-11.67, 7.32]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 6.748491287231445,
+      "best_infer_s": 1.068774938583374,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 29.941
+    },
+    "distilbert/question_answering/pytorch": {
+      "first_compiled": "2026-05-28T15:51:28.886399+00:00",
+      "first_chip": 2,
+      "run": 126,
+      "best_time_s": 6.880542278289795,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_qa",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32) dtype=torch.float32 range=[-6.55, -2.79]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 6.588138580322266,
+      "best_infer_s": 0.2924036979675293,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 292.404
+    },
+    "distilbert/sequence_classification/pytorch": {
+      "first_compiled": "2026-05-28T15:51:43.382907+00:00",
+      "first_chip": 0,
+      "run": 126,
+      "best_time_s": 7.448891639709473,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_text_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 2) dtype=torch.float32 range=[-0.71, 0.78]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 7.044560432434082,
+      "best_infer_s": 0.4043312072753906,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 4.946
+    },
+    "dla/image_classification/onnx": {
+      "first_compiled": "2026-05-28T15:52:31.093044+00:00",
+      "first_chip": 0,
+      "run": 126,
+      "best_time_s": 24.786192178726196,
+      "successes": 1,
+      "source": "timm",
+      "task": "cv_image_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-6.21, 13.38]",
+      "first_voice": "",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 6.22029972076416,
+      "best_infer_s": 18.565892457962036,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 18565.892
     }
   },
   "failed": {
@@ -1794,14 +2116,19 @@
     },
     "d_fine/pytorch": {
       "run_first_failed": 73,
-      "attempts": 1,
-      "last_error": "ValueError: not enough values to unpack (expected 4, got 2)",
-      "error_category": "forge_internal",
+      "attempts": 2,
+      "last_error": "",
+      "error_category": "other",
       "error_label": "SIGSEGV in forge.compile",
       "error_hint": "DFineForObjectDetection segfaults during forge.compile",
       "first_failed": "2026-05-20T20:24:54.713395+00:00",
       "run": 84,
-      "source": "huggingface"
+      "source": "huggingface",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
     },
     "dinov2/image_classification/jax": {
       "run_first_failed": 73,
@@ -1840,20 +2167,30 @@
     },
     "centernet/pytorch": {
       "run_first_failed": 77,
-      "attempts": 2,
-      "last_error": "ValueError: IRD_LF_CACHE environment variable is not set. Please set it to the address of the IRD LF cache.",
-      "error_category": "missing_dependency"
+      "attempts": 4,
+      "last_error": "missing_dependency: IRD_LF_CACHE env var not set (model 'centernet/pytorch' requires Tenstorrent internal file cache)",
+      "error_category": "missing_dependency",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
     },
     "deformable_detr/pytorch": {
       "run_first_failed": 77,
-      "attempts": 1,
-      "last_error": "ValueError: not enough values to unpack (expected 4, got 2)",
-      "error_category": "forge_internal",
+      "attempts": 2,
+      "last_error": "",
+      "error_category": "other",
       "error_label": "SIGSEGV in forge.compile",
       "error_hint": "DeformableDetrForObjectDetection segfaults in forge.compile",
       "first_failed": "2026-05-20T20:28:33.920910+00:00",
       "run": 85,
-      "source": "huggingface"
+      "source": "huggingface",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
     },
     "faster_rcnn/pytorch": {
       "run_first_failed": 77,
@@ -1891,18 +2228,29 @@
     },
     "bge_m3/encode/pytorch": {
       "run_first_failed": 80,
-      "attempts": 2,
-      "last_error": "TypeError: XLMRobertaModel.__init__() got an unexpected keyword argument 'dtype'",
-      "error_category": "api_mismatch"
+      "attempts": 3,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
     },
     "bert/masked_lm/pytorch": {
       "first_failed": "2026-05-20T20:16:59.004404+00:00",
       "run": 82,
-      "attempts": 1,
-      "error_category": "forge_internal",
+      "attempts": 2,
+      "error_category": "other",
       "error_label": "SIGSEGV in forge.compile",
       "error_hint": "BERT segfaults during forge.compile on TT hardware; worker process killed",
-      "source": "huggingface"
+      "source": "huggingface",
+      "last_error": "",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
     },
     "bert/question_answering/pytorch": {
       "first_failed": "2026-05-20T20:16:59.004404+00:00",
@@ -1925,11 +2273,17 @@
     "bert/sequence_classification/pytorch": {
       "first_failed": "2026-05-20T20:16:59.004404+00:00",
       "run": 82,
-      "attempts": 1,
-      "error_category": "forge_internal",
+      "attempts": 2,
+      "error_category": "other",
       "error_label": "SIGSEGV in forge.compile",
       "error_hint": "BERT segfaults during forge.compile on TT hardware; worker process killed",
-      "source": "huggingface"
+      "source": "huggingface",
+      "last_error": "",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
     },
     "bert/token_classification/pytorch": {
       "first_failed": "2026-05-20T20:16:59.004404+00:00",
@@ -1959,13 +2313,19 @@
       "source": "huggingface"
     },
     "deepseek/deepseek_ocr/pytorch": {
-      "error_category": "forge_internal",
+      "error_category": "other",
       "error_label": "SIGSEGV in forge.compile",
       "error_hint": "DeepseekOCRForCausalLM segfaults during forge.compile",
       "first_failed": "2026-05-20T20:24:54.713395+00:00",
       "run": 84,
-      "attempts": 1,
-      "source": "huggingface"
+      "attempts": 2,
+      "source": "huggingface",
+      "last_error": "RuntimeError: Expected tensor for argument #1 'indices' to have one of the following scalar types: Long, Int; but got torch.FloatTensor instead (while checking arguments for embedding)",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
     },
     "deepseek/llama/pytorch": {
       "first_failed": "2026-05-20T20:26:56.225203+00:00",
@@ -2031,13 +2391,19 @@
       "source": "huggingface"
     },
     "detr/object_detection/pytorch": {
-      "error_category": "forge_internal",
+      "error_category": "other",
       "error_label": "SIGSEGV in forge.compile",
       "error_hint": "DetrForObjectDetection segfaults in forge.compile",
       "first_failed": "2026-05-20T20:28:33.920910+00:00",
       "run": 85,
-      "attempts": 1,
-      "source": "huggingface"
+      "attempts": 2,
+      "source": "huggingface",
+      "last_error": "",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
     },
     "detr/segmentation/pytorch": {
       "error_category": "forge_internal",
@@ -2067,13 +2433,19 @@
       "source": "huggingface"
     },
     "distilbert/masked_lm/pytorch": {
-      "error_category": "forge_internal",
+      "error_category": "other",
       "error_label": "SIGSEGV in forge.compile",
       "error_hint": "DistilBertForMaskedLM segfaults (BERT-family)",
       "first_failed": "2026-05-20T20:32:24.051055+00:00",
       "run": 86,
-      "attempts": 1,
-      "source": "huggingface"
+      "attempts": 2,
+      "source": "huggingface",
+      "last_error": "",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
     },
     "distilbert/question_answering/pytorch": {
       "error_category": "forge_internal",
@@ -3444,9 +3816,14 @@
     },
     "cog_videox/pytorch": {
       "run_first_failed": 102,
-      "attempts": 2,
-      "last_error": "SafetensorError: device cpu is invalid",
-      "error_category": "other"
+      "attempts": 3,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
     },
     "detr/object_detection/onnx": {
       "run_first_failed": 102,
@@ -3534,9 +3911,14 @@
     },
     "detr/segmentation/onnx": {
       "run_first_failed": 103,
-      "attempts": 2,
-      "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
-      "error_category": "other"
+      "attempts": 3,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
     },
     "hunyuan_video/pytorch": {
       "run_first_failed": 103,
@@ -3582,9 +3964,14 @@
     },
     "deit/image_classification/onnx": {
       "run_first_failed": 106,
-      "attempts": 1,
-      "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
-      "error_category": "other"
+      "attempts": 2,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
     },
     "efficientnet/image_classification/onnx": {
       "run_first_failed": 106,
@@ -3675,28 +4062,237 @@
       "last_error": "RuntimeError: Generated MLIR module failed verification. ttir.typecast op result shape (1, 1191, 4096) does not match expected shape after broadcasting (1, 1191, 1) \u2014 forge MLIR codegen bug with masked_scatter+expand in LlavaNextModel.forward()",
       "attempts": 1,
       "run": "manual"
+    },
+    "albert/sequence_classification/pytorch": {
+      "run_first_failed": 125,
+      "attempts": 1,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "NovaCorp/Ultimate-RPG.System-3.2-1B": {
+      "run_first_failed": 125,
+      "attempts": 1,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "albert/masked_lm/pytorch": {
+      "run_first_failed": 125,
+      "attempts": 1,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "albert/question_answering/pytorch": {
+      "run_first_failed": 125,
+      "attempts": 1,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "ovo456/my_awesome_food_model": {
+      "run_first_failed": 125,
+      "attempts": 1,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "albert/token_classification/pytorch": {
+      "run_first_failed": 125,
+      "attempts": 1,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "alexnet/pytorch": {
+      "run_first_failed": 125,
+      "attempts": 1,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "allam/causal_lm/pytorch": {
+      "run_first_failed": 125,
+      "attempts": 1,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "autoencoder/pytorch": {
+      "run_first_failed": 125,
+      "attempts": 1,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "autoencoder/image_classification/onnx": {
+      "run_first_failed": 125,
+      "attempts": 1,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "beit/pytorch": {
+      "run_first_failed": 125,
+      "attempts": 1,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "bge_1_5/embedding_generation/pytorch": {
+      "run_first_failed": 125,
+      "attempts": 1,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "bloom/pytorch": {
+      "run_first_failed": 125,
+      "attempts": 1,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "deepcogito/pytorch": {
+      "run_first_failed": 125,
+      "attempts": 1,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "deepseek/deepseek_coder/pytorch": {
+      "run_first_failed": 125,
+      "attempts": 1,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "deepseek/deepseek_math/pytorch": {
+      "run_first_failed": 125,
+      "attempts": 1,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "deit/pytorch": {
+      "run_first_failed": 125,
+      "attempts": 1,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "densenet/image_classification/onnx": {
+      "run_first_failed": 125,
+      "attempts": 1,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "densenet/pytorch": {
+      "run_first_failed": 125,
+      "attempts": 1,
+      "last_error": "",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
     }
   },
   "chip_totals": {
     "0": {
-      "pts": 22192,
-      "first_evers": 25,
+      "pts": 23287,
+      "first_evers": 28,
       "best_streak": 4
     },
     "2": {
-      "pts": 14570,
-      "first_evers": 21,
+      "pts": 15035,
+      "first_evers": 24,
       "best_streak": 2
     },
     "3": {
-      "pts": 3225,
+      "pts": 3290,
       "first_evers": 8,
       "best_streak": 4
     },
     "1": {
-      "pts": 6600,
-      "first_evers": 6,
-      "best_streak": 2
+      "pts": 6795,
+      "first_evers": 7,
+      "best_streak": 4
     }
   }
 }
