@@ -53,3 +53,32 @@ with the XLA worker's `_do_init=False` patch.
 
 ## Stale /dev/shm segments
 After a crashed run: `find /dev/shm -name 'sm_segment.tt-quietbox.*.0' -delete` before re-running.
+
+## Harness Hardening — Env-Fix (2026-05-27)
+
+**Goal:** Stop the harness from being the failure reason. ~60 models were in permafail for env/infra reasons.
+
+**What was fixed:**
+1. **Dataset pre-warm** — `_warm_hf_datasets()` runs at expedition startup, repairs the `huggingface/cats-image` blob symlink, clears 23 stale ONNX entries.
+2. **Env fingerprint + auto-reset** — `record_failure()` stores torch/transformers/hub versions; `clear_stale_env_failures()` auto-removes version-mismatch entries when env is upgraded.
+3. **wrong_backend** removed from `_RUNTIME_PERM_FAIL_CATS` — 21 JAX models retry via XLA instead of staying locked out permanently.
+4. **IRD_LF_CACHE pre-flight** — `_IRD_DEPENDENT_PREFIXES` frozenset lets 13 seed models fail fast (< 1s) instead of downloading weights then crashing.
+
+**Key files:** `lib/expedition/bestiary.py`, `lib/expedition/expedition_worker.py`, `tests/test_bestiary_envfix.py`
+
+## Isolated Overlay Deps (2026-05-27)
+
+**Goal:** Base forge/XLA env never mutated during model runs. Missing package tracking in bestiary.
+
+**How it works:** Each model gets a ~10ms disposable venv overlay (`--system-site-packages --symlinks`). Seed model deps pre-installed from `~/code/tt-forge-models/{model}/requirements.txt` before compile. Overlay destroyed in `finally` block after the model finishes. The overlay python path threads through `item_dict["_overlay_python"]` to `_isolated_compile_worker`, which re-execs under the overlay interpreter.
+
+**Key files:** `lib/expedition/model_overlay.py`, `lib/expedition/expedition_worker.py`, `docs/overlay-deps.md`
+
+**New scripts:**
+- `python3 scripts/missing_deps_report.py` — ranked table of packages blocking models
+- `python3 scripts/clean_bestiary.py --dry-run` — preview stale entry cleanup (~44 entries)
+- `python3 scripts/clean_bestiary.py` — apply stale entry cleanup (run once after harness-hardening-envfix merge)
+
+**Adding a dep for a seed model:** Edit `~/code/tt-forge-models/{model}/{backend}/requirements.txt`. Picked up automatically on next expedition via startup `git pull`.
+
+**Bestiary new fields:** `pip_deps` on compiled entries (packages installed from requirements.txt); `missing_packages` on failed entries (set-union across runs). See `missing_dep_report()` method.

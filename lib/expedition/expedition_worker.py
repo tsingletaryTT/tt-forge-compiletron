@@ -23,6 +23,7 @@ if _project_root not in _sys.path:
 
 import argparse
 import csv
+import inspect
 import json
 import multiprocessing
 import os
@@ -656,6 +657,60 @@ _CUSTOM_DEP_MAP: dict[str, str] = {
 }
 
 
+def _warm_hf_datasets(bestiary: "Bestiary") -> None:
+    """Ensure the huggingface/cats-image dataset blob is present in the local cache.
+
+    Many ONNX loaders in tt-forge-models call load_dataset("huggingface/cats-image")
+    and directly access the image blob.  The HF hub may have the parquet index cached
+    but the image blob missing, causing FileNotFoundError mid-compile.  One access of
+    ds[0]["image"] populates the blob; force_redownload recovers a broken cache.
+
+    Also auto-clears any bestiary entries that failed with the cats_image.jpeg error,
+    since those models are sound forge candidates now that the cache is repaired.
+    """
+    try:
+        from datasets import load_dataset
+        try:
+            ds = load_dataset("huggingface/cats-image", split="test")
+            _ = ds[0]["image"]  # triggers blob download if missing
+        except FileNotFoundError:
+            ds = load_dataset("huggingface/cats-image", split="test",
+                              download_mode="force_redownload")
+            _ = ds[0]["image"]
+        cleared = bestiary.clear_entries_matching(error_contains="cats_image.jpeg")
+        if cleared:
+            print(f"  {GREEN}✓ dataset warm-up cleared {len(cleared)} stale cats-image entries{RESET}")
+            bestiary.save()
+    except Exception as exc:
+        # Fail open — a missing dataset must never block the expedition.
+        print(f"  {YELLOW}⚠ dataset warm-up skipped: {exc}{RESET}")
+
+
+# Seed model ID prefixes whose loaders call tt-forge-models/tools/utils.py _get_file(),
+# which requires the IRD_LF_CACHE env var (a Tenstorrent-internal file server URL).
+# Without it these models download large weights then crash mid-run with:
+#   ValueError: IRD_LF_CACHE environment variable is not set
+# Fail fast before any download attempt when IRD_LF_CACHE is absent.
+_IRD_DEPENDENT_PREFIXES: frozenset[str] = frozenset({
+    "arnold",
+    "bevdepth",
+    "bevformer",
+    "centernet",
+    "detr3d",
+    "fuyu",
+    "maptr",
+    "monodepth2",
+    "mplug_owl2",
+    "petr",
+    "ssd512",
+    "ultra_fast_lane_detection_v2",
+    # whisper: only audio_classification/onnx variant needs IRD, not pytorch/jax —
+    # prefix-based guard would falsely block valid variants, so exclude it here.
+    "yolov3",
+    "yolov4",
+})
+
+
 def _preflight_arch_check(item: "QueueItem") -> tuple[bool, str]:
     """Fetch config.json only and detect unsupported architectures before any weight download.
 
@@ -663,13 +718,25 @@ def _preflight_arch_check(item: "QueueItem") -> tuple[bool, str]:
     are not installed in the forge/XLA environment (mamba_ssm, simamba, RWKV, etc.).
     Config files are a few KB — this check costs ~1 second and zero weight bandwidth.
 
+    Also checks IRD_LF_CACHE for seed models that call tt-forge-models/tools/utils.py
+    _get_file(), failing fast before any weight download when the env var is absent.
+
     Fails open on any exception (network blip, config absent) — a transient error
-    must never block a valid model.  Only runs for frontier models.
+    must never block a valid model.  Architecture (config.json) checks only run for
+    frontier models; IRD guard runs for all models.
 
     Returns:
         (False, "")        — architecture looks fine, or check inconclusive
         (True, error_str)  — architecture will fail; record and skip the model
     """
+    # IRD_LF_CACHE guard applies to seed models too (not just frontier).
+    # Check this before the frontier-only return below.
+    model_prefix = item.model_id.split("/")[0]
+    if model_prefix in _IRD_DEPENDENT_PREFIXES and not os.environ.get("IRD_LF_CACHE"):
+        return (True,
+                f"missing_dependency: IRD_LF_CACHE env var not set "
+                f"(model '{item.model_id}' requires Tenstorrent internal file cache)")
+
     if not item.is_frontier:
         return False, ""
     try:
@@ -687,11 +754,9 @@ def _preflight_arch_check(item: "QueueItem") -> tuple[bool, str]:
             if not isinstance(class_path, str) or "." not in class_path:
                 continue
             module_root = class_path.split(".")[0]
-            if module_root in _CUSTOM_DEP_MAP:
-                dep = _CUSTOM_DEP_MAP[module_root]
-                return (True,
-                        f"MissingDependency: requires '{dep}' "
-                        f"(custom class {class_path!r}) which is not installed")
+            # _CUSTOM_DEP_MAP previously hard-rejected these modules here.
+            # With per-model overlay envs, deps are installed proactively from
+            # tt-forge-models requirements.txt before compile — no pre-rejection.
             try:
                 __import__(module_root)
             except ImportError:
@@ -722,6 +787,58 @@ def _preflight_arch_check(item: "QueueItem") -> tuple[bool, str]:
         return False, ""   # fail-open
 
 
+# ── tt-forge-models helpers + base venv paths ────────────────────────────────
+_TT_FORGE_MODELS_PATH = Path.home() / "code" / "tt-forge-models"
+# The running venv is the one whose site-packages the overlay must inherit.
+# sys.prefix is the active venv root even when python3 is a symlink to system Python.
+_FORGE_BASE_VENV = Path(sys.prefix)
+_XLA_BASE_VENV   = Path.home() / "tt-xla" / "venv"
+
+
+def _pull_tt_forge_models() -> None:
+    """git pull --rebase on ~/code/tt-forge-models to keep requirements.txt current.
+
+    Uses --rebase so local customisation commits don't cause "not possible to
+    fast-forward" failures.  Fails open — a stale tree is better than a blocked
+    expedition.  Silent if the repo is not present.
+    """
+    import subprocess as _sp
+    if not _TT_FORGE_MODELS_PATH.exists():
+        return
+    try:
+        result = _sp.run(
+            ["git", "-C", str(_TT_FORGE_MODELS_PATH), "pull", "--rebase", "-q"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0:
+            print(f"  {GREEN}✓ tt-forge-models up to date{RESET}")
+        else:
+            print(f"  {YELLOW}⚠ tt-forge-models pull skipped: {result.stderr.strip()}{RESET}")
+    except Exception as exc:
+        print(f"  {YELLOW}⚠ tt-forge-models pull failed: {exc}{RESET}")
+
+
+def _find_seed_requirements(model_id: str) -> "Path | None":
+    """Return the requirements.txt Path for a seed model, or None if not found.
+
+    Looks for ~/code/tt-forge-models/{prefix}/{backend}/requirements.txt.
+    prefix = model_id.split("/")[0], backend = model_id.split("/")[1] if present.
+
+    Examples:
+        "gliner/pytorch"    → ~/code/tt-forge-models/gliner/pytorch/requirements.txt
+        "facebook/opt-125m" → None (not a seed model directory structure)
+    """
+    parts = model_id.split("/")
+    if len(parts) >= 2:
+        candidate = _TT_FORGE_MODELS_PATH / parts[0] / parts[1] / "requirements.txt"
+        if candidate.exists():
+            return candidate
+    candidate = _TT_FORGE_MODELS_PATH / parts[0] / "requirements.txt"
+    if candidate.exists():
+        return candidate
+    return None
+
+
 def _normalise_inputs(inputs: list) -> list:
     """Ensure tensors are contiguous float32 before forge sees them.
 
@@ -743,7 +860,14 @@ def _normalise_inputs(inputs: list) -> list:
     return out
 
 
-def _try_install_missing(error_str: str) -> str | None:
+def _extract_missing_package(error_str: str) -> "str | None":
+    """Extract the top-level package name from a 'No module named X' error, or None."""
+    import re
+    m = re.search(r"No module named ['\"]([^'\"]+)['\"]", error_str)
+    return m.group(1).split(".")[0] if m else None
+
+
+def _try_install_missing(error_str: str) -> "str | None":
     """If error_str is a ModuleNotFoundError, try to pip-install the package.
 
     Returns the package name that was installed (or attempted), or None if
@@ -862,7 +986,17 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
             try:
                 raw = _load_inputs_fn()
                 if isinstance(raw, dict):
-                    sample_inputs = [v for v in raw.values() if isinstance(v, torch.Tensor)]
+                    # Reorder by the model's forward() parameter order so positional
+                    # args reach the right parameters (e.g. CLIPModel.forward expects
+                    # input_ids, pixel_values, attention_mask but CLIPProcessor returns
+                    # input_ids, attention_mask, pixel_values).
+                    try:
+                        fwd_params = list(inspect.signature(model.forward).parameters.keys())
+                        ordered = {k: raw[k] for k in fwd_params if k in raw and isinstance(raw[k], torch.Tensor)}
+                        remainder = {k: v for k, v in raw.items() if k not in ordered and isinstance(v, torch.Tensor)}
+                        sample_inputs = list(ordered.values()) + list(remainder.values())
+                    except Exception:
+                        sample_inputs = [v for v in raw.values() if isinstance(v, torch.Tensor)]
                 elif isinstance(raw, (list, tuple)):
                     sample_inputs = [v for v in raw if isinstance(v, torch.Tensor)]
                 elif isinstance(raw, torch.Tensor):
@@ -1002,6 +1136,12 @@ def _isolated_compile_worker(
         chip_id:     Zero-based TT chip index passed through to _compile_model.
         result_path: Path where this function writes its JSON result dict.
     """
+    # _overlay_python is passed through item_dict but not used for re-exec here.
+    # The overlay venv inherits base packages via a .pth file, so packages are
+    # already importable when the subprocess is launched under overlay.python
+    # by _compile_isolated.  We just pop it to keep item_dict clean.
+    item_dict.pop("_overlay_python", None)
+
     result: dict = {
         "success": False,
         "compile_time": 0.0,
@@ -1069,7 +1209,8 @@ def _isolated_compile_worker(
             pass
 
 
-def _compile_isolated(item: "QueueItem", chip_id: int) -> dict:
+def _compile_isolated(item: "QueueItem", chip_id: int,
+                      python: "Path | None" = None) -> dict:
     """Compile one model in a child process, isolating forge.compile() crashes.
 
     forge.compile() occasionally triggers SIGSEGV in the underlying C++ runtime.
@@ -1094,6 +1235,8 @@ def _compile_isolated(item: "QueueItem", chip_id: int) -> dict:
         first_voice_text, first_voice_sample, throughput, throughput_unit.
     """
     item_dict = asdict(item)
+    if python is not None:
+        item_dict["_overlay_python"] = str(python)
 
     # Write subprocess results to a temp file; avoids IPC pipe sizing limits
     # and allows the subprocess to flush incrementally.
@@ -1160,6 +1303,7 @@ def _dispatch_xla_item(
     chip_id: int,
     run_number: int,
     bestiary_path: str,
+    overlay_python: "Path | None" = None,
 ) -> dict:
     """Dispatch a JAX/Flax model to expedition_worker_xla.py and return compile result.
 
@@ -1175,7 +1319,8 @@ def _dispatch_xla_item(
     import subprocess as _sp
 
     project_dir = Path(__file__).resolve().parent.parent.parent
-    xla_python = Path.home() / "tt-xla" / "venv" / "bin" / "python3"
+    xla_python = overlay_python if overlay_python is not None \
+                 else Path.home() / "tt-xla" / "venv" / "bin" / "python3"
 
     default: dict = {
         "success": False, "compile_time": 0.0, "infer_time": 0.0,
@@ -1551,6 +1696,20 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
     print(f"{BOLD}{CYAN}  EXPEDITION CHIP {chip_id}  ·  {len(queue)} models queued  ·  run #{run_number:03d}{RESET}")
     print(f"{BOLD}{CYAN}{'═'*80}{RESET}\n")
 
+    # ── Startup pre-flight: dataset cache warmup + stale env entry cleanup ──
+    # Warm the cats-image dataset blob before any model dispatch so ONNX loaders
+    # that call load_dataset("huggingface/cats-image") don't hit FileNotFoundError.
+    # Also auto-clear bestiary entries that failed for version-mismatch reasons
+    # when the current env is newer than the env recorded at failure time.
+    from lib.expedition.bestiary import _current_env_fingerprint
+    _env_fp = _current_env_fingerprint()
+    _warm_hf_datasets(bestiary)
+    _pull_tt_forge_models()
+    _stale_cleared = bestiary.clear_stale_env_failures(_env_fp)
+    if _stale_cleared:
+        print(f"  {GREEN}✓ env upgrade cleared {len(_stale_cleared)} stale failure entries{RESET}")
+        bestiary.save()
+
     results: list[dict] = []
     # Snapshot cache before any downloads so we only evict what this run fetched.
     preexisting: frozenset[str] = frozenset()
@@ -1636,11 +1795,15 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
         # Reload bestiary here so models added to perm-fail mid-run are caught
         # before any download begins. Prevents waste when guardian adds entries
         # during an active expedition (e.g. wan/pytorch, qwen_2/causal_lm).
+        # NOTE: "wrong_backend" is intentionally NOT in this set.
+        # JAX models that reach the forge worker should be retried — the router
+        # re-routes them to XLA on the next dispatch attempt.  The standard
+        # attempts >= 3 gate still catches persistent bounce loops.
         _RUNTIME_PERM_FAIL_CATS = {
             "forge_internal", "unsupported_arch", "loader_missing",
             "missing_dependency", "unsupported_backend", "xla_runtime_error",
             "api_mismatch", "shape_mismatch", "forge_missing_op",
-            "model_access", "wrong_backend", "model_bug",
+            "model_access", "model_bug",
         }
         bestiary = Bestiary(path=bestiary_path)
         _bf = bestiary.failed.get(item.model_id, {})
@@ -1668,30 +1831,31 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             score = compute_score(False, is_first_ever, rarity, newness,
                                   hud.state.streak, mesh_chips=item.mesh_chips)
             hud.record_failure(item.model_id)
-            bestiary.record_failure(item.model_id, run_number, _gated_err)
+            bestiary.record_failure(item.model_id, run_number, _gated_err, env_fingerprint=_env_fp)
             hud.write_status()
             bestiary.save()
             results.append({"model": item.model_id, "status": "failed",
                              "error": _gated_err, "pts": score.pts})
             continue
 
-        # ── Architecture preflight ───────────────────────────────────────────
-        # Fetch config.json only (a few KB) and check for custom-class deps
-        # not installed in the forge/XLA env (mamba_ssm, simamba, RWKV, etc.).
-        # Catches Simamba-style models before any multi-GB weight download.
-        if item.is_frontier:
-            _bad_arch, _arch_err = _preflight_arch_check(item)
-            if _bad_arch:
-                elapsed = time.time() - start
-                score = compute_score(False, is_first_ever, rarity, newness,
-                                      hud.state.streak, mesh_chips=item.mesh_chips)
-                hud.record_failure(item.model_id)
-                bestiary.record_failure(item.model_id, run_number, _arch_err)
-                hud.write_status()
-                bestiary.save()
-                results.append({"model": item.model_id, "status": "failed",
-                                 "error": _arch_err, "pts": score.pts})
-                continue
+        # ── Architecture / IRD preflight ─────────────────────────────────────
+        # For frontier models: fetch config.json only (a few KB) and check for
+        # custom-class deps not installed in the forge/XLA env.  Catches
+        # Simamba-style models before any multi-GB weight download.
+        # For all models: check IRD_LF_CACHE env var for seed models that call
+        # tt-forge-models/tools/utils.py _get_file() — fail fast before download.
+        _bad_arch, _arch_err = _preflight_arch_check(item)
+        if _bad_arch:
+            elapsed = time.time() - start
+            score = compute_score(False, is_first_ever, rarity, newness,
+                                  hud.state.streak, mesh_chips=item.mesh_chips)
+            hud.record_failure(item.model_id)
+            bestiary.record_failure(item.model_id, run_number, _arch_err, env_fingerprint=_env_fp)
+            hud.write_status()
+            bestiary.save()
+            results.append({"model": item.model_id, "status": "failed",
+                             "error": _arch_err, "pts": score.pts})
+            continue
 
         # ── JAX/Flax → XLA worker dispatch ──────────────────────────────────────
         # JAX models must compile via the XLA backend (expedition_worker_xla.py).
@@ -1703,41 +1867,56 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
         _item_is_jax = (item.library or "").lower() in ("jax", "flax") or \
                        item.model_id.split("/")[-1].lower() in ("jax", "flax")
 
-        if _item_is_jax:
-            _print_progress_step(2, 3, "Routing to XLA worker (JAX)...")
-            cr = _dispatch_xla_item(item, chip_id, run_number, bestiary_path)
-            # XLA worker updated bestiary on disk — reload so this worker's
-            # in-memory state reflects those changes for subsequent models.
-            bestiary = Bestiary(path=bestiary_path)
-        else:
-            _print_progress_step(1, 3, "Loading model...")
+        # ── Per-model isolated overlay venv ──────────────────────────────────
+        # Create a thin symlinked venv overlay so any pip installs go into
+        # the overlay only — the base forge/XLA env is never mutated.
+        from lib.expedition.model_overlay import (
+            create_overlay, destroy_overlay, install_requirements,
+        )
+        _overlay_base = _XLA_BASE_VENV if _item_is_jax else _FORGE_BASE_VENV
+        _overlay = create_overlay(item.model_id, base_venv=_overlay_base)
+        _overlay_installed: list[str] = []
+        _overlay_req = _find_seed_requirements(item.model_id)
+        if _overlay_req:
+            _overlay_installed = install_requirements(_overlay, _overlay_req)
+            if _overlay_installed:
+                print(f"  {CYAN}↳ overlay: pre-installed {_overlay_installed}{RESET}")
 
-            # ── Loader construction (pre-flight check) ───────────────────────────
-            # Build the loader in the parent as a fast error gate — catches missing
-            # modules and bad configs before paying the cost of a subprocess spawn.
-            # The subprocess rebuilds its own loader; this result is not passed across
-            # the process boundary.
-            try:
-                _build_loader(item)
-            except Exception as e:
-                elapsed = time.time() - start
-                _print_failure(item.model_id, str(e), elapsed)
-                score = compute_score(False, is_first_ever, rarity, newness, hud.state.streak,
-                                      mesh_chips=item.mesh_chips)
-                hud.record_failure(item.model_id)
-                bestiary.record_failure(item.model_id, run_number, str(e))
-                hud.write_status()
-                results.append({"model": item.model_id, "status": "failed",
-                                "error": str(e), "pts": score.pts})
-                continue
+        try:
+            if _item_is_jax:
+                _print_progress_step(2, 3, "Routing to XLA worker (JAX)...")
+                cr = _dispatch_xla_item(item, chip_id, run_number, bestiary_path,
+                                        overlay_python=_overlay.python)
+                # XLA worker updated bestiary on disk — reload so this worker's
+                # in-memory state reflects those changes for subsequent models.
+                bestiary = Bestiary(path=bestiary_path)
+            else:
+                _print_progress_step(1, 3, "Loading model...")
 
-            # ── Compile + inference (subprocess-isolated) ─────────────────────────
-            # Each compile runs in a child process so a SIGSEGV inside forge.compile()
-            # kills only the child — this worker loop survives and continues to the
-            # next model.  decode(), first_voice, and throughput all run inside the
-            # subprocess; only JSON-serialisable scalars cross the boundary.
-            # bench_passes are silently skipped (compiled module can't be pickled).
-            cr = _compile_isolated(item, chip_id)
+                # ── Loader construction (pre-flight check) ───────────────────────
+                # Build the loader in the parent as a fast error gate — catches
+                # missing modules and bad configs before the subprocess spawn.
+                try:
+                    _build_loader(item)
+                except Exception as e:
+                    elapsed = time.time() - start
+                    _print_failure(item.model_id, str(e), elapsed)
+                    score = compute_score(False, is_first_ever, rarity, newness, hud.state.streak,
+                                          mesh_chips=item.mesh_chips)
+                    hud.record_failure(item.model_id)
+                    bestiary.record_failure(item.model_id, run_number, str(e), env_fingerprint=_env_fp)
+                    hud.write_status()
+                    results.append({"model": item.model_id, "status": "failed",
+                                    "error": str(e), "pts": score.pts})
+                    continue
+
+                # ── Compile + inference (subprocess-isolated) ─────────────────────
+                # Each compile runs in a child process so a SIGSEGV kills only the
+                # child. The overlay python is passed through item_dict and the child
+                # re-execs under it so overlay-installed packages are importable.
+                cr = _compile_isolated(item, chip_id, python=_overlay.python)
+        finally:
+            destroy_overlay(_overlay)
         success          = cr["success"]
         compile_time     = cr["compile_time"]
         infer_time       = cr["infer_time"]
@@ -1827,6 +2006,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                     throughput=throughput,
                     throughput_unit=throughput_unit,
                     mesh_chips=getattr(item, "mesh_chips", 1),
+                    pip_deps=_overlay_installed,
                 )
                 # Accumulate points into the per-chip all-time leaderboard entry.
                 bestiary.add_chip_points(
@@ -1866,7 +2046,10 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             hud.record_failure(item.model_id)
             # XLA-dispatched failures are already in the bestiary from the subprocess.
             if not _item_is_jax:
-                bestiary.record_failure(item.model_id, run_number, error_str)
+                _missing_pkg = _extract_missing_package(error_str)
+                bestiary.record_failure(item.model_id, run_number, error_str,
+                                        env_fingerprint=_env_fp,
+                                        missing_packages=[_missing_pkg] if _missing_pkg else [])
             results.append({"model": item.model_id, "status": "failed",
                             "error": error_str, "pts": score.pts})
 
