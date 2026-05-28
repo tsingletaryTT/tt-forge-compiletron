@@ -360,6 +360,17 @@ def _setup_jax(chip_id: int):
     for var in ("TT_METAL_HOME", "TT_METAL_LOGGER_LEVEL"):
         os.environ.pop(var, None)
 
+    # P300/P150 boards need a mesh graph descriptor for single-chip CUSTOM cluster
+    # mode. Point at the descriptor bundled inside tt-xla's own tt-metal tree so
+    # it matches the PJRT plugin version exactly.
+    if "TT_MESH_GRAPH_DESC_PATH" not in os.environ:
+        _xla_root = Path.home() / "tt-xla"
+        _desc = (_xla_root / "third_party" / "tt-mlir" / "install" / "tt-metal"
+                 / "tt_metal" / "fabric" / "mesh_graph_descriptors"
+                 / "p100_mesh_graph_descriptor.textproto")
+        if _desc.exists():
+            os.environ["TT_MESH_GRAPH_DESC_PATH"] = str(_desc)
+
     # Silence XLA/JAX startup noise before importing.
     os.environ.setdefault("JAX_PLATFORMS", "tt")
     os.environ.setdefault("XLA_FLAGS", "--xla_dump_to=/dev/null")
