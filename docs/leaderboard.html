@@ -666,7 +666,7 @@ footer {
       var cat = m.error_category || 'other';
       var err = String(m.last_error || '').slice(0, 120);
       html += '<tr>' +
-        '<td style="color:var(--text)">' + esc(m._id) + '</td>' +
+        '<td><a href="https://huggingface.co/' + esc(m._id) + '" target="_blank" style="color:var(--muted);text-decoration:none">' + esc(m._id) + '</a></td>' +
         '<td><span class="tag t-fail err-cat">' + esc(cat) + '</span></td>' +
         '<td style="text-align:center;color:var(--muted)">' + (m.attempts || 0) + '</td>' +
         '<td style="text-align:center;color:var(--muted)">' + (m.run_first_failed ? '#' + m.run_first_failed : '—') + '</td>' +
