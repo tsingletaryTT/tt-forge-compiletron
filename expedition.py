@@ -1023,8 +1023,9 @@ def build_queues(
         if provider:
             # Provider mode: skip the broad time-window scan and enumerate all
             # models from this specific author/org directly.
+            # Use library=None — providers often don't tag their models with a
+            # library, so the default pytorch filter would return nothing.
             from lib.expedition.hf_discover import discover_from_authors as _dfa
-            _prov_lower = provider.lower()
             frontier_items = _with_spinner(
                 f"querying HuggingFace for {provider} models…",
                 lambda: _dfa(
@@ -1033,6 +1034,7 @@ def build_queues(
                     known_model_ids=forge_ids,
                     skip_gated=skip_gated,
                     max_per_author=500,
+                    library=None,
                 ),
             )
         else:
