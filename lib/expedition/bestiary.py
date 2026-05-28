@@ -547,8 +547,7 @@ class Bestiary:
         return sorted(
             [{"package": pkg, "count": len(models), "models": models}
              for pkg, models in tally.items()],
-            key=lambda x: x["count"],
-            reverse=True,
+            key=lambda x: (-x["count"], x["package"]),
         )
 
     def failure_stats(self) -> list[dict]:
