@@ -943,14 +943,19 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
     try:
         model = model_loader()
 
-        # onnx.ModelProto objects don't have .eval() — only call it for
-        # torch.nn.Module instances.
+        # onnx.ModelProto and flax.linen.Module objects don't have .eval() —
+        # only call it for torch.nn.Module instances.
         try:
             import onnx as _onnx_mod
             _is_onnx = isinstance(model, _onnx_mod.ModelProto)
         except ImportError:
             _is_onnx = False
-        if not _is_onnx:
+        try:
+            import flax.linen as _flax_linen
+            _is_flax = isinstance(model, _flax_linen.Module)
+        except ImportError:
+            _is_flax = False
+        if not _is_onnx and not _is_flax:
             model.eval()
 
         # Patch the model config for forge traceability:
