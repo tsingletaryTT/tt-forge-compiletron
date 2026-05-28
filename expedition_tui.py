@@ -498,6 +498,7 @@ class SetupScreen(Screen):
         self._curated      = False  # True → use hand-curated showcase demo queue
         self._backend      = "auto"   # auto | forge | xla | mixed
         self._xla_mesh     = 1        # Number of chips for JAX/XLA shard_map dispatch
+        self._provider     = None     # HF author/org filter (--provider)
         self._discovering  = False  # True while HF discovery / queue-build is running
         self._setup_done   = False  # True once queues are built (no re-run)
         self._autostart_secs = 4   # Countdown seconds before auto-start (0 = auto-fire immediately)
@@ -523,6 +524,7 @@ class SetupScreen(Screen):
         self._curated              = getattr(app, "curated", False)
         self._backend              = getattr(app, "backend", "auto")
         self._xla_mesh             = getattr(app, "xla_mesh", 1)
+        self._provider             = getattr(app, "provider", None)
         confirm                    = getattr(app, "confirm", False)
         # confirm=False (default): fire immediately; confirm=True: 4s countdown + Enter.
         if not confirm:
@@ -571,7 +573,9 @@ class SetupScreen(Screen):
         else:
             pb_str = "∞"
 
-        if self._seed_only:
+        if self._provider:
+            src_str = f"[bold cyan]{self._provider}[/] only"
+        elif self._seed_only:
             src_str = "seed only"
         elif self._frontier_only:
             src_str = "HF frontier"
@@ -809,7 +813,8 @@ class SetupScreen(Screen):
 
             # Canary injection: if all forge-models are already compiled,
             # pick one random one anyway so we always have ≥1 model to run.
-            if not seed_items and not self._staples:
+            # Skip in provider mode — only that provider's models should run.
+            if not seed_items and not self._staples and not self._provider:
                 all_seeds = _scan_forge_models(set(), include_all=True, framework=scan_fw,
                                                xla_mesh=self._xla_mesh)
                 if all_seeds:
@@ -822,18 +827,50 @@ class SetupScreen(Screen):
 
         # ── HF frontier discovery (slow — network) ────────────────────────────
         if not self._seed_only:
-            _log("[cyan]⚙ Querying HuggingFace frontier (may take 30-60s)...[/]")
             _frontier_compiled = set() if self._rerun_compiled else compiled_ids
-            frontier_items = _scan_frontier(
-                _frontier_compiled,
-                forge_ids,
-                min_downloads    = self._min_downloads,
-                min_likes        = self._min_likes,
-                max_dl_like_ratio = self._max_dl_like_ratio,
-                max_params_b     = self._max_params_b,
-                skip_gated       = not self._allow_gated,
-                library          = scan_fw,
-            )
+            if self._provider:
+                from lib.expedition.hf_discover import discover_from_authors as _dfa
+                _log(f"[cyan]⚙ Querying HuggingFace for {self._provider} models...[/]")
+                _raw = _dfa(
+                    authors=[self._provider],
+                    compiled_ids=_frontier_compiled,
+                    known_model_ids=forge_ids,
+                    skip_gated=not self._allow_gated,
+                    max_per_author=500,
+                    library=None,
+                )
+                frontier_items = [
+                    {
+                        "model_id":      m.model_id,
+                        "display_name":  m.model_id.split("/")[-1],
+                        "task":          m.pipeline_tag,
+                        "source":        "huggingface",
+                        "rarity":        m.rarity.value,
+                        "hf_downloads":  m.downloads,
+                        "hf_likes":      m.likes,
+                        "hf_params_b":   m.params_b,
+                        "hf_created_at": m.created_at.isoformat() if m.created_at else None,
+                        "mesh_chips":    m.mesh_chips,
+                        "library":       m.library,
+                        "model_type":    m.model_type,
+                        "loader_module": None,
+                        "loader_class":  None,
+                        "is_frontier":   True,
+                    }
+                    for m in _raw
+                ]
+            else:
+                _log("[cyan]⚙ Querying HuggingFace frontier (may take 30-60s)...[/]")
+                frontier_items = _scan_frontier(
+                    _frontier_compiled,
+                    forge_ids,
+                    min_downloads    = self._min_downloads,
+                    min_likes        = self._min_likes,
+                    max_dl_like_ratio = self._max_dl_like_ratio,
+                    max_params_b     = self._max_params_b,
+                    skip_gated       = not self._allow_gated,
+                    library          = scan_fw,
+                )
             _log(f"[green]✓ {len(frontier_items)} frontier model(s) discovered[/]")
             for item in frontier_items:
                 mid  = item.get("model_id", "?")
@@ -841,7 +878,9 @@ class SetupScreen(Screen):
                 _log(f"  [cyan]+ {mid}  [dim]{task}[/][/]")
 
         # ── Dedup + interleave ────────────────────────────────────────────────
-        if frontier_items and (self._limit == 0 or self._limit < 100):
+        # Skip author/family dedup in provider mode — all models are from the
+        # same author so dedup would reduce the run to a single model.
+        if frontier_items and (self._limit == 0 or self._limit < 100) and not self._provider:
             frontier_items, n_dropped = _dedup_by_author_family(
                 frontier_items, target_params_b=self._max_params_b
             )
@@ -2264,6 +2303,7 @@ class ExpeditionTUI(App[None]):
         bench_shapes:           bool  = False,
         no_permafail:           bool  = False,
         xla_mesh:               int   = 1,
+        provider:               str | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -2297,6 +2337,7 @@ class ExpeditionTUI(App[None]):
         self.no_permafail         = no_permafail
         # Number of chips for JAX/XLA multi-chip shard_map dispatch.
         self.xla_mesh             = xla_mesh
+        self.provider             = provider
 
     def on_mount(self) -> None:
         # Purge stale forge shared-memory segments and TT device handles from any

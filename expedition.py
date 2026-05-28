@@ -1026,7 +1026,7 @@ def build_queues(
             # Use library=None — providers often don't tag their models with a
             # library, so the default pytorch filter would return nothing.
             from lib.expedition.hf_discover import discover_from_authors as _dfa
-            frontier_items = _with_spinner(
+            _raw = _with_spinner(
                 f"querying HuggingFace for {provider} models…",
                 lambda: _dfa(
                     authors=[provider],
@@ -1037,6 +1037,26 @@ def build_queues(
                     library=None,
                 ),
             )
+            frontier_items = [
+                {
+                    "model_id":      m.model_id,
+                    "display_name":  m.model_id.split("/")[-1],
+                    "task":          m.pipeline_tag,
+                    "source":        "huggingface",
+                    "rarity":        m.rarity.value,
+                    "hf_downloads":  m.downloads,
+                    "hf_likes":      m.likes,
+                    "hf_params_b":   m.params_b,
+                    "hf_created_at": m.created_at.isoformat() if m.created_at else None,
+                    "mesh_chips":    m.mesh_chips,
+                    "library":       m.library,
+                    "model_type":    m.model_type,
+                    "loader_module": None,
+                    "loader_class":  None,
+                    "is_frontier":   True,
+                }
+                for m in _raw
+            ]
         else:
             frontier_items = _with_spinner("querying HuggingFace frontier…",
                                            _scan_frontier,
@@ -2035,6 +2055,7 @@ def main():
             bench_passes=getattr(args, "bench_passes", 0),
             bench_shapes=getattr(args, "bench_shapes", False),
             xla_mesh=getattr(args, "xla_mesh", 1),
+            provider=getattr(args, "provider", None),
         )
         app.run()
         return   # everything handled inside TUI screens
