@@ -2221,6 +2221,52 @@
       "best_infer_s": 25.608915090560913,
       "throughput_unit": "ms/sample",
       "best_throughput": 25608.915
+    },
+    "bert/masked_lm/jax": {
+      "first_compiled": "2026-05-28T18:30:12.483545+00:00",
+      "first_chip": 3,
+      "run": 137,
+      "best_time_s": 26.147390365600586,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_masked_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 30522)  max=25.094  mean=-8.620",
+      "first_voice": "",
+      "backend": "xla",
+      "backends_succeeded": [
+        "xla"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 26.147390365600586,
+      "best_infer_s": 0.0203096866607666,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 1575.603
+    },
+    "distilbert/masked_lm/jax": {
+      "first_compiled": "2026-05-28T18:34:28.335756+00:00",
+      "first_chip": 1,
+      "run": 137,
+      "best_time_s": 7.988436937332153,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_masked_lm",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 32, 30522)  max=25.422  mean=-7.128",
+      "first_voice": "",
+      "backend": "xla",
+      "backends_succeeded": [
+        "xla"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 7.988436937332153,
+      "best_infer_s": 0.052965402603149414,
+      "throughput_unit": "tokens/sec",
+      "best_throughput": 604.168
     }
   },
   "failed": {
@@ -2280,9 +2326,9 @@
     },
     "alexnet/image_classification/jax": {
       "run_first_failed": 15,
-      "attempts": 0,
-      "last_error": "JAX model 'alexnet/image_classification/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
-      "error_category": "wrong_backend"
+      "attempts": 1,
+      "last_error": "ScopeCollectionNotFound: Tried to access \"kernel\" from collection \"params\" in \"/Conv_0\" but the collection is empty. (https://flax.readthedocs.io/en/latest/api_reference/flax.errors.html#flax.errors.ScopeCollectionNotFound)",
+      "error_category": "flax_scope_error"
     },
     "attention_denseunet/pytorch": {
       "run_first_failed": 16,
@@ -2332,9 +2378,14 @@
     },
     "bevformer/pytorch": {
       "run_first_failed": 40,
-      "attempts": 2,
-      "last_error": "ValueError: IRD_LF_CACHE environment variable is not set. Please set it to the address of the IRD LF cache.",
-      "error_category": "missing_dependency"
+      "attempts": 3,
+      "last_error": "missing_dependency: IRD_LF_CACHE env var not set (model 'bevformer/pytorch' requires Tenstorrent internal file cache)",
+      "error_category": "missing_dependency",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
     },
     "musicgen_small/pytorch": {
       "run_first_failed": 57,
@@ -2367,9 +2418,9 @@
     },
     "blenderbot/summarization/jax": {
       "run_first_failed": 73,
-      "attempts": 0,
-      "last_error": "JAX model 'blenderbot/summarization/jax' routed to forge worker \u2014 check backend setting (should be 'auto' or 'xla')",
-      "error_category": "wrong_backend"
+      "attempts": 1,
+      "last_error": "XlaRuntimeError: INTERNAL: Error code: 13",
+      "error_category": "xla_runtime_error"
     },
     "command/pytorch": {
       "run_first_failed": 73,
@@ -2407,14 +2458,19 @@
     },
     "dinov2/image_classification/pytorch": {
       "run_first_failed": 73,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "AssertionError: Resize2d op only support nearest and bilinear mode for now",
-      "error_category": "forge_internal",
+      "error_category": "forge_missing_op",
       "error_label": "SIGSEGV in forge.compile",
       "error_hint": "Dinov2ForImageClassification segfaults in forge.compile",
       "first_failed": "2026-05-20T20:32:24.051055+00:00",
       "run": 86,
-      "source": "huggingface"
+      "source": "huggingface",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
     },
     "clip/image_classification/jax": {
       "run_first_failed": 74,
@@ -2502,8 +2558,8 @@
     },
     "bge_m3/encode/pytorch": {
       "run_first_failed": 80,
-      "attempts": 3,
-      "last_error": "",
+      "attempts": 4,
+      "last_error": "ValueError: Your currently installed version of Keras is Keras 3, but this is not yet supported in Transformers. Please install the backwards-compatible tf-keras package with `pip install tf-keras`.",
       "error_category": "other",
       "env_fingerprint": {
         "torch": "2.7.0+cpu",
