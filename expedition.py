@@ -2009,6 +2009,11 @@ def main():
     # ── Pretend mode (--pretend): build queues, print model list, exit ───────
     if getattr(args, "pretend", False):
         _pretend_chips = max(args.chips, 1) if args.chips > 0 else 4
+        if args.max_model_params == 0.0:
+            from lib.hardware import safe_max_params_b as _smpb
+            _auto = _smpb(_pretend_chips)
+            if _auto > 0:
+                args.max_model_params = _auto
         print(f"\n{_TEAL}{_BOLD}PRETEND MODE — queue preview ({_pretend_chips} chips){_RST}\n")
         _pqueues = build_queues(
             num_chips       = _pretend_chips,
@@ -2039,12 +2044,23 @@ def main():
         return
 
     # ── Hardware detection ────────────────────────────────────────────────────
-    from lib.hardware import detect_hardware, get_hardware_summary
+    from lib.hardware import detect_hardware, get_hardware_summary, safe_max_params_b
     hw = detect_hardware()
     num_chips = args.chips if args.chips > 0 else hw.get("num_chips", 1)
     if num_chips == 0:
         print("No chips detected. Check tt-smi.")
         sys.exit(1)
+
+    # ── Auto-cap model size based on system RAM ───────────────────────────────
+    # If the user didn't specify --max-model-params, compute a safe default so
+    # a single large-model compile can't OOM the machine.  Logged so the user
+    # knows what limit is in effect.
+    if args.max_model_params == 0.0:
+        _auto_cap = safe_max_params_b(num_chips)
+        if _auto_cap > 0:
+            args.max_model_params = _auto_cap
+            print(f"  {_DIM}auto max-model-params: {_auto_cap:.0f}B "
+                  f"(RAM-safe for {num_chips} chips; override with --max-model-params){_RST}")
 
     # ── Run numbering ─────────────────────────────────────────────────────────
     # Derive next run number from the count of existing run JSON files.

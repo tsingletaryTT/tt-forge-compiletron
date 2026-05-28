@@ -125,6 +125,41 @@ def detect_hardware() -> Dict[str, any]:
         }
 
 
+def system_ram_gb() -> float:
+    """Return total system RAM in gigabytes."""
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    kb = int(line.split()[1])
+                    return kb / (1024 * 1024)
+    except Exception:
+        pass
+    return 0.0
+
+
+def safe_max_params_b(num_chips: int) -> float:
+    """Compute a safe per-model parameter cap based on available RAM and chip count.
+
+    forge needs roughly 5× model params in RAM at fp32 (weights + compilation IR
+    + intermediate tensors). With N chips compiling in parallel each subprocess
+    can independently hit that ceiling, so we divide by num_chips.
+
+    Uses 70% of total RAM to leave headroom for the OS, the TUI, and the
+    Tenstorrent driver. Returns 0.0 if RAM cannot be determined (disables cap).
+    """
+    ram = system_ram_gb()
+    if ram <= 0 or num_chips <= 0:
+        return 0.0
+    safe = (ram * 0.70) / (num_chips * 5.0)
+    # Round down to a clean breakpoint so the displayed value is readable.
+    breakpoints = [1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 7.0, 8.0, 10.0, 13.0, 20.0, 30.0, 70.0]
+    for bp in reversed(breakpoints):
+        if safe >= bp:
+            return bp
+    return max(1.0, round(safe, 1))
+
+
 def get_chip_config(chip_id: int, num_chips: int, arch: str, board_type: str) -> Dict[str, str]:
     """
     Generate environment variables for isolating one chip.
