@@ -942,7 +942,9 @@ def build_queues(
         # fast first-win to seed the scoreboard.  If all seed models are
         # already in the bestiary (and --staples wasn't set), pull one at
         # random from the full zoo ignoring the compiled filter.
-        if not seed_items:
+        # Skip canary injection in provider mode — the whole point is to run
+        # only that provider's models.
+        if not seed_items and not provider:
             all_seeds = _scan_forge_models(set(), include_all=True, xla_mesh=xla_mesh)
             if all_seeds:
                 import random as _random
@@ -1077,8 +1079,10 @@ def build_queues(
         # Author/family dedup: one model per (author, repo-family) per run.
         # Keeps the most recent or best-sized variant; skips the rest.
         # Bypassed for large runs (100+ per chip) where diversity is expected.
+        # Also bypassed in provider mode — the whole run is one author so dedup
+        # would reduce it to a single model.
         family_note = ""
-        if limit == 0 or limit < 100:
+        if (limit == 0 or limit < 100) and not provider:
             frontier_items, n_dropped = _dedup_by_author_family(
                 frontier_items, target_params_b=max_params_b
             )
