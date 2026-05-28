@@ -1075,6 +1075,21 @@ def _build_loader_xla(item: QueueItem):
             root_mod.__file__ = os.path.join(forge_models_path, "__init__.py")
             sys.modules[_PKG] = root_mod
 
+        # Some legacy loaders use the absolute path style
+        # `from third_party.tt_forge_models.X import Y` rather than relative
+        # imports. Register a synthetic alias so those imports resolve without
+        # needing the repo installed as a package.
+        if "third_party" not in sys.modules:
+            _tp = types.ModuleType("third_party")
+            _tp.__path__ = [os.path.join(forge_models_path, "..")]
+            sys.modules["third_party"] = _tp
+        if "third_party.tt_forge_models" not in sys.modules:
+            _tfm = types.ModuleType("third_party.tt_forge_models")
+            _tfm.__path__ = [forge_models_path]
+            _tfm.__package__ = "third_party.tt_forge_models"
+            _tfm.__file__ = os.path.join(forge_models_path, "__init__.py")
+            sys.modules["third_party.tt_forge_models"] = _tfm
+
         mod = importlib.import_module(item.loader_module)
         cls = getattr(mod, item.loader_class)
 
