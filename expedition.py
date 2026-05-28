@@ -890,6 +890,7 @@ def build_queues(
     xla_mesh: int = 1,
     backend: str = "auto",
     max_age_days: int = 180,
+    provider: str | None = None,
 ) -> list[list[dict]]:
     """
     Build per-chip model queues by merging forge-models seed items with HF
@@ -994,6 +995,12 @@ def build_queues(
         if seed_perm_fail:
             seed_items = [it for it in seed_items if it["model_id"] not in seed_perm_fail]
 
+        # Provider filter: keep only models whose HF author matches the requested org.
+        if provider:
+            _prov_lower = provider.lower()
+            seed_items = [it for it in seed_items
+                          if it.get("model_id", "").split("/")[0].lower() == _prov_lower]
+
         _section(f"FORGE MODELS  ({len(seed_items)} seed)")
         for item in seed_items:
             _model_row(item)
@@ -1011,16 +1018,32 @@ def build_queues(
         # When --rerun-compiled is set, pass an empty compiled set so the
         # frontier scanner re-queues models already in the bestiary.
         _frontier_compiled = set() if rerun_compiled else compiled_ids
-        frontier_items = _with_spinner("querying HuggingFace frontier…",
-                                       _scan_frontier,
-                                       _frontier_compiled, forge_ids,
-                                       min_downloads=min_downloads,
-                                       min_likes=min_likes,
-                                       max_dl_like_ratio=max_dl_like_ratio,
-                                       max_params_b=max_params_b,
-                                       skip_gated=skip_gated,
-                                       proven_authors=proven_authors,
-                                       max_age_days=max_age_days)
+        if provider:
+            # Provider mode: skip the broad time-window scan and enumerate all
+            # models from this specific author/org directly.
+            from lib.expedition.hf_discover import discover_from_authors as _dfa
+            _prov_lower = provider.lower()
+            frontier_items = _with_spinner(
+                f"querying HuggingFace for {provider} models…",
+                lambda: _dfa(
+                    authors=[provider],
+                    compiled_ids=_frontier_compiled,
+                    known_model_ids=forge_ids,
+                    skip_gated=skip_gated,
+                    max_per_author=500,
+                ),
+            )
+        else:
+            frontier_items = _with_spinner("querying HuggingFace frontier…",
+                                           _scan_frontier,
+                                           _frontier_compiled, forge_ids,
+                                           min_downloads=min_downloads,
+                                           min_likes=min_likes,
+                                           max_dl_like_ratio=max_dl_like_ratio,
+                                           max_params_b=max_params_b,
+                                           skip_gated=skip_gated,
+                                           proven_authors=proven_authors,
+                                           max_age_days=max_age_days)
 
         # Exclude models whose failure history shows they cannot succeed.
         # Permanent-failure categories (skip immediately regardless of attempt count):
@@ -1839,6 +1862,10 @@ def main():
     run_p.add_argument("--model",            type=str, default=None, metavar="HF_ID",
                        help="Run a single specific HuggingFace model (e.g. llava-hf/llava-v1.6-mistral-7b-hf). "
                             "Skips all discovery; ignores --seed-only/--frontier-only/--limit.")
+    run_p.add_argument("--provider",         type=str, default=None, metavar="HF_ORG",
+                       help="Restrict the run to models from a specific HuggingFace author or org "
+                            "(e.g. NovaCorp, mistralai, meta-llama). Scans all their public models "
+                            "instead of the normal time-window frontier.")
     run_p.add_argument("--no-permafail",    action="store_true",
                        help="Bypass the permanent-failure gate. Useful when retrying a model whose "
                             "previous failure was a fixable bug rather than a genuine compile barrier.")
@@ -2056,6 +2083,7 @@ def main():
             xla_mesh=getattr(args, "xla_mesh", 1),
             backend=getattr(args, "backend", "auto"),
             max_age_days=getattr(args, "max_model_age_days", 180),
+            provider=getattr(args, "provider", None),
         )
 
     # ── Queue assignment summary ──────────────────────────────────────────────
