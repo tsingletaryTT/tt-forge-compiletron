@@ -1892,6 +1892,9 @@ def main():
                        help="Restrict the run to models from a specific HuggingFace author or org "
                             "(e.g. NovaCorp, mistralai, meta-llama). Scans all their public models "
                             "instead of the normal time-window frontier.")
+    run_p.add_argument("--pretend",          action="store_true",
+                       help="Dry-run: build queues, print every model that would run, then exit. "
+                            "No hardware access, no downloads. Useful with --provider.")
     run_p.add_argument("--no-permafail",    action="store_true",
                        help="Bypass the permanent-failure gate. Useful when retrying a model whose "
                             "previous failure was a fixable bug rather than a genuine compile barrier.")
@@ -2002,6 +2005,38 @@ def main():
     # ── Flag validation ───────────────────────────────────────────────────────
     if getattr(args, "evict_failures", False) and not getattr(args, "ephemeral", False):
         print(f"  {_GOLD}warning:{_RST} --evict-failures has no effect without --ephemeral")
+
+    # ── Pretend mode (--pretend): build queues, print model list, exit ───────
+    if getattr(args, "pretend", False):
+        _pretend_chips = max(args.chips, 1) if args.chips > 0 else 4
+        print(f"\n{_TEAL}{_BOLD}PRETEND MODE — queue preview ({_pretend_chips} chips){_RST}\n")
+        _pqueues = build_queues(
+            num_chips       = _pretend_chips,
+            seed_only       = args.seed_only,
+            frontier_only   = args.frontier_only,
+            limit           = args.limit,
+            min_downloads   = args.min_downloads,
+            min_likes       = args.min_likes,
+            max_dl_like_ratio = getattr(args, "max_dl_like_ratio", 5000),
+            max_params_b    = args.max_model_params,
+            skip_gated      = not args.allow_gated,
+            staples         = args.staples,
+            rerun_compiled  = getattr(args, "rerun_compiled", False),
+            xla_mesh        = getattr(args, "xla_mesh", 1),
+            backend         = getattr(args, "backend", "auto"),
+            max_age_days    = getattr(args, "max_model_age_days", 180),
+            provider        = getattr(args, "provider", None),
+        )
+        all_queued = [(chip_id, item) for chip_id, q in enumerate(_pqueues) for item in q]
+        print(f"  {_BOLD}{len(all_queued)} model(s) across {_pretend_chips} chip(s){_RST}\n")
+        for chip_id, item in all_queued:
+            mid  = item.get("model_id", "?")
+            task = item.get("task") or ""
+            src  = item.get("source", "")
+            src_tag = f" {_DIM}[seed]{_RST}" if src == "tt_forge_models" else ""
+            print(f"  {_TEAL}C{chip_id}{_RST}  {mid}  {_DIM}{task}{_RST}{src_tag}")
+        print()
+        return
 
     # ── Hardware detection ────────────────────────────────────────────────────
     from lib.hardware import detect_hardware, get_hardware_summary

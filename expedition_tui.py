@@ -805,6 +805,10 @@ class SetupScreen(Screen):
             _log(f"[cyan]{label}[/]")
             seed_items = _scan_forge_models(compiled_ids, include_all=self._staples,
                                             framework=scan_fw, xla_mesh=self._xla_mesh)
+            if self._provider:
+                _prov = self._provider.lower()
+                seed_items = [it for it in seed_items
+                              if it.get("model_id", "").split("/")[0].lower() == _prov]
             _log(f"[green]✓ {len(seed_items)} seed model(s) found[/]")
             for item in seed_items:
                 mid  = item.get("model_id", "?")
