@@ -1309,6 +1309,7 @@ def _dispatch_xla_item(
     run_number: int,
     bestiary_path: str,
     overlay_python: "Path | None" = None,
+    no_permafail: bool = False,
 ) -> dict:
     """Dispatch a JAX/Flax model to expedition_worker_xla.py and return compile result.
 
@@ -1360,6 +1361,8 @@ def _dispatch_xla_item(
             "--model-json", item_path,
             "--results",    res_path,
         ]
+        if no_permafail:
+            cmd.append("--no-permafail")
         import fcntl as _fcntl
         with open(_xla_lock_path, "w") as _lf:
             _fcntl.flock(_lf, _fcntl.LOCK_EX)   # blocks until the running XLA worker exits
@@ -1891,7 +1894,8 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             if _item_is_jax:
                 _print_progress_step(2, 3, "Routing to XLA worker (JAX)...")
                 cr = _dispatch_xla_item(item, chip_id, run_number, bestiary_path,
-                                        overlay_python=_overlay.python)
+                                        overlay_python=_overlay.python,
+                                        no_permafail=no_permafail)
                 # XLA worker updated bestiary on disk — reload so this worker's
                 # in-memory state reflects those changes for subsequent models.
                 bestiary = Bestiary(path=bestiary_path)

@@ -1247,7 +1247,8 @@ def run_worker_xla(chip_id: int, run_number: int, bestiary_path: str,
                    bench_shapes: bool = False,
                    ephemeral: bool = False,
                    evict_failures: bool = False,
-                   run_total: int = 0) -> None:
+                   run_total: int = 0,
+                   no_permafail: bool = False) -> None:
     """Main entry point for the XLA per-chip worker.
 
     Same interface as expedition_worker.run_worker but uses JAX/Flax instead
@@ -1610,6 +1611,8 @@ if __name__ == "__main__":
                              "unless the model earns a gold-star rating.")
     parser.add_argument("--evict-failures", action="store_true",
                         help="With --ephemeral, also evict weights for failed models.")
+    parser.add_argument("--no-permafail", action="store_true",
+                        help="Bypass the permanent-failure gate for this run.")
     args = parser.parse_args()
     if not args.queue and not args.model_json:
         parser.error("one of --queue or --model-json is required")
@@ -1628,4 +1631,5 @@ if __name__ == "__main__":
         ephemeral=args.ephemeral,
         evict_failures=args.evict_failures,
         run_total=args.run_total,
+        no_permafail=args.no_permafail,
     )
