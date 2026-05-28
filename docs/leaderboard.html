@@ -109,7 +109,6 @@ a:hover { color: var(--teal2); }
 .r-uncommon  { color: var(--blue); }
 .r-familiar  { color: var(--muted); }
 .r-common    { color: var(--muted); }
-.r-failed    { color: var(--red); }
 
 .tag {
   display: inline-block; padding: 0.1rem 0.4rem; border-radius: 3px;
@@ -118,7 +117,6 @@ a:hover { color: var(--teal2); }
 .t-forge { color: var(--teal);  border-color: var(--teal);  }
 .t-xla   { color: var(--pink);  border-color: var(--pink);  }
 .t-seed  { color: var(--muted); border-color: var(--muted); }
-.t-fail  { color: var(--red);   border-color: var(--red);   }
 
 .fv-row td {
   background: rgba(79, 209, 197, 0.04);
@@ -136,7 +134,6 @@ a:hover { color: var(--teal2); }
 }
 .compile-fast { color: var(--green); }
 .tput-good    { color: var(--teal2); }
-.err-cat { font-size: 0.75rem; }
 
 .section-divider { border: none; border-top: 1px solid var(--dim); margin: 0 2rem; }
 
@@ -185,7 +182,6 @@ footer {
   <a href="#reference">vs GPU</a>
   <a href="#chip-lb">Chips</a>
   <a href="#compiled">Compiled</a>
-  <a href="#failed">Failed</a>
   <div class="spacer"></div>
   <a class="gh-link" href="https://github.com/tsingletaryTT/tt-forge-compiletron" target="_blank">GitHub ↗</a>
 </nav>
@@ -338,33 +334,6 @@ footer {
 
     <hr class="section-divider" style="margin:2.5rem 0">
 
-    <!-- ── Failed models ─────────────────────────────────────────────── -->
-    <h2 id="failed">Still Hunting</h2>
-    <p>Models where forge or XLA hit a genuine compilation or runtime barrier.
-       Environment-only failures (SIGSEGV crashes, missing local packages, gated access, routing errors)
-       are hidden by default — they reflect local setup, not hardware capability.</p>
-
-    <div class="filter-row">
-      <span class="filter-label">Filter:</span>
-      <button class="filter-btn" id="failed-env-toggle">Show env/infra errors</button>
-    </div>
-    <div id="failed-env-note" style="font-size:0.78rem;color:var(--muted);margin-bottom:0.75rem;font-family:var(--mono)"></div>
-
-    <div style="overflow-x:auto">
-    <table class="lb-table" id="failed-table">
-      <thead>
-        <tr>
-          <th data-col="model">Model</th>
-          <th data-col="error_category">Category</th>
-          <th data-col="attempts">Attempts</th>
-          <th data-col="run_first_failed">First Failed Run</th>
-          <th data-col="last_error">Last Error</th>
-        </tr>
-      </thead>
-      <tbody id="failed-body"></tbody>
-    </table>
-    </div>
-
   </div><!-- #content -->
 </section>
 
@@ -424,7 +393,6 @@ footer {
     renderStats(compiledList, failedList);
     renderChipLb(compiledList);
     renderCompiled(compiledList);
-    renderFailed(failedList);
   }
 
   // ── Stats summary ───────────────────────────────────────────────────────
@@ -446,19 +414,14 @@ footer {
       if (m.run > maxRun) maxRun = m.run;
     });
 
-    var envFailCount  = failedList.filter(_isEnvError).length;
-    var compileFailCount = failedList.length - envFailCount;
-
     var pills = [
-      { num: compiledList.length,  lbl: 'compiled models' },
-      { num: compileFailCount,     lbl: 'compilation failures' },
-      { num: envFailCount,         lbl: 'env/infra errors (hidden)' },
-      { num: totalRuns,           lbl: 'total successful runs' },
-      { num: maxRun,              lbl: 'expeditions run' },
-      { num: backends['forge'] || 0, lbl: 'via forge (PyTorch)' },
-      { num: xlaCount,            lbl: 'via XLA (JAX/Flax)' },
+      { num: compiledList.length,     lbl: 'compiled models' },
+      { num: totalRuns,               lbl: 'total successful runs' },
+      { num: maxRun,                  lbl: 'expeditions run' },
+      { num: backends['forge'] || 0,  lbl: 'via forge (PyTorch)' },
+      { num: xlaCount,                lbl: 'via XLA (JAX/Flax)' },
       { num: rarities['legendary'] || 0, lbl: '★★★ legendary' },
-      { num: withVoice,           lbl: 'with First Voice' },
+      { num: withVoice,               lbl: 'with First Voice' },
     ];
     var html = '';
     pills.forEach(function(p) {
@@ -600,82 +563,6 @@ footer {
     });
 
     document.getElementById('compiled-body').innerHTML = html || '<tr><td colspan="11" style="color:var(--muted);text-align:center;padding:2rem">No models match the current filter.</td></tr>';
-  }
-
-  // ── Failed table ────────────────────────────────────────────────────────
-  // Categories that reflect local setup/environment, not forge/xla capability
-  var _LOCAL_ENV_CATS = {
-    'missing_dependency': true,
-    'model_access':       true,
-    'loader_missing':     true,
-    'wrong_backend':      true,
-    'quantized_format':   true,
-    'unsupported_backend':true,
-  };
-  var _failedData    = [];
-  var _failedShowEnv = false;
-
-  function _isEnvError(m) {
-    if (_LOCAL_ENV_CATS[m.error_category || '']) return true;
-    // SIGSEGV process kills live in 'other' category
-    return String(m.last_error || '').indexOf('SIGSEGV') !== -1;
-  }
-
-  function renderFailed(list) {
-    _failedData = list;
-    var envCount = list.filter(_isEnvError).length;
-
-    var toggleBtn = document.getElementById('failed-env-toggle');
-    var envNote   = document.getElementById('failed-env-note');
-
-    function updateToggleState() {
-      if (_failedShowEnv) {
-        toggleBtn.textContent = 'Hide env/infra errors';
-        toggleBtn.classList.add('active');
-        envNote.textContent = '';
-      } else {
-        toggleBtn.textContent = 'Show ' + envCount + ' env/infra errors';
-        toggleBtn.classList.remove('active');
-        envNote.textContent = envCount + ' failures hidden: SIGSEGV crashes, missing local packages, ' +
-          'access-gated models, backend routing errors. These reflect local setup, not hardware limits.';
-      }
-    }
-
-    updateToggleState();
-
-    toggleBtn.addEventListener('click', function() {
-      _failedShowEnv = !_failedShowEnv;
-      updateToggleState();
-      drawFailed();
-    });
-
-    drawFailed();
-  }
-
-  function drawFailed() {
-    var list = _failedShowEnv
-      ? _failedData
-      : _failedData.filter(function(m) { return !_isEnvError(m); });
-
-    list = list.slice().sort(function(a, b) {
-      return (b.attempts || 0) - (a.attempts || 0);
-    });
-
-    var html = '';
-    list.forEach(function(m) {
-      var cat = m.error_category || 'other';
-      var err = String(m.last_error || '').slice(0, 120);
-      html += '<tr>' +
-        '<td><a href="https://huggingface.co/' + esc(m._id) + '" target="_blank" style="color:var(--muted);text-decoration:none">' + esc(m._id) + '</a></td>' +
-        '<td><span class="tag t-fail err-cat">' + esc(cat) + '</span></td>' +
-        '<td style="text-align:center;color:var(--muted)">' + (m.attempts || 0) + '</td>' +
-        '<td style="text-align:center;color:var(--muted)">' + (m.run_first_failed ? '#' + m.run_first_failed : '—') + '</td>' +
-        '<td style="color:var(--muted);font-size:0.78rem">' + esc(err) + '</td>' +
-        '</tr>';
-    });
-
-    document.getElementById('failed-body').innerHTML = html ||
-      '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:2rem">No compilation failures recorded.</td></tr>';
   }
 
   // ── Sort helper ─────────────────────────────────────────────────────────
