@@ -788,7 +788,9 @@ def _preflight_arch_check(item: "QueueItem") -> tuple[bool, str]:
 
 # ── tt-forge-models helpers + base venv paths ────────────────────────────────
 _TT_FORGE_MODELS_PATH = Path.home() / "code" / "tt-forge-models"
-_FORGE_BASE_VENV = Path("/opt/ttforge-toolchain/venv")
+# The running venv is the one whose site-packages the overlay must inherit.
+# sys.prefix is the active venv root even when python3 is a symlink to system Python.
+_FORGE_BASE_VENV = Path(sys.prefix)
 _XLA_BASE_VENV   = Path.home() / "tt-xla" / "venv"
 
 
@@ -1122,14 +1124,11 @@ def _isolated_compile_worker(
         chip_id:     Zero-based TT chip index passed through to _compile_model.
         result_path: Path where this function writes its JSON result dict.
     """
-    # If caller specified an overlay interpreter, re-exec under it so the
-    # overlay's installed packages are importable.  execv replaces this process;
-    # the re-exec'ed process will have _overlay_python == sys.executable
-    # so this block is skipped the second time.
-    _overlay_python = item_dict.pop("_overlay_python", None)
-    if _overlay_python and _overlay_python != sys.executable:
-        os.execv(_overlay_python, [_overlay_python] + sys.argv)
-        # unreachable — execv never returns
+    # _overlay_python is passed through item_dict but not used for re-exec here.
+    # The overlay venv inherits base packages via a .pth file, so packages are
+    # already importable when the subprocess is launched under overlay.python
+    # by _compile_isolated.  We just pop it to keep item_dict clean.
+    item_dict.pop("_overlay_python", None)
 
     result: dict = {
         "success": False,

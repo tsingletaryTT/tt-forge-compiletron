@@ -1,9 +1,10 @@
 # lib/expedition/model_overlay.py
 """Thin per-model venv overlay — isolates pip installs from the base forge/XLA env.
 
-Each model gets a symlinked venv (~10ms to create) that inherits the base env's
-packages via --system-site-packages. Installs go into the overlay only. The overlay
-is destroyed after the model finishes (success or fail). The base env is never touched.
+Each model gets a fresh venv (~30ms) that inherits the base env's packages via a
+.pth pointer rather than --system-site-packages (which only inherits the *system*
+Python's packages, not a parent venv's packages). Installs go into the overlay only.
+The overlay is destroyed after the model finishes. The base env is never touched.
 """
 from __future__ import annotations
 import hashlib
@@ -25,7 +26,13 @@ def create_overlay(
     base_venv: Path,
     overlay_root: Path | None = None,
 ) -> ModelOverlay:
-    """Create a thin symlinked venv overlay for one model run.
+    """Create a fresh venv overlay that inherits base_venv packages via .pth injection.
+
+    ``--system-site-packages`` only inherits the *system* Python's packages, not
+    those in a parent venv.  Instead we create a plain venv and drop a single .pth
+    file into its site-packages pointing at base_venv's site-packages directory.
+    Any pip install into the overlay goes into the overlay's own site-packages and
+    shadows base_venv packages without touching them.
 
     Args:
         model_id:     HuggingFace model identifier (slashes replaced with underscores
@@ -51,23 +58,32 @@ def create_overlay(
     # Remove any stale overlay from a previous crashed run.
     if overlay_path.exists():
         shutil.rmtree(overlay_path, ignore_errors=True)
-    # Root the new venv to base_venv's interpreter so it inherits exactly the
-    # forge/XLA packages.  Using subprocess avoids venv.create() which always
-    # roots to the *currently running* Python, ignoring base_venv entirely.
     try:
+        # Create a plain venv using the base_venv's interpreter.  No
+        # --system-site-packages: we inject base_venv's site-packages via .pth.
         _sp.run(
-            [
-                str(base_venv / "bin" / "python3"),
-                "-m", "venv",
-                str(overlay_path),
-                "--system-site-packages",
-                "--symlinks",
-            ],
+            [str(base_venv / "bin" / "python3"), "-m", "venv",
+             str(overlay_path), "--symlinks"],
             check=True,
             capture_output=True,
         )
+        # Inject base_venv site-packages so all existing packages are visible.
+        # Resolve the actual site-packages path from the base venv's interpreter.
+        result = _sp.run(
+            [str(base_venv / "bin" / "python3"), "-c",
+             "import site; print(site.getsitepackages()[0])"],
+            capture_output=True, text=True, check=True,
+        )
+        base_site = result.stdout.strip()
+        # Find the overlay's site-packages and write a .pth pointing at base_site.
+        result2 = _sp.run(
+            [str(overlay_path / "bin" / "python3"), "-c",
+             "import site; print(site.getsitepackages()[0])"],
+            capture_output=True, text=True, check=True,
+        )
+        overlay_site = result2.stdout.strip()
+        Path(overlay_site, "base_venv.pth").write_text(base_site + "\n")
     except Exception:
-        # Clean up any partial directory so the next attempt starts fresh.
         shutil.rmtree(overlay_path, ignore_errors=True)
         raise
     python = overlay_path / "bin" / "python3"

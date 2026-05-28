@@ -1,17 +1,18 @@
 # tests/test_model_overlay.py
-import pathlib, pytest
+import pathlib, sys, pytest
 from lib.expedition.model_overlay import (
     create_overlay, destroy_overlay, ModelOverlay,
     _parse_requirements, install_requirements,
 )
 
+# Use the active venv as the base for overlay tests — always present regardless
+# of whether /opt/ttforge-toolchain/venv exists on this machine.
+_BASE_VENV = pathlib.Path(sys.prefix)
+
 
 def test_create_overlay_produces_valid_venv(tmp_path):
     """create_overlay returns a ModelOverlay whose python binary exists."""
-    base = pathlib.Path("/opt/ttforge-toolchain/venv")
-    if not base.exists():
-        pytest.skip("forge base venv not present")
-    overlay = create_overlay("test/model", base_venv=base, overlay_root=tmp_path)
+    overlay = create_overlay("test/model", base_venv=_BASE_VENV, overlay_root=tmp_path)
     assert isinstance(overlay, ModelOverlay)
     assert overlay.python.exists()
     assert overlay.path.is_dir()
@@ -21,14 +22,25 @@ def test_create_overlay_produces_valid_venv(tmp_path):
 
 def test_create_overlay_uses_tmp_by_default():
     """Without overlay_root, overlay lands under /tmp."""
-    base = pathlib.Path("/opt/ttforge-toolchain/venv")
-    if not base.exists():
-        pytest.skip("forge base venv not present")
-    overlay = create_overlay("gliner/pytorch", base_venv=base)
+    overlay = create_overlay("gliner/pytorch", base_venv=_BASE_VENV)
     try:
         assert str(overlay.path).startswith("/tmp/")
     finally:
-        # Ensure the overlay is cleaned up even if the assertion above fails.
+        destroy_overlay(overlay)
+
+
+def test_create_overlay_inherits_base_packages(tmp_path):
+    """Overlay python can import packages from the base venv (torch, transformers, etc)."""
+    import subprocess
+    overlay = create_overlay("pkg_inherit_test", base_venv=_BASE_VENV, overlay_root=tmp_path)
+    try:
+        # torch lives only in the base venv (not system python) — must be importable.
+        r = subprocess.run(
+            [str(overlay.python), "-c", "import torch; print('ok')"],
+            capture_output=True, text=True,
+        )
+        assert r.stdout.strip() == "ok", f"torch not importable in overlay: {r.stderr[:200]}"
+    finally:
         destroy_overlay(overlay)
 
 
@@ -37,7 +49,7 @@ def test_destroy_overlay_is_idempotent(tmp_path):
     overlay = ModelOverlay(
         path=tmp_path / "nonexistent",
         python=tmp_path / "nonexistent" / "bin" / "python3",
-        base_venv=pathlib.Path("/opt/ttforge-toolchain/venv"),
+        base_venv=_BASE_VENV,
     )
     destroy_overlay(overlay)  # must not raise
 
@@ -81,11 +93,10 @@ def test_install_requirements_calls_pip(tmp_path, monkeypatch):
     # elsewhere.
     monkeypatch.setattr(_mod._sp, "run", lambda cmd, **kw: calls.append(cmd))
 
-    base = pathlib.Path("/opt/ttforge-toolchain/venv")
     overlay = ModelOverlay(
         path=tmp_path / "overlay",
         python=tmp_path / "overlay" / "bin" / "python3",
-        base_venv=base,
+        base_venv=_BASE_VENV,
     )
     req = tmp_path / "requirements.txt"
     req.write_text("gliner\nFlagEmbedding\n")
