@@ -23,6 +23,7 @@ if _project_root not in _sys.path:
 
 import argparse
 import csv
+import inspect
 import json
 import multiprocessing
 import os
@@ -985,7 +986,17 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
             try:
                 raw = _load_inputs_fn()
                 if isinstance(raw, dict):
-                    sample_inputs = [v for v in raw.values() if isinstance(v, torch.Tensor)]
+                    # Reorder by the model's forward() parameter order so positional
+                    # args reach the right parameters (e.g. CLIPModel.forward expects
+                    # input_ids, pixel_values, attention_mask but CLIPProcessor returns
+                    # input_ids, attention_mask, pixel_values).
+                    try:
+                        fwd_params = list(inspect.signature(model.forward).parameters.keys())
+                        ordered = {k: raw[k] for k in fwd_params if k in raw and isinstance(raw[k], torch.Tensor)}
+                        remainder = {k: v for k, v in raw.items() if k not in ordered and isinstance(v, torch.Tensor)}
+                        sample_inputs = list(ordered.values()) + list(remainder.values())
+                    except Exception:
+                        sample_inputs = [v for v in raw.values() if isinstance(v, torch.Tensor)]
                 elif isinstance(raw, (list, tuple)):
                     sample_inputs = [v for v in raw if isinstance(v, torch.Tensor)]
                 elif isinstance(raw, torch.Tensor):
