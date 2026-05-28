@@ -753,11 +753,9 @@ def _preflight_arch_check(item: "QueueItem") -> tuple[bool, str]:
             if not isinstance(class_path, str) or "." not in class_path:
                 continue
             module_root = class_path.split(".")[0]
-            if module_root in _CUSTOM_DEP_MAP:
-                dep = _CUSTOM_DEP_MAP[module_root]
-                return (True,
-                        f"MissingDependency: requires '{dep}' "
-                        f"(custom class {class_path!r}) which is not installed")
+            # _CUSTOM_DEP_MAP previously hard-rejected these modules here.
+            # With per-model overlay envs, deps are installed proactively from
+            # tt-forge-models requirements.txt before compile — no pre-rejection.
             try:
                 __import__(module_root)
             except ImportError:
@@ -788,8 +786,10 @@ def _preflight_arch_check(item: "QueueItem") -> tuple[bool, str]:
         return False, ""   # fail-open
 
 
-# ── tt-forge-models helpers ──────────────────────────────────────────────────
+# ── tt-forge-models helpers + base venv paths ────────────────────────────────
 _TT_FORGE_MODELS_PATH = Path.home() / "code" / "tt-forge-models"
+_FORGE_BASE_VENV = Path("/opt/ttforge-toolchain/venv")
+_XLA_BASE_VENV   = Path.home() / "tt-xla" / "venv"
 
 
 def _pull_tt_forge_models() -> None:
@@ -856,7 +856,14 @@ def _normalise_inputs(inputs: list) -> list:
     return out
 
 
-def _try_install_missing(error_str: str) -> str | None:
+def _extract_missing_package(error_str: str) -> "str | None":
+    """Extract the top-level package name from a 'No module named X' error, or None."""
+    import re
+    m = re.search(r"No module named ['\"]([^'\"]+)['\"]", error_str)
+    return m.group(1).split(".")[0] if m else None
+
+
+def _try_install_missing(error_str: str) -> "str | None":
     """If error_str is a ModuleNotFoundError, try to pip-install the package.
 
     Returns the package name that was installed (or attempted), or None if
@@ -1115,6 +1122,15 @@ def _isolated_compile_worker(
         chip_id:     Zero-based TT chip index passed through to _compile_model.
         result_path: Path where this function writes its JSON result dict.
     """
+    # If caller specified an overlay interpreter, re-exec under it so the
+    # overlay's installed packages are importable.  execv replaces this process;
+    # the re-exec'ed process will have _overlay_python == sys.executable
+    # so this block is skipped the second time.
+    _overlay_python = item_dict.pop("_overlay_python", None)
+    if _overlay_python and _overlay_python != sys.executable:
+        os.execv(_overlay_python, [_overlay_python] + sys.argv)
+        # unreachable — execv never returns
+
     result: dict = {
         "success": False,
         "compile_time": 0.0,
@@ -1182,7 +1198,8 @@ def _isolated_compile_worker(
             pass
 
 
-def _compile_isolated(item: "QueueItem", chip_id: int) -> dict:
+def _compile_isolated(item: "QueueItem", chip_id: int,
+                      python: "Path | None" = None) -> dict:
     """Compile one model in a child process, isolating forge.compile() crashes.
 
     forge.compile() occasionally triggers SIGSEGV in the underlying C++ runtime.
@@ -1207,6 +1224,8 @@ def _compile_isolated(item: "QueueItem", chip_id: int) -> dict:
         first_voice_text, first_voice_sample, throughput, throughput_unit.
     """
     item_dict = asdict(item)
+    if python is not None:
+        item_dict["_overlay_python"] = str(python)
 
     # Write subprocess results to a temp file; avoids IPC pipe sizing limits
     # and allows the subprocess to flush incrementally.
@@ -1273,6 +1292,7 @@ def _dispatch_xla_item(
     chip_id: int,
     run_number: int,
     bestiary_path: str,
+    overlay_python: "Path | None" = None,
 ) -> dict:
     """Dispatch a JAX/Flax model to expedition_worker_xla.py and return compile result.
 
@@ -1288,7 +1308,8 @@ def _dispatch_xla_item(
     import subprocess as _sp
 
     project_dir = Path(__file__).resolve().parent.parent.parent
-    xla_python = Path.home() / "tt-xla" / "venv" / "bin" / "python3"
+    xla_python = overlay_python if overlay_python is not None \
+                 else Path.home() / "tt-xla" / "venv" / "bin" / "python3"
 
     default: dict = {
         "success": False, "compile_time": 0.0, "infer_time": 0.0,
@@ -1835,41 +1856,56 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
         _item_is_jax = (item.library or "").lower() in ("jax", "flax") or \
                        item.model_id.split("/")[-1].lower() in ("jax", "flax")
 
-        if _item_is_jax:
-            _print_progress_step(2, 3, "Routing to XLA worker (JAX)...")
-            cr = _dispatch_xla_item(item, chip_id, run_number, bestiary_path)
-            # XLA worker updated bestiary on disk — reload so this worker's
-            # in-memory state reflects those changes for subsequent models.
-            bestiary = Bestiary(path=bestiary_path)
-        else:
-            _print_progress_step(1, 3, "Loading model...")
+        # ── Per-model isolated overlay venv ──────────────────────────────────
+        # Create a thin symlinked venv overlay so any pip installs go into
+        # the overlay only — the base forge/XLA env is never mutated.
+        from lib.expedition.model_overlay import (
+            create_overlay, destroy_overlay, install_requirements,
+        )
+        _overlay_base = _XLA_BASE_VENV if _item_is_jax else _FORGE_BASE_VENV
+        _overlay = create_overlay(item.model_id, base_venv=_overlay_base)
+        _overlay_installed: list[str] = []
+        _overlay_req = _find_seed_requirements(item.model_id)
+        if _overlay_req:
+            _overlay_installed = install_requirements(_overlay, _overlay_req)
+            if _overlay_installed:
+                print(f"  {CYAN}↳ overlay: pre-installed {_overlay_installed}{RESET}")
 
-            # ── Loader construction (pre-flight check) ───────────────────────────
-            # Build the loader in the parent as a fast error gate — catches missing
-            # modules and bad configs before paying the cost of a subprocess spawn.
-            # The subprocess rebuilds its own loader; this result is not passed across
-            # the process boundary.
-            try:
-                _build_loader(item)
-            except Exception as e:
-                elapsed = time.time() - start
-                _print_failure(item.model_id, str(e), elapsed)
-                score = compute_score(False, is_first_ever, rarity, newness, hud.state.streak,
-                                      mesh_chips=item.mesh_chips)
-                hud.record_failure(item.model_id)
-                bestiary.record_failure(item.model_id, run_number, str(e), env_fingerprint=_env_fp)
-                hud.write_status()
-                results.append({"model": item.model_id, "status": "failed",
-                                "error": str(e), "pts": score.pts})
-                continue
+        try:
+            if _item_is_jax:
+                _print_progress_step(2, 3, "Routing to XLA worker (JAX)...")
+                cr = _dispatch_xla_item(item, chip_id, run_number, bestiary_path,
+                                        overlay_python=_overlay.python)
+                # XLA worker updated bestiary on disk — reload so this worker's
+                # in-memory state reflects those changes for subsequent models.
+                bestiary = Bestiary(path=bestiary_path)
+            else:
+                _print_progress_step(1, 3, "Loading model...")
 
-            # ── Compile + inference (subprocess-isolated) ─────────────────────────
-            # Each compile runs in a child process so a SIGSEGV inside forge.compile()
-            # kills only the child — this worker loop survives and continues to the
-            # next model.  decode(), first_voice, and throughput all run inside the
-            # subprocess; only JSON-serialisable scalars cross the boundary.
-            # bench_passes are silently skipped (compiled module can't be pickled).
-            cr = _compile_isolated(item, chip_id)
+                # ── Loader construction (pre-flight check) ───────────────────────
+                # Build the loader in the parent as a fast error gate — catches
+                # missing modules and bad configs before the subprocess spawn.
+                try:
+                    _build_loader(item)
+                except Exception as e:
+                    elapsed = time.time() - start
+                    _print_failure(item.model_id, str(e), elapsed)
+                    score = compute_score(False, is_first_ever, rarity, newness, hud.state.streak,
+                                          mesh_chips=item.mesh_chips)
+                    hud.record_failure(item.model_id)
+                    bestiary.record_failure(item.model_id, run_number, str(e), env_fingerprint=_env_fp)
+                    hud.write_status()
+                    results.append({"model": item.model_id, "status": "failed",
+                                    "error": str(e), "pts": score.pts})
+                    continue
+
+                # ── Compile + inference (subprocess-isolated) ─────────────────────
+                # Each compile runs in a child process so a SIGSEGV kills only the
+                # child. The overlay python is passed through item_dict and the child
+                # re-execs under it so overlay-installed packages are importable.
+                cr = _compile_isolated(item, chip_id, python=_overlay.python)
+        finally:
+            destroy_overlay(_overlay)
         success          = cr["success"]
         compile_time     = cr["compile_time"]
         infer_time       = cr["infer_time"]
@@ -1959,6 +1995,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
                     throughput=throughput,
                     throughput_unit=throughput_unit,
                     mesh_chips=getattr(item, "mesh_chips", 1),
+                    pip_deps=_overlay_installed,
                 )
                 # Accumulate points into the per-chip all-time leaderboard entry.
                 bestiary.add_chip_points(
@@ -1998,7 +2035,10 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             hud.record_failure(item.model_id)
             # XLA-dispatched failures are already in the bestiary from the subprocess.
             if not _item_is_jax:
-                bestiary.record_failure(item.model_id, run_number, error_str, env_fingerprint=_env_fp)
+                _missing_pkg = _extract_missing_package(error_str)
+                bestiary.record_failure(item.model_id, run_number, error_str,
+                                        env_fingerprint=_env_fp,
+                                        missing_packages=[_missing_pkg] if _missing_pkg else [])
             results.append({"model": item.model_id, "status": "failed",
                             "error": error_str, "pts": score.pts})
 
