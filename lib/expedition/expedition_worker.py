@@ -788,6 +788,53 @@ def _preflight_arch_check(item: "QueueItem") -> tuple[bool, str]:
         return False, ""   # fail-open
 
 
+# ── tt-forge-models helpers ──────────────────────────────────────────────────
+_TT_FORGE_MODELS_PATH = Path.home() / "code" / "tt-forge-models"
+
+
+def _pull_tt_forge_models() -> None:
+    """git pull --ff-only on ~/code/tt-forge-models to keep requirements.txt current.
+
+    Fails open — a stale tt-forge-models tree is better than a blocked expedition.
+    Silent if the repo is not present.
+    """
+    import subprocess as _sp
+    if not _TT_FORGE_MODELS_PATH.exists():
+        return
+    try:
+        result = _sp.run(
+            ["git", "-C", str(_TT_FORGE_MODELS_PATH), "pull", "--ff-only", "-q"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0:
+            print(f"  {GREEN}✓ tt-forge-models up to date{RESET}")
+        else:
+            print(f"  {YELLOW}⚠ tt-forge-models pull skipped: {result.stderr.strip()}{RESET}")
+    except Exception as exc:
+        print(f"  {YELLOW}⚠ tt-forge-models pull failed: {exc}{RESET}")
+
+
+def _find_seed_requirements(model_id: str) -> "Path | None":
+    """Return the requirements.txt Path for a seed model, or None if not found.
+
+    Looks for ~/code/tt-forge-models/{prefix}/{backend}/requirements.txt.
+    prefix = model_id.split("/")[0], backend = model_id.split("/")[1] if present.
+
+    Examples:
+        "gliner/pytorch"    → ~/code/tt-forge-models/gliner/pytorch/requirements.txt
+        "facebook/opt-125m" → None (not a seed model directory structure)
+    """
+    parts = model_id.split("/")
+    if len(parts) >= 2:
+        candidate = _TT_FORGE_MODELS_PATH / parts[0] / parts[1] / "requirements.txt"
+        if candidate.exists():
+            return candidate
+    candidate = _TT_FORGE_MODELS_PATH / parts[0] / "requirements.txt"
+    if candidate.exists():
+        return candidate
+    return None
+
+
 def _normalise_inputs(inputs: list) -> list:
     """Ensure tensors are contiguous float32 before forge sees them.
 
@@ -1625,6 +1672,7 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
     from lib.expedition.bestiary import _current_env_fingerprint
     _env_fp = _current_env_fingerprint()
     _warm_hf_datasets(bestiary)
+    _pull_tt_forge_models()
     _stale_cleared = bestiary.clear_stale_env_failures(_env_fp)
     if _stale_cleared:
         print(f"  {GREEN}✓ env upgrade cleared {len(_stale_cleared)} stale failure entries{RESET}")

@@ -94,3 +94,29 @@ def test_install_requirements_calls_pip(tmp_path, monkeypatch):
     assert installed == ["gliner", "FlagEmbedding"]
     assert len(calls) == 1  # single pip install call
     assert str(overlay.python) in calls[0]
+
+
+# ── _find_seed_requirements ──────────────────────────────────────────────────
+
+from lib.expedition.expedition_worker import _find_seed_requirements
+
+
+def test_find_seed_requirements_returns_path_when_exists():
+    """Returns path for a seed model that has requirements.txt in tt-forge-models."""
+    result = _find_seed_requirements("gliner/pytorch")
+    if result is None:
+        pytest.skip("tt-forge-models not present or gliner/pytorch has no requirements.txt")
+    assert result.exists()
+    assert result.name == "requirements.txt"
+
+
+def test_find_seed_requirements_returns_none_for_unknown():
+    """Returns None when no requirements.txt exists for the model."""
+    result = _find_seed_requirements("nonexistent/model")
+    assert result is None
+
+
+def test_find_seed_requirements_returns_none_for_frontier():
+    """A HuggingFace model ID with no matching tt-forge-models directory returns None."""
+    result = _find_seed_requirements("facebook/opt-125m")
+    assert result is None
