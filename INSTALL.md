@@ -27,17 +27,30 @@ The Setup screen auto-starts after 4 seconds if you don't press Enter.
 ### XLA backend (optional)
 
 One-time setup for the JAX/PJRT backend. Uses a separate virtualenv to
-avoid conflicts with the forge environment:
+avoid conflicts with the forge environment. The convention used on this
+machine is `~/tt-xla/venv`; adjust the path to match your tt-xla install:
 
 ```bash
-python3 -m venv xla-venv
-xla-venv/bin/pip install pjrt-plugin-tt jax==0.7.1 jaxlib==0.7.1 \
-    flax==0.8.5 "transformers<5.0" torch pyfiglet \
+XLA_VENV=~/tt-xla/venv   # adjust if your tt-xla venv lives elsewhere
+
+$XLA_VENV/bin/pip install pjrt-plugin-tt jax jaxlib \
+    flax "transformers<5.0" torch torchvision timm pyfiglet \
     --index-url https://pypi.tenstorrent.com/simple/
 ```
 
-> **Note:** `pyfiglet` is required in the XLA venv to display ASCII art model
-> name banners during compilation. Without it the banners fall back to plain text.
+> **`torchvision` and `timm`** are required because several tt-forge-models JAX
+> loaders import from `tools/utils.py` which pulls them in at module level.
+> Without them every JAX seed model fails immediately with `No module named 'torchvision'`.
+
+> **`pyfiglet`** is required for ASCII art model name banners in the XLA worker.
+> Without it banners fall back to plain text (harmless).
+
+The XLA worker also needs a mesh graph descriptor for P300/P150 boards. It
+auto-detects this from inside the tt-xla tree — no manual step needed as long
+as `~/tt-xla` is present. If you keep tt-xla at a different path, set:
+```bash
+export TT_MESH_GRAPH_DESC_PATH=/path/to/tt-xla/third_party/tt-mlir/install/tt-metal/tt_metal/fabric/mesh_graph_descriptors/p100_mesh_graph_descriptor.textproto
+```
 
 ---
 
@@ -72,6 +85,7 @@ See [docs/CONTAINER_DEPLOYMENT.md](docs/CONTAINER_DEPLOYMENT.md) for more.
 | Hugepages ≥ 64 | required by tt-metal: `sudo sysctl -w vm.nr_hugepages=128` |
 | textual, pyfiglet, etc. | installed via `requirements.txt` |
 | FlagEmbedding | `pip install FlagEmbedding tf-keras` (embedding models) |
+| torchvision + timm in XLA venv | required by JAX loaders (tools/utils.py imports them) |
 | pyfiglet in xla-venv | needed for ASCII banners in XLA worker |
 
 ---
@@ -124,9 +138,22 @@ prevents `_C.so` from loading. Try running expedition with the system Python ins
 ~/.tenstorrent-venv/bin/python3 expedition.py run --tui
 ```
 
-**XLA banners show plain text instead of ASCII art** — install pyfiglet in xla-venv:
+**XLA banners show plain text instead of ASCII art** — install pyfiglet in the XLA venv:
 ```bash
-xla-venv/bin/pip install pyfiglet
+~/tt-xla/venv/bin/pip install pyfiglet
+```
+
+**XLA models all fail with `No module named 'torchvision'`** — torchvision and timm
+are not installed in the XLA venv. Install them:
+```bash
+~/tt-xla/venv/bin/pip install torchvision timm
+```
+
+**XLA fails with `TT_FATAL: Custom fabric mesh graph descriptor path must be specified`**
+— the PJRT backend can't find the mesh descriptor for your P300/P150 board. The worker
+auto-sets this from `~/tt-xla` on startup. If `~/tt-xla` doesn't exist, set manually:
+```bash
+export TT_MESH_GRAPH_DESC_PATH=~/tt-xla/third_party/tt-mlir/install/tt-metal/tt_metal/fabric/mesh_graph_descriptors/p100_mesh_graph_descriptor.textproto
 ```
 
 **FlagEmbedding import fails with Keras conflict** — install the tf-keras shim:
