@@ -795,17 +795,18 @@ _XLA_BASE_VENV   = Path.home() / "tt-xla" / "venv"
 
 
 def _pull_tt_forge_models() -> None:
-    """git pull --ff-only on ~/code/tt-forge-models to keep requirements.txt current.
+    """git pull --rebase on ~/code/tt-forge-models to keep requirements.txt current.
 
-    Fails open — a stale tt-forge-models tree is better than a blocked expedition.
-    Silent if the repo is not present.
+    Uses --rebase so local customisation commits don't cause "not possible to
+    fast-forward" failures.  Fails open — a stale tree is better than a blocked
+    expedition.  Silent if the repo is not present.
     """
     import subprocess as _sp
     if not _TT_FORGE_MODELS_PATH.exists():
         return
     try:
         result = _sp.run(
-            ["git", "-C", str(_TT_FORGE_MODELS_PATH), "pull", "--ff-only", "-q"],
+            ["git", "-C", str(_TT_FORGE_MODELS_PATH), "pull", "--rebase", "-q"],
             capture_output=True, text=True, timeout=30,
         )
         if result.returncode == 0:
