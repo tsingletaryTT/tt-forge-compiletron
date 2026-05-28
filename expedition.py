@@ -1890,7 +1890,7 @@ def main():
                             "Skips all discovery; ignores --seed-only/--frontier-only/--limit.")
     run_p.add_argument("--provider",         type=str, default=None, metavar="HF_ORG",
                        help="Restrict the run to models from a specific HuggingFace author or org "
-                            "(e.g. NovaCorp, mistralai, meta-llama). Scans all their public models "
+                            "(e.g. mistralai, meta-llama, google). Scans all their public models "
                             "instead of the normal time-window frontier.")
     run_p.add_argument("--pretend",          action="store_true",
                        help="Dry-run: build queues, print every model that would run, then exit. "
