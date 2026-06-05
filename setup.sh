@@ -178,8 +178,8 @@ echo "Next Steps:"
 echo ""
 
 if [ $FORGE_OK -eq 0 ]; then
-    echo "1. Install tt-forge-fe:"
-    echo "   python3 $SCRIPT_DIR/compiletron.py setup install-forge"
+    echo "1. Set up the forge venv (pip wheel — no source build required):"
+    echo "   bash $SCRIPT_DIR/scripts/setup-venvs.sh --forge"
     echo ""
 fi
 

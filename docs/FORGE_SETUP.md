@@ -12,18 +12,25 @@ Comprehensive guide to building and installing tt-forge-fe from source.
 
 ## Quick Installation
 
-Using compiletron CLI (recommended):
+Using the setup script (recommended — pip wheel, no source build):
 
 ```bash
 cd ~/code/tt-forge-compiletron
-python3 compiletron.py setup install-forge
+bash scripts/setup-venvs.sh --forge
 ```
 
-This will:
-1. Clone tt-forge-fe from GitHub
-2. Build all components (45-60 min)
-3. Create Python virtual environment
-4. Install dependencies
+This creates `~/tt-forge-venv` from the Tenstorrent pip index and writes
+`~/tt-forge-fe/env/activate` so the harness can activate it automatically.
+
+For a full source build instead:
+
+```bash
+cd ~
+git clone https://github.com/tenstorrent/tt-forge-fe.git
+cd tt-forge-fe
+./build.sh          # 45–90 min
+source env/activate
+```
 
 ## Manual Installation
 

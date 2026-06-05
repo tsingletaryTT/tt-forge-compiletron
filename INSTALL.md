@@ -1,101 +1,237 @@
 # Installation
 
-## Native (recommended)
+Compiletron needs two Python 3.12 venvs:
 
-Requires `tt-forge-fe` built and installed at `~/tt-forge-fe`.
+| Venv | Path | Purpose |
+|---|---|---|
+| forge backend | `~/tt-forge-venv` | `forge.compile()` — PyTorch → TT silicon |
+| XLA backend | `~/tt-xla/venv` | `pjrt-plugin-tt` — JAX/Flax → TT silicon |
+
+Both are installed from **pre-built pip wheels** on Tenstorrent's package index.
+No source build required.
+
+---
+
+## Quick path — one script, both backends
 
 ```bash
 git clone git@github.com:tsingletaryTT/tt-forge-compiletron.git
 cd tt-forge-compiletron
 
-# Activate forge environment first, then install compiletron deps
+bash scripts/setup-venvs.sh
+```
+
+The script:
+
+1. Installs Python 3.12, build tools, and tmux if missing (via `apt`)
+2. Sets hugepages to 128 and persists the setting across reboots
+3. Creates `~/tt-forge-venv` and installs `forge` + compiletron deps
+4. Writes a `~/tt-forge-fe/env/activate` shim so the harness finds the venv
+5. Creates `~/tt-xla/venv` and installs `pjrt-plugin-tt` + JAX + Flax stack
+6. Links the bundled mesh descriptor if `~/tt-xla` is a pip-wheel install
+
+**Individual backend only:**
+
+```bash
+bash scripts/setup-venvs.sh --forge   # forge backend only
+bash scripts/setup-venvs.sh --xla     # XLA backend only
+```
+
+---
+
+## After setup
+
+```bash
+# Activate forge env and run
 source ~/tt-forge-fe/env/activate
-pip install -r requirements.txt
-
-# Additional deps for embedding models (FlagEmbedding requires tf-keras shim)
-pip install FlagEmbedding tf-keras
-```
-
-Launch the TUI:
-
-```bash
 python3 expedition.py run --tui
-```
 
-The Setup screen auto-starts after 4 seconds if you don't press Enter.
+# XLA backend (uses ~/tt-xla/venv automatically — no manual activation needed)
+python3 expedition.py run --tui --backend xla
 
-### XLA backend (optional)
-
-One-time setup for the JAX/PJRT backend. Uses a separate virtualenv to
-avoid conflicts with the forge environment. The convention used on this
-machine is `~/tt-xla/venv`; adjust the path to match your tt-xla install:
-
-```bash
-XLA_VENV=~/tt-xla/venv   # adjust if your tt-xla venv lives elsewhere
-
-$XLA_VENV/bin/pip install pjrt-plugin-tt jax jaxlib \
-    flax "transformers<5.0" torch torchvision timm pyfiglet \
-    --index-url https://pypi.tenstorrent.com/simple/
-```
-
-> **`torchvision` and `timm`** are required because several tt-forge-models JAX
-> loaders import from `tools/utils.py` which pulls them in at module level.
-> Without them every JAX seed model fails immediately with `No module named 'torchvision'`.
-
-> **`pyfiglet`** is required for ASCII art model name banners in the XLA worker.
-> Without it banners fall back to plain text (harmless).
-
-The XLA worker also needs a mesh graph descriptor for P300/P150 boards. It
-auto-detects this from inside the tt-xla tree — no manual step needed as long
-as `~/tt-xla` is present. If you keep tt-xla at a different path, set:
-```bash
-export TT_MESH_GRAPH_DESC_PATH=/path/to/tt-xla/third_party/tt-mlir/install/tt-metal/tt_metal/fabric/mesh_graph_descriptors/p100_mesh_graph_descriptor.textproto
+# Forge + XLA side by side on alternating chips
+python3 expedition.py run --tui --backend mixed
 ```
 
 ---
 
-## Docker
+## Manual install (step by step)
 
-Use Docker if you don't have a local Forge build. The image compiles
-tt-metal and tt-forge-fe from source (~21 GB, 2–3 hour one-time build).
+### 1. System packages
 
 ```bash
-# One-time build
-./docker-build-full.sh
-
-# Launch TUI (requires hardware device)
-./docker-run.sh run --tui --chips 4
-
-# CLI run
-./docker-run.sh run --chips 4 --limit 20
+sudo apt-get install -y python3.12 python3.12-venv python3.12-dev \
+    build-essential git tmux
 ```
 
-See [docs/CONTAINER_DEPLOYMENT.md](docs/CONTAINER_DEPLOYMENT.md) for more.
+### 2. Hugepages
+
+tt-metal requires hugepages for device memory mapping.
+
+```bash
+sudo sysctl -w vm.nr_hugepages=128
+
+# Persist across reboots:
+echo 'vm.nr_hugepages=128' | sudo tee /etc/sysctl.d/99-tenstorrent-hugepages.conf
+```
+
+Verify: `cat /proc/sys/vm/nr_hugepages` should be ≥ 64.
+
+### 3. tt-smi
+
+```bash
+pip install tt-smi --extra-index-url https://pypi.eng.aws.tenstorrent.com/
+```
+
+Verify: `tt-smi -s` (snapshot mode) returns JSON.
+
+### 4. Forge backend venv
+
+```bash
+python3.12 -m venv ~/tt-forge-venv
+
+~/tt-forge-venv/bin/pip install \
+    forge \
+    --extra-index-url https://pypi.eng.aws.tenstorrent.com/
+
+~/tt-forge-venv/bin/pip install -r requirements.txt
+
+# Optional but needed for FlagEmbedding seed models:
+~/tt-forge-venv/bin/pip install FlagEmbedding tf-keras
+```
+
+Verify: `~/tt-forge-venv/bin/python -c "import forge; print(forge.__version__)"`
+
+#### 4a. Write the activate shim
+
+The expedition harness calls `source ~/tt-forge-fe/env/activate` to set up the
+forge environment. If you installed via pip wheel (not a source build), write
+this shim so that path resolves correctly:
+
+```bash
+mkdir -p ~/tt-forge-fe/env
+cat > ~/tt-forge-fe/env/activate << 'EOF'
+#!/usr/bin/env bash
+export TTFORGE_TOOLCHAIN_DIR="${TTFORGE_TOOLCHAIN_DIR:-${HOME}/tt-forge-venv}"
+export TTFORGE_PYTHON_VERSION="${TTFORGE_PYTHON_VERSION:-python3.12}"
+export TTFORGE_VENV_DIR="${TTFORGE_VENV_DIR:-${HOME}/tt-forge-venv}"
+export TTMLIR_TOOLCHAIN_DIR="${TTMLIR_TOOLCHAIN_DIR:-${HOME}/tt-forge-venv}"
+export TTMLIR_VENV_DIR="${TTMLIR_VENV_DIR:-${HOME}/tt-forge-venv}"
+export TTMLIR_ENV_ACTIVATED=1
+export ARCH_NAME="${ARCH_NAME:-blackhole}"
+export UV_INDEX_STRATEGY="${UV_INDEX_STRATEGY:-unsafe-best-match}"
+source "${HOME}/tt-forge-venv/bin/activate"
+EOF
+chmod +x ~/tt-forge-fe/env/activate
+```
+
+> **`ARCH_NAME`** defaults to `blackhole` (P150/P300 Blackhole boards).
+> Override before sourcing for other hardware:
+> - Wormhole n150/n300: `export ARCH_NAME=wormhole_b0`
+> - Grayskull e75/e150: `export ARCH_NAME=grayskull`
+
+### 5. XLA backend venv
+
+```bash
+mkdir -p ~/tt-xla
+python3.12 -m venv ~/tt-xla/venv
+
+~/tt-xla/venv/bin/pip install \
+    pjrt-plugin-tt \
+    jax jaxlib \
+    flax \
+    "transformers<5.0" \
+    torch torchvision timm \
+    pyfiglet \
+    --extra-index-url https://pypi.eng.aws.tenstorrent.com/
+```
+
+> **`torchvision` and `timm`** — several tt-forge-models JAX loaders import from
+> `tools/utils.py` which pulls these in at module level. Without them every JAX
+> seed model fails with `No module named 'torchvision'`.
+>
+> **`pyfiglet`** — ASCII art banners in the XLA worker. Without it banners fall
+> back to plain text (harmless but less dramatic).
+
+Verify: `~/tt-xla/venv/bin/python -c "import jax; import pjrt_plugin_tt; print('ok')"`
+
+#### 5a. Mesh graph descriptor
+
+The XLA worker needs a mesh descriptor for P300/P150 Blackhole boards. It
+auto-detects from `~/tt-xla` if you have a full tt-xla source build there. For
+pip-wheel installs, link the bundled descriptor:
+
+```bash
+MESH_DIR=~/tt-xla/third_party/tt-mlir/install/tt-metal/tt_metal/fabric/mesh_graph_descriptors
+mkdir -p "$MESH_DIR"
+ln -sf "$(pwd)/mesh_graph_descriptors/p100_mesh_graph_descriptor.textproto" \
+    "$MESH_DIR/p100_mesh_graph_descriptor.textproto"
+```
+
+Or set the env var explicitly at runtime:
+
+```bash
+export TT_MESH_GRAPH_DESC_PATH=~/tt-xla/third_party/tt-mlir/install/tt-metal/tt_metal/fabric/mesh_graph_descriptors/p100_mesh_graph_descriptor.textproto
+```
 
 ---
 
-## Prerequisites
+## Source build (optional)
+
+If you need to develop or patch forge/tt-xla themselves, build from source:
+
+### Forge (tt-forge-fe)
+
+```bash
+cd ~
+git clone https://github.com/tenstorrent/tt-forge-fe.git
+cd tt-forge-fe
+./build.sh          # 45–90 min; creates /opt/ttforge-toolchain/venv
+source env/activate
+```
+
+The real `env/activate` from the source tree sets `TTFORGE_TOOLCHAIN_DIR`,
+activates `/opt/ttforge-toolchain/venv`, and sets `ARCH_NAME` automatically. The
+pip-wheel shim (`~/tt-forge-fe/env/activate` written above) must be absent or
+the source-build activate takes precedence.
+
+### XLA (tt-xla)
+
+```bash
+cd ~
+git clone https://github.com/tenstorrent/tt-xla.git
+cd tt-xla
+# Follow tt-xla build instructions from docs/src/getting_started.md
+```
+
+Source-built tt-xla places the mesh descriptor in the expected path automatically;
+no symlink needed.
+
+---
+
+## Prerequisites summary
 
 | Requirement | Notes |
 |---|---|
-| Python 3.12 | `python3 --version` |
-| tt-metal | built at `~/tt-metal` |
-| tt-forge-fe | built at `~/tt-forge-fe` — must be built from source |
-| tt-smi | hardware detection (`tt-smi -s` for JSON snapshot mode) |
-| Hugepages ≥ 64 | required by tt-metal: `sudo sysctl -w vm.nr_hugepages=128` |
-| textual, pyfiglet, etc. | installed via `requirements.txt` |
-| FlagEmbedding | `pip install FlagEmbedding tf-keras` (embedding models) |
-| torchvision + timm in XLA venv | required by JAX loaders (tools/utils.py imports them) |
-| pyfiglet in xla-venv | needed for ASCII banners in XLA worker |
+| Ubuntu 24.04 | Tested platform |
+| Python 3.12 | `python3.12 --version` |
+| Hugepages ≥ 64 | Required by tt-metal; 128 recommended |
+| tt-smi | Hardware detection (`tt-smi -s` for JSON snapshot mode) |
+| tmux | Required by `scripts/run_expedition.sh` layout |
+| `~/tt-forge-venv` | Forge backend; contains `forge` wheel |
+| `~/tt-xla/venv` | XLA backend; contains `pjrt-plugin-tt` |
+| `~/tt-forge-fe/env/activate` | Activation shim (written by setup-venvs.sh) |
+| `~/code/tt-forge-models` | Seed model zoo (optional; frontier-only works without it) |
 
 ---
 
 ## Verify the install
 
 ```bash
-./run_tests.sh                                      # all tests, no hardware required
+# Run all tests (no hardware required)
+./run_tests.sh
 
-# Syntax check all main modules
+# Syntax-check main modules
 python3 -c "
 import py_compile
 for f in ['expedition.py', 'expedition_tui.py',
@@ -105,7 +241,8 @@ for f in ['expedition.py', 'expedition_tui.py',
     print('ok', f)
 "
 
-# Dry run with TUI (auto-starts in 4s, press Q on summary to exit)
+# Dry run — TUI auto-starts in 4s, press Q on summary screen to exit
+source ~/tt-forge-fe/env/activate
 python3 expedition.py run --tui --seed-only --limit 3 --chips 1 --no-predownload
 ```
 
@@ -113,61 +250,85 @@ python3 expedition.py run --tui --seed-only --limit 3 --chips 1 --no-predownload
 
 ## Troubleshooting
 
-**Workers crash immediately (SIGSEGV / "Segmentation fault")** — tt-metal requires
-hugepages for device memory mapping. Check and set:
+**Workers crash immediately (SIGSEGV / "Segmentation fault")**
+tt-metal requires hugepages. Check and set:
+
 ```bash
 cat /proc/sys/vm/nr_hugepages          # should be ≥ 64 (128 recommended)
-sudo sysctl -w vm.nr_hugepages=128     # set for current boot
-# To persist across reboots:
-echo 'vm.nr_hugepages=128' | sudo tee /etc/sysctl.d/99-hugepages.conf
+sudo sysctl -w vm.nr_hugepages=128
+echo 'vm.nr_hugepages=128' | sudo tee /etc/sysctl.d/99-tenstorrent-hugepages.conf
 ```
-Also clean any stale shared-memory segments left by previous crashes:
+
+Also clean stale shared-memory segments from crashed runs:
+
 ```bash
 rm -f /dev/shm/sm_segment.tt-quietbox.*
 tt-smi -r    # hardware device reset
 ```
 
-**"forge not importable"** — activate the forge env: `source ~/tt-forge-fe/env/activate`
+**"forge not importable"**
+Activate the forge env: `source ~/tt-forge-fe/env/activate`
 
-**Forge workers segfault even after activating forge env** — the toolchain Python in
-`/opt/ttforge-toolchain/venv/` may have a conflicting partial `forge/` package that
-prevents `_C.so` from loading. Try running expedition with the system Python instead:
+**Forge workers segfault even after activating the env**
+The toolchain Python in `/opt/ttforge-toolchain/venv/` may have a conflicting
+partial `forge/` package. Try running with the forge venv Python directly:
+
 ```bash
-/usr/bin/python3 expedition.py run --tui
-# or with the tenstorrent venv if present:
-~/.tenstorrent-venv/bin/python3 expedition.py run --tui
+~/tt-forge-venv/bin/python expedition.py run --tui
 ```
 
-**XLA banners show plain text instead of ASCII art** — install pyfiglet in the XLA venv:
+**XLA banners show plain text instead of ASCII art**
+
 ```bash
 ~/tt-xla/venv/bin/pip install pyfiglet
 ```
 
-**XLA models all fail with `No module named 'torchvision'`** — torchvision and timm
-are not installed in the XLA venv. Install them:
+**XLA models fail with `No module named 'torchvision'`**
+
 ```bash
 ~/tt-xla/venv/bin/pip install torchvision timm
 ```
 
 **XLA fails with `TT_FATAL: Custom fabric mesh graph descriptor path must be specified`**
-— the PJRT backend can't find the mesh descriptor for your P300/P150 board. The worker
-auto-sets this from `~/tt-xla` on startup. If `~/tt-xla` doesn't exist, set manually:
+The PJRT backend can't find the mesh descriptor for your board. Set it manually:
+
 ```bash
 export TT_MESH_GRAPH_DESC_PATH=~/tt-xla/third_party/tt-mlir/install/tt-metal/tt_metal/fabric/mesh_graph_descriptors/p100_mesh_graph_descriptor.textproto
+# Or re-run setup-venvs.sh --xla to write the symlink automatically.
 ```
 
-**FlagEmbedding import fails with Keras conflict** — install the tf-keras shim:
+**FlagEmbedding import fails with Keras conflict**
+
 ```bash
-pip install tf-keras
+~/tt-forge-venv/bin/pip install tf-keras
 ```
 
-**TUI hangs at "Waiting for chips..."** — the watchdog timer will detect completion
-within 2 seconds via status files. If it never transitions, check for stale
-`/tmp/expedition_chip_*.status` files from a previous crashed run and delete them.
+**TUI hangs at "Waiting for chips..."**
+The watchdog detects completion via status files. If it never transitions, clean
+stale files from a previous crashed run:
 
-**Cast playback is jerky** — re-compress with `--min-gap 0.02` to floor inter-event
-gaps to 20 ms:
+```bash
+rm -f /tmp/expedition_chip_*.status
+```
+
+**Cast playback is jerky**
+Re-compress with `--min-gap 0.02`:
+
 ```bash
 python3 scripts/compress_cast.py docs/demo_raw.cast docs/demo.cast \
     --max-idle 1.2 --min-gap 0.02
 ```
+
+---
+
+## Docker
+
+Use Docker if you prefer a fully isolated environment. The image compiles
+tt-metal and tt-forge-fe from source (~21 GB, 2–3 hour one-time build).
+
+```bash
+./docker-build-full.sh
+./docker-run.sh run --tui --chips 4
+```
+
+See [docs/CONTAINER_DEPLOYMENT.md](docs/CONTAINER_DEPLOYMENT.md) for more.

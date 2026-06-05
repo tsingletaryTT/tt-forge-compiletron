@@ -23,28 +23,28 @@ per-model routing that learns from your bestiary's crash history.
 ```bash
 git clone git@github.com:tsingletaryTT/tt-forge-compiletron.git
 cd tt-forge-compiletron
-pip install -r requirements.txt
 
-# Activate tt-forge backend
+# One-time environment setup (creates ~/tt-forge-venv and ~/tt-xla/venv from pip wheels)
+bash scripts/setup-venvs.sh
+
+# Activate forge env and launch
 source ~/tt-forge-fe/env/activate
-
-# Launch TUI (recommended) — auto-starts after 4 seconds
 python3 expedition.py run --tui
 
 # Or CLI, 4 chips, 20 models
 python3 expedition.py run --chips 4 --limit 20
 ```
 
+See [INSTALL.md](INSTALL.md) for manual step-by-step instructions, source-build
+options, and hardware-specific notes.
+
 ### XLA backend (JAX/PJRT)
 
 ```bash
-# One-time setup
-python3 -m venv xla-venv
-xla-venv/bin/pip install pjrt-plugin-tt jax==0.7.1 jaxlib==0.7.1 \
-    flax==0.8.5 "transformers<5.0" torch pyfiglet \
-    --index-url https://pypi.tenstorrent.com/simple/
+# Set up XLA venv only (if you skipped it above)
+bash scripts/setup-venvs.sh --xla
 
-# Run with XLA backend
+# Run with XLA backend (uses ~/tt-xla/venv automatically)
 python3 expedition.py run --tui --backend xla
 ```
 
