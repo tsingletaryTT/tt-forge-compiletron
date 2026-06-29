@@ -77,10 +77,26 @@ del _sys_guard
 # This must happen at module level — deferring it to _compile_model() is too
 # late because model loader imports (torch → TF) fire during _build_loader().
 try:
-    import ctypes as _ctypes, os as _os
-    _install_lib = _os.path.join(
+    import ctypes as _ctypes, os as _os, sys as _sys2, importlib.util as _ilu
+
+    # Prefer the wheel's bundled libs over the source-built ones in ~/tt-forge-fe.
+    # The source build may be older (missing symbols added in newer wheel releases)
+    # and pre-loading it first causes undefined-symbol errors when _C.so loads.
+    _wheel_forge_spec = _ilu.find_spec("forge")
+    _wheel_forge_lib = (
+        _os.path.join(_os.path.dirname(_wheel_forge_spec.origin), "lib")
+        if _wheel_forge_spec and _wheel_forge_spec.origin
+        else None
+    )
+    _source_lib = _os.path.join(
         _os.path.expanduser("~/tt-forge-fe"),
         "third_party/tt-mlir/build/install/lib",
+    )
+    # Use wheel libs if they exist, otherwise fall back to source build.
+    _install_lib = (
+        _wheel_forge_lib
+        if _wheel_forge_lib and _os.path.isdir(_wheel_forge_lib)
+        else _source_lib
     )
     for _lib in [
         "libdevice.so", "libtt_metal.so",
@@ -89,10 +105,9 @@ try:
         _p = _os.path.join(_install_lib, _lib)
         if _os.path.exists(_p):
             _ctypes.CDLL(_p)
-    import sys as _sys2
     _sys2.path.insert(0, _os.path.expanduser("~/tt-forge-fe"))
     import forge as _forge_preload  # noqa: F401  — side-effect: initialises TT Metal
-    del _sys2, _ctypes, _os, _forge_preload
+    del _sys2, _ctypes, _os, _forge_preload, _ilu
 except Exception:
     pass  # non-forge runs (XLA, ONNX) don't need forge loaded at startup
 
