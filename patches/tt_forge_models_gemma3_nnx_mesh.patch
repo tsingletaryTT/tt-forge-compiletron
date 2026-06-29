@@ -1,0 +1,21 @@
+--- a/gemma3/causal_lm/bounty_jax/loader.py
++++ b/gemma3/causal_lm/bounty_jax/loader.py
+@@ -4,6 +4,7 @@
+
+ from typing import Optional
+
++import jax
+ import jax.numpy as jnp
+ import numpy as np
+ from flax import nnx
+@@ -103,7 +104,9 @@ class ModelLoader(ForgeModel):
+         if dtype_override is not None:
+             config.dtype = dtype_override
+             config.param_dtype = dtype_override
+-        return Gemma3ForCausalLM(config, rngs=nnx.Rngs(0))
++        # nnx sharding annotations require a mesh context even on CPU.
++        with jax.sharding.Mesh(jax.devices("cpu")[:1], ("X",)):
++            return Gemma3ForCausalLM(config, rngs=nnx.Rngs(0))
+
+     def load_inputs(self, dtype_override=None, mesh=None):
+         rng = np.random.default_rng(42)

@@ -796,11 +796,14 @@ _XLA_BASE_VENV   = Path.home() / "tt-xla" / "venv"
 
 
 def _pull_tt_forge_models() -> None:
-    """git pull --rebase on ~/code/tt-forge-models to keep requirements.txt current.
+    """git pull --rebase on ~/code/tt-forge-models, then apply compiletron patches.
 
-    Uses --rebase so local customisation commits don't cause "not possible to
-    fast-forward" failures.  Fails open — a stale tree is better than a blocked
-    expedition.  Silent if the repo is not present.
+    Pull uses --rebase to avoid "not possible to fast-forward" failures.
+    After a successful pull (or if the tree is already current), the
+    apply_tt_forge_models_patches.sh script re-applies any patches that
+    compiletron needs on top of upstream.  Fails open throughout — a
+    stale or unpatched tree is better than a blocked expedition.  Silent
+    if the repo is not present.
     """
     import subprocess as _sp
     if not _TT_FORGE_MODELS_PATH.exists():
@@ -816,6 +819,35 @@ def _pull_tt_forge_models() -> None:
             print(f"  {YELLOW}⚠ tt-forge-models pull skipped: {result.stderr.strip()}{RESET}")
     except Exception as exc:
         print(f"  {YELLOW}⚠ tt-forge-models pull failed: {exc}{RESET}")
+
+    # Apply compiletron-local patches (idempotent — skipped if already applied).
+    _apply_tt_forge_models_patches()
+
+
+def _apply_tt_forge_models_patches() -> None:
+    """Run patches/apply_tt_forge_models_patches.sh against ~/code/tt-forge-models.
+
+    Idempotent: the script checks each patch before applying and skips
+    those already present.  Fails open so a patch conflict never blocks
+    the expedition — the model that needs the patch will simply fail.
+    """
+    import subprocess as _sp
+    patches_script = Path(__file__).parent.parent.parent / "patches" / "apply_tt_forge_models_patches.sh"
+    if not patches_script.exists():
+        return
+    if not _TT_FORGE_MODELS_PATH.exists():
+        return
+    try:
+        result = _sp.run(
+            ["bash", str(patches_script)],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0:
+            print(f"  {GREEN}✓ tt-forge-models patches applied{RESET}")
+        else:
+            print(f"  {YELLOW}⚠ tt-forge-models patch failed: {result.stdout.strip()} {result.stderr.strip()}{RESET}")
+    except Exception as exc:
+        print(f"  {YELLOW}⚠ tt-forge-models patch script failed: {exc}{RESET}")
 
 
 def _find_seed_requirements(model_id: str) -> "Path | None":
