@@ -966,6 +966,24 @@ def build_queues(
             if it.get("model_id", "").split("/")[-1].lower() not in _UNSUPPORTED_SEED_BACKENDS
         ]
 
+        # Drop models that are too large or low-value to keep running.
+        # Mirrors the _OUT_OF_SCOPE set in expedition_worker.py so these never
+        # occupy a queue slot (and accumulate -10pts) rather than being skipped
+        # at dispatch time after a slot has already been allocated to them.
+        _SCOPE_PREFIXES = {
+            "abacusai", "allam", "arcee", "baichuan_m2", "codellama", "phind",
+            "coherlabs", "command", "cohere2/jax", "starcoder2", "yi_1_5",
+            "olm_ocr", "deepseek", "stable_diffusion", "flux", "wan",
+            "qwen_2", "llama", "phi4",
+        }
+        seed_items = [
+            it for it in seed_items
+            if not any(
+                it.get("model_id", "").startswith(p) or it.get("model_id", "") == p
+                for p in _SCOPE_PREFIXES
+            )
+        ]
+
         # Prune seed models that have proven permanently broken even as seeds.
         # forge_internal (SIGSEGV inside forge.compile) is fatal on first attempt —
         # it kills the entire worker subprocess, so even 1 recorded failure is enough
