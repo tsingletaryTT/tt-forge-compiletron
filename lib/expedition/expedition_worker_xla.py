@@ -200,7 +200,7 @@ def _run_bench_passes_xla(
             else:
                 with jax.default_device(device):
                     out = compiled_fn(params, inputs)
-            out.block_until_ready()
+            jax.block_until_ready(out)
             return out
 
         for _ in range(2):  # warm-up
@@ -487,15 +487,40 @@ def _compile_model_xla(
         except ImportError:
             _nnx = None
 
+        def _flatten_output(out):
+            """Return the first JAX array from a model output object.
+
+            Handles: logits attribute, tuple/list, raw JAX array, and
+            structured dataclasses (e.g. FlaxCLIPOutput) by walking the
+            JAX pytree and returning the first leaf array.
+            """
+            import jax
+            if hasattr(out, "logits") and out.logits is not None:
+                return out.logits
+            if isinstance(out, (tuple, list)):
+                return out[0]
+            # Plain JAX array — already fine
+            try:
+                import jax.numpy as jnp
+                if isinstance(out, jnp.ndarray):
+                    return out
+            except Exception:
+                pass
+            # Structured output (e.g. FlaxCLIPOutput, FlaxBaseModelOutput):
+            # walk the pytree and return the first leaf array.
+            try:
+                leaves = jax.tree_util.tree_leaves(out)
+                if leaves:
+                    return leaves[0]
+            except Exception:
+                pass
+            return out
+
         from transformers.modeling_flax_utils import FlaxPreTrainedModel  # noqa
         if isinstance(model, FlaxPreTrainedModel):
             def forward(params, inputs):
                 out = model(**inputs, params=params, train=False)
-                if hasattr(out, "logits") and out.logits is not None:
-                    return out.logits
-                if isinstance(out, (tuple, list)):
-                    return out[0]
-                return out
+                return _flatten_output(out)
         elif hasattr(model, 'apply'):
             # Flax Linen .apply() style. Supports two input conventions:
             # - dict inputs (e.g. {"pixel_values": ...}): unpacked as kwargs
@@ -511,11 +536,7 @@ def _compile_model_xla(
                     out = model.apply(var_coll, **inputs)
                 else:
                     out = model.apply(var_coll, inputs, train=False)
-                if hasattr(out, "logits") and out.logits is not None:
-                    return out.logits
-                if isinstance(out, (tuple, list)):
-                    return out[0]
-                return out
+                return _flatten_output(out)
         elif _nnx is not None and isinstance(model, _nnx.Module):
             # EasyDel / Flax NNX model.  EasyDel bakes a 5D internal mesh
             # (dp/fsdp/tp/sp/expert) into every model; TT MLIR only supports
@@ -667,7 +688,7 @@ def _compile_model_xla(
                 signal.alarm(timeout)
                 try:
                     output = compiled_fn(sharded_params, sharded_inputs)
-                    output.block_until_ready()
+                    jax.block_until_ready(output)
                     signal.alarm(0)
                 except TimeoutException:
                     signal.alarm(0)
@@ -681,7 +702,7 @@ def _compile_model_xla(
                 try:
                     infer_start = time.time()
                     _ = compiled_fn(sharded_params, sharded_inputs)
-                    _.block_until_ready()
+                    jax.block_until_ready(_)
                     infer_s = time.time() - infer_start
                 except Exception:
                     pass
@@ -732,7 +753,7 @@ def _compile_model_xla(
                 signal.alarm(timeout)
                 try:
                     output = compiled_fn(sharded_params, sharded_inputs)
-                    output.block_until_ready()
+                    jax.block_until_ready(output)
                     signal.alarm(0)
                 except TimeoutException:
                     signal.alarm(0)
@@ -746,7 +767,7 @@ def _compile_model_xla(
                 try:
                     infer_start = time.time()
                     _ = compiled_fn(sharded_params, sharded_inputs)
-                    _.block_until_ready()
+                    jax.block_until_ready(_)
                     infer_s = time.time() - infer_start
                 except Exception:
                     pass
@@ -775,10 +796,10 @@ def _compile_model_xla(
                     if _nnx_mesh is not None:
                         with _nnx_mesh:
                             output = compiled_fn(flax_params, dummy_inputs)
-                            output.block_until_ready()
+                            jax.block_until_ready(output)
                     else:
                         output = compiled_fn(flax_params, dummy_inputs)
-                        output.block_until_ready()  # ensure device execution completes
+                        jax.block_until_ready(output)  # ensure device execution completes
                 signal.alarm(0)
             except TimeoutException:
                 signal.alarm(0)
@@ -795,12 +816,12 @@ def _compile_model_xla(
                         with _nnx_mesh:
                             infer_start = time.time()
                             _ = compiled_fn(flax_params, dummy_inputs)
-                            _.block_until_ready()
+                            jax.block_until_ready(_)
                             infer_s = time.time() - infer_start
                     else:
                         infer_start = time.time()
                         _ = compiled_fn(flax_params, dummy_inputs)
-                        _.block_until_ready()
+                        jax.block_until_ready(_)
                         infer_s = time.time() - infer_start
             except Exception:
                 pass
@@ -873,7 +894,7 @@ def _attempt_first_voice_xla(
         try:
             with jax.default_device(device):
                 output = compiled_fn(params, inputs)
-                output.block_until_ready()
+                jax.block_until_ready(output)
             signal.alarm(0)
         except TimeoutException:
             signal.alarm(0)
