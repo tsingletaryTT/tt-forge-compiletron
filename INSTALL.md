@@ -1,5 +1,20 @@
 # Installation
 
+The quickest path is the smart installer — it checks your environment,
+detects common gotchas (wrong `forge` package, stale shm segments, missing
+mesh descriptor), compares installed versions against TT PyPI, and calls
+`setup-venvs.sh` to fix anything broken:
+
+```bash
+bash scripts/install.sh          # check + fix everything
+bash scripts/install.sh --status # check only, no installs
+```
+
+For manual step-by-step instructions, source-build options, and
+hardware-specific notes, see the sections below.
+
+---
+
 Compiletron needs two Python 3.12 venvs:
 
 | Venv | Path | Purpose |
