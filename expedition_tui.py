@@ -201,11 +201,13 @@ def _render_score_row(chip_id: int) -> Text:
             f"  [gold1]{pts:>5}pts[/]"
             f"  [bold green]✓ DONE[/]"
         )
+    ram_est = s.get("ram_estimate", "")
+    ram_txt = f"  [dim]{ram_est}[/]" if ram_est else ""
     return Text.from_markup(
         f"[bold yellow]C{chip_id}[/] [{color}]{bar}[/] {pct:3d}%"
         f"  [green]✓{successes}[/]/[red]✗{failures}[/]"
         f"  [gold1]{pts:>5}pts[/]{streak_txt}"
-        f"  [cyan]{model}[/]"
+        f"  [cyan]{model}[/]{ram_txt}"
     )
 
 

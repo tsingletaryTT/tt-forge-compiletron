@@ -1730,6 +1730,17 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
     )
 
     _decouple_stderr()
+
+    # Detect hardware once at worker startup so the budget gate can use it.
+    try:
+        from lib.hardware import detect_hardware as _detect_hw
+        _hw = _detect_hw()
+        _hw_board_type = (_hw.get("devices", [{}]) or [{}])[0].get("board_type", "unknown")
+        _hw_num_chips  = max(_hw.get("num_chips", 1), 1)
+    except Exception:
+        _hw_board_type = "unknown"
+        _hw_num_chips  = 1
+
     bestiary = Bestiary(path=bestiary_path)
     if model_json_path:
         # Per-model TUI dispatch: process a single model from a flat JSON dict.
@@ -1866,6 +1877,57 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
         }
         if item.model_id in _OUT_OF_SCOPE:
             continue
+
+        # ── Hardware budget gate ─────────────────────────────────────────────
+        # Skip models whose estimated host-RAM or device-DRAM footprint exceeds
+        # what this machine can safely provide.  Avoids OOM hangs (like the
+        # ALLaM-7B incident that froze the machine with 82 GB RSS).
+        #
+        # params_b on QueueItem may be None for seed models — in that case we
+        # do a lightweight fetch of config.json from HuggingFace (no weights
+        # downloaded) to estimate the parameter count.
+        _params_b = item.hf_params_b
+        if _params_b is None and item.is_frontier is False:
+            # Seed models don't carry hf_params_b; try to infer from config.json.
+            try:
+                from huggingface_hub import hf_hub_download as _hf_dl
+                import json as _json
+                _cfg_path = _hf_dl(item.model_id, "config.json",
+                                   local_files_only=False, timeout=10)
+                _cfg = _json.loads(open(_cfg_path).read())
+                # Common config fields that encode parameter count.
+                # Fall back through a chain of increasingly rough proxies.
+                _hidden = _cfg.get("hidden_size", 0)
+                _layers = (_cfg.get("num_hidden_layers") or
+                           _cfg.get("num_layers") or 0)
+                _vocab  = _cfg.get("vocab_size", 0)
+                _intermediate = _cfg.get("intermediate_size", _hidden * 4)
+                if _hidden and _layers:
+                    # Rough transformer estimate: embedding + N × (attn + ffn)
+                    _attn_params  = 4 * _hidden * _hidden  # Q K V O projections
+                    _ffn_params   = 2 * _hidden * _intermediate
+                    _embed_params = _vocab * _hidden if _vocab else 0
+                    _est = (_embed_params + _layers * (_attn_params + _ffn_params)) / 1e9
+                    _params_b = round(_est, 2)
+            except Exception:
+                pass  # no config.json or network unavailable — proceed without estimate
+
+        if _params_b and _params_b > 0:
+            from lib.hardware import model_fits as _model_fits, model_ram_estimate as _mre
+            _fits, _reason = _model_fits(
+                params_b=_params_b,
+                board_type=_hw_board_type,
+                num_chips=_hw_num_chips,
+            )
+            if not _fits:
+                print(f"\n  {YELLOW}⚠ skip {item.model_id}{RESET}")
+                print(f"  {YELLOW}  budget: {_reason}{RESET}\n")
+                continue
+            # Update HUD with RAM estimate now that we know params_b.
+            _h_gb, _d_gb = _mre(_params_b)
+            _ram_est = f"~{_d_gb:.0f}GB device / ~{_h_gb:.0f}GB host"
+            hud.set_current(item.model_id, idx, ram_estimate=_ram_est)
+            hud.write_status()
 
         # ── Runtime perm-fail gate ───────────────────────────────────────────
         # Reload bestiary here so models added to perm-fail mid-run are caught

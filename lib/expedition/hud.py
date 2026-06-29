@@ -52,6 +52,8 @@ class ChipState:
     current_index: int = 0
     total_models: int = 0
     done: bool = False
+    # RAM estimate for the current model: "~4GB device / ~20GB host" or "" if unknown.
+    ram_estimate: str = ""
 
 
 class ChipHUD:
@@ -94,15 +96,18 @@ class ChipHUD:
     # State mutators
     # ------------------------------------------------------------------
 
-    def set_current(self, model_id: str, index: int) -> None:
+    def set_current(self, model_id: str, index: int, ram_estimate: str = "") -> None:
         """Record which model is about to be compiled.
 
         Args:
-            model_id: Human-readable model identifier (e.g. ``"bert/qa"``).
-            index:    Zero-based position in the model queue.
+            model_id:     Human-readable model identifier (e.g. ``"bert/qa"``).
+            index:        Zero-based position in the model queue.
+            ram_estimate: Short string describing expected RAM usage, e.g.
+                          ``"~4 GB device / ~20 GB host"``.  Empty if unknown.
         """
         self._state.current_model = model_id
         self._state.current_index = index
+        self._state.ram_estimate  = ram_estimate
 
     def record_success(self, model_id: str, score: ScoreResult) -> None:
         """Apply a successful compilation result to the running totals.
@@ -205,6 +210,7 @@ class ChipHUD:
             f"best_streak={s.best_streak}",
             f"model={s.current_model}",
             f"done={1 if s.done else 0}",
+            f"ram_estimate={s.ram_estimate}",
         ]
         tmp = path.with_suffix(".tmp")
         tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")

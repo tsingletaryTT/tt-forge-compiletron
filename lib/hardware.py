@@ -138,6 +138,124 @@ def system_ram_gb() -> float:
     return 0.0
 
 
+# GDDR capacity per chip by board type.  These are hardware constants —
+# update if new board types are added to the TT lineup.
+_CHIP_DRAM_GB: Dict[str, float] = {
+    "P300C": 32.0,   # Blackhole P300 — 2× 16 GB GDDR6
+    "P150":  16.0,   # Blackhole P150 — 1× 16 GB GDDR6
+    "P100":  16.0,   # Grayskull e150  — 16 GB GDDR6
+    "N300":  24.0,   # Wormhole N300   — 24 GB GDDR6
+    "N150":  12.0,   # Wormhole N150   — 12 GB GDDR6
+}
+_DEFAULT_CHIP_DRAM_GB = 16.0  # conservative fallback for unknown boards
+
+
+def chip_dram_gb(board_type: str) -> float:
+    """Return the on-chip GDDR capacity in GB for the given board type string.
+
+    Board type strings come from ``tt-smi -s`` → ``device_info[n].board_info.board_type``
+    and are already upper-cased by ``detect_hardware()``.
+    """
+    return _CHIP_DRAM_GB.get(board_type.upper(), _DEFAULT_CHIP_DRAM_GB)
+
+
+# Bytes per parameter by common dtype names as reported by HuggingFace config.json.
+_DTYPE_BYTES: Dict[str, float] = {
+    "float32": 4.0,
+    "float16": 2.0,
+    "bfloat16": 2.0,
+    "int8": 1.0,
+    "int4": 0.5,
+    "fp8": 1.0,
+    "fp4": 0.5,
+}
+# Forge always loads in fp32 unless the loader explicitly requests another dtype,
+# so use fp32 as the default for compile-time host RAM estimates.
+_FORGE_LOAD_DTYPE_BYTES = 4.0
+
+# Multiplier for forge compile-time host RAM relative to weight size.
+# Empirically: weights + graph IR + intermediate tensors ≈ 5× weight bytes.
+FORGE_COMPILE_MULTIPLIER = 5.0
+
+# Fraction of total resources considered "safe" to budget to model compilation.
+# Leave 30 % for the OS, driver, TUI, and other concurrent processes.
+_SAFE_FRACTION = 0.70
+
+
+def model_ram_estimate(
+    params_b: float,
+    dtype_bytes: float = _FORGE_LOAD_DTYPE_BYTES,
+) -> tuple[float, float]:
+    """Estimate host-RAM and device-DRAM footprints for a model given its size.
+
+    Args:
+        params_b:    Number of parameters in billions.
+        dtype_bytes: Bytes per parameter (default: fp32 = 4).
+
+    Returns:
+        (host_gb, device_gb) where:
+          host_gb   — expected host RAM during forge compile (~5× weight bytes)
+          device_gb — expected device DRAM during inference (~1× weight bytes)
+    """
+    weight_gb = params_b * 1e9 * dtype_bytes / (1024 ** 3)
+    host_gb   = weight_gb * FORGE_COMPILE_MULTIPLIER
+    device_gb = weight_gb
+    return host_gb, device_gb
+
+
+def model_fits(
+    params_b: float,
+    board_type: str,
+    num_chips: int,
+    dtype_bytes: float = _FORGE_LOAD_DTYPE_BYTES,
+) -> tuple[bool, str]:
+    """Return (fits, reason) for a model on the current machine.
+
+    Checks two independent budgets:
+      1. Host RAM — forge compile needs ~5× weight bytes; all chips compile in
+         parallel so the budget is divided by num_chips.
+      2. Device DRAM — inference loads the full model onto one chip; must fit
+         within 85% of that chip's GDDR capacity.
+
+    Args:
+        params_b:    Parameter count in billions (0 = unknown, always fits).
+        board_type:  Board type string from tt-smi (e.g. "P300C").
+        num_chips:   Number of chips compiling in parallel.
+        dtype_bytes: Bytes per parameter for the weight dtype.
+
+    Returns:
+        (True, "")  if the model fits both budgets, or params_b is unknown.
+        (False, reason_str) otherwise, where reason_str is a short human-readable
+        explanation suitable for TUI display.
+    """
+    if params_b <= 0:
+        return True, ""
+
+    host_gb, device_gb = model_ram_estimate(params_b, dtype_bytes)
+
+    # Per-chip host RAM budget (each chip worker is an independent subprocess).
+    ram = system_ram_gb()
+    if ram > 0:
+        host_budget = (ram * _SAFE_FRACTION) / max(num_chips, 1)
+        if host_gb > host_budget:
+            return False, (
+                f"host RAM: ~{host_gb:.0f} GB needed "
+                f"({params_b:.1f}B params × {FORGE_COMPILE_MULTIPLIER:.0f}× compile), "
+                f"budget {host_budget:.0f} GB ({num_chips} chips)"
+            )
+
+    # Device DRAM budget — 85 % of on-chip GDDR.
+    dram = chip_dram_gb(board_type)
+    dram_budget = dram * 0.85
+    if device_gb > dram_budget:
+        return False, (
+            f"device DRAM: ~{device_gb:.0f} GB needed, "
+            f"chip has {dram:.0f} GB ({board_type})"
+        )
+
+    return True, ""
+
+
 def safe_max_params_b(num_chips: int) -> float:
     """Compute a safe per-model parameter cap based on available RAM and chip count.
 
