@@ -1410,10 +1410,39 @@ def _dispatch_xla_item(
         ]
         if no_permafail:
             cmd.append("--no-permafail")
+        # Build subprocess env: inherit current env but override mesh descriptor.
+        # The XLA worker clears TT_METAL_HOME to avoid forge's version conflicting,
+        # and sets its own mesh graph descriptor if not already present.  We
+        # explicitly inject the per-topology-correct descriptor here so the
+        # worker's fallback (p100 — single-chip) is never needed.
+        _mesh_chips = getattr(item, "mesh_chips", 1) or 1
+        _xla_descs = (
+            Path.home() / "tt-xla" / "venv"
+            / "lib" / "python3.12" / "site-packages"
+            / "pjrt_plugin_tt" / "tt-metal" / "tt_metal"
+            / "fabric" / "mesh_graph_descriptors"
+        )
+        _qb2_descs = (
+            Path.home() / "tt-xla" / "third_party" / "tt-mlir" / "install"
+            / "tt-metal" / "tests" / "scale_out" / "4x_bh_quietbox"
+            / "mesh_graph_descriptors"
+        )
+        if _mesh_chips >= 4:
+            _xla_mesh_desc = _qb2_descs / "2x2_bh_mesh_graph_descriptor.textproto"
+        elif _mesh_chips >= 2:
+            _xla_mesh_desc = _xla_descs / "p300_mesh_graph_descriptor.textproto"
+        else:
+            _xla_mesh_desc = _xla_descs / "p150_mesh_graph_descriptor.textproto"
+        _xla_env = {**os.environ}
+        _xla_env.pop("TT_METAL_HOME", None)       # must not bleed forge's tt-metal into XLA
+        _xla_env["TT_MESH_GRAPH_DESC_PATH"] = str(_xla_mesh_desc)
+        _xla_env["TT_METAL_LOGGER_LEVEL"]   = "FATAL"
+        _xla_env["JAX_PLATFORMS"]           = "tt"
+
         import fcntl as _fcntl
         with open(_xla_lock_path, "w") as _lf:
             _fcntl.flock(_lf, _fcntl.LOCK_EX)   # blocks until the running XLA worker exits
-            _sp.run(cmd, timeout=420, stdin=_sp.DEVNULL)  # 7-min hard cap; SIGALRM (300s) can't interrupt C-level XLA code, so this is the real timeout
+            _sp.run(cmd, env=_xla_env, timeout=420, stdin=_sp.DEVNULL)  # 7-min hard cap
 
         if Path(res_path).stat().st_size > 0:
             with open(res_path) as f:
