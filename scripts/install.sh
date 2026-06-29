@@ -207,3 +207,112 @@ else
     fail_s "Disk: ${_free_gb}G free — critically low; expedition will refuse to download models"
     info "Free space: du -sh ~/.cache/huggingface/hub/models--*/ | sort -rh | head -10"
 fi
+
+# ── [4] Forge venv ────────────────────────────────────────────────────────────
+_FORGE_OK=0
+if [[ $SETUP_FORGE -eq 1 ]]; then
+    step 4 "Forge venv  (~/$( realpath --relative-to="$HOME" "$FORGE_VENV" 2>/dev/null || echo tt-forge-venv))"
+
+    _forge_importable=0
+    _forge_is_tt=0
+
+    if [[ -x "$FORGE_PY" ]]; then
+        # Check that the forge package is importable at all
+        if "$FORGE_PY" -c "import forge" 2>/dev/null; then
+            _forge_importable=1
+            # Gotcha: PyPI hosts a "forge" package that is a Django form-builder app.
+            # TT forge exposes forge.compiled; Django forge does not.
+            # We use that submodule as the discriminator, and also capture __version__.
+            _forge_ver=$("$FORGE_PY" -c "
+import forge, sys
+v = getattr(forge, '__version__', '')
+try:
+    import forge.compiled   # TT forge has this; Django forge does not
+    print(v)
+except ImportError:
+    print('')
+" 2>/dev/null || echo "")
+            if [[ -n "$_forge_ver" ]]; then
+                _forge_is_tt=1
+            fi
+        fi
+    fi
+
+    if [[ $_forge_is_tt -eq 1 ]]; then
+        pass_s "Forge venv: $FORGE_VENV  (forge $_forge_ver)"
+        _FORGE_OK=1
+    elif [[ $STATUS_ONLY -eq 1 ]]; then
+        if [[ $_forge_importable -eq 1 && $_forge_is_tt -eq 0 ]]; then
+            fail_s "Forge venv: wrong 'forge' package installed (Django app, not TT forge)"
+            info "Fix: $FORGE_VENV/bin/pip uninstall forge -y && $FORGE_VENV/bin/pip install forge --extra-index-url $TENSTORRENT_PYPI"
+        else
+            fail_s "Forge venv missing or forge not importable"
+            info "Fix: bash scripts/setup-venvs.sh --forge"
+        fi
+    else
+        if [[ $_forge_importable -eq 1 && $_forge_is_tt -eq 0 ]]; then
+            info "Wrong 'forge' package detected (Django app) — reinstalling from TT PyPI..."
+            "$FORGE_VENV/bin/pip" uninstall forge -y >> "$LOG_FILE" 2>&1 || true
+        else
+            info "Installing forge venv via setup-venvs.sh --forge..."
+        fi
+        if bash "$SCRIPT_DIR/setup-venvs.sh" --forge >> "$LOG_FILE" 2>&1; then
+            _forge_ver=$("$FORGE_PY" -c "import forge; print(getattr(forge,'__version__','?'))" 2>/dev/null || echo "?")
+            pass_s "Forge venv installed  (forge $_forge_ver)"
+            _FORGE_OK=1
+        else
+            fail_s "Forge venv install failed — see $LOG_FILE"
+            info "Manual fix: bash scripts/setup-venvs.sh --forge"
+        fi
+    fi
+fi
+
+# ── [5] Forge version ─────────────────────────────────────────────────────────
+# Only runs when forge venv is healthy (_FORGE_OK=1).
+# Network failures are WARNED, not FAILED, so offline CI still passes.
+if [[ $SETUP_FORGE -eq 1 && $_FORGE_OK -eq 1 ]]; then
+    step 5 "Forge version  (TT PyPI latest)"
+
+    _forge_installed=$("$FORGE_PY" -c "import forge; print(getattr(forge,'__version__',''))" 2>/dev/null || echo "")
+    _forge_latest=$(_latest_tt_version "forge")
+
+    if [[ -z "$_forge_latest" ]]; then
+        warn_s "Forge version: cannot reach TT PyPI — skipping comparison"
+    elif [[ -z "$_forge_installed" ]]; then
+        warn_s "Forge version: installed version unknown"
+    elif _version_behind "$_forge_installed" "$_forge_latest"; then
+        warn_s "Forge version: $_forge_installed installed, $_forge_latest available"
+        info "Upgrade: bash scripts/install.sh --forge"
+    else
+        pass_s "Forge version: $_forge_installed (up to date)"
+    fi
+fi
+
+# ── [6] Forge-fe shim ─────────────────────────────────────────────────────────
+# Validates that ~/tt-forge-fe/env/activate exists and sources without error.
+# The shim is written by setup-venvs.sh --forge; step [4] above invokes that
+# whenever forge is missing, so if _FORGE_OK=1 the shim should exist.
+if [[ $SETUP_FORGE -eq 1 ]]; then
+    step 6 "Forge-fe shim  (~/tt-forge-fe/env/activate)"
+
+    _SHIM="$HOME/tt-forge-fe/env/activate"
+    if [[ ! -f "$_SHIM" ]]; then
+        if [[ $STATUS_ONLY -eq 1 ]]; then
+            fail_s "Forge-fe shim missing: $_SHIM"
+            info "Fix: bash scripts/setup-venvs.sh --forge"
+        elif [[ $_FORGE_OK -eq 1 ]]; then
+            # setup-venvs.sh already wrote the shim during the step [4] install
+            pass_s "Forge-fe shim written by install step above"
+        else
+            fail_s "Forge-fe shim missing and forge venv install failed — cannot write shim"
+        fi
+    else
+        # Validate shim sources cleanly; timeout 5s to guard against hangs
+        if timeout 5 bash -c "source $_SHIM" >> "$LOG_FILE" 2>&1; then
+            pass_s "Forge-fe shim: $_SHIM"
+        else
+            warn_s "Forge-fe shim exists but sourcing it produced errors"
+            info "Check: source $_SHIM"
+        fi
+    fi
+fi
