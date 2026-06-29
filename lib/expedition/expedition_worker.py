@@ -1022,6 +1022,29 @@ def _compile_model(model_loader, chip_id: int, timeout: int = 120) -> tuple[bool
             if hasattr(cfg, 'output_hidden_states'):
                 cfg.output_hidden_states = False
 
+        # Model-specific forge traceability patches.
+        #
+        # ModernBERT uses LayerNorm with bias=False (norm_bias=False in config),
+        # which produces aten::layer_norm(data, shape, weight, None, ...) in the
+        # JIT graph.  TVM's pytorch relay frontend passes this None straight into
+        # the relay layernorm Call args, causing _SpanFiller.visit() to crash on
+        # the embedded Python None.  Fix: add a zero-bias parameter to every
+        # LayerNorm module that was constructed with bias=False so the JIT trace
+        # always sees a concrete bias tensor instead of None.
+        #
+        # This is safe: LayerNorm with an all-zero bias is numerically identical
+        # to LayerNorm with no bias; it just gives TVM a real tensor to work with.
+        if hasattr(model, 'config') and not _is_onnx:
+            _arch = type(model.config).__name__.lower()
+            if 'modernbert' in _arch:
+                import torch.nn as _nn
+                for _mod in model.modules():
+                    if isinstance(_mod, _nn.LayerNorm) and _mod.bias is None:
+                        _mod.bias = _nn.Parameter(
+                            torch.zeros(_mod.normalized_shape, dtype=torch.float32),
+                            requires_grad=False,
+                        )
+
         # Determine the input shape from the loader's optional _input_type hint.
         if hasattr(model_loader, "_input_type"):
             itype = model_loader._input_type
