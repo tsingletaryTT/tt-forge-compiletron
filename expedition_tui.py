@@ -1315,19 +1315,28 @@ class RunScreen(Screen):
         if chip_be == "xla":
             python_exe  = str(Path.home() / "tt-xla" / "venv" / "bin" / "python3")
             worker_path = str(self._project_dir / "lib" / "expedition" / "expedition_worker_xla.py")
-            # Select the tt-xla mesh descriptor matching chip count.  JAX/TT
-            # requires TT_MESH_GRAPH_DESC_PATH for CUSTOM cluster types (e.g. a
-            # P300 board with only 1 chip visible).  We must NOT inherit the forge
-            # p100 descriptor (dims:[1,1]) for multi-chip XLA runs — it would cap
-            # JAX at 1 device.  Instead, pick from tt-xla's own install tree so
-            # the descriptor matches exactly the topology JAX will see.
+            # Select the mesh graph descriptor matching chip count and board topology.
+            # JAX/TT requires TT_MESH_GRAPH_DESC_PATH for CUSTOM cluster types (e.g. a
+            # P300 board presenting as 1 chip when the board expects 2).
+            #
+            # 4-chip: use the QB2-specific 2x2 BH STRICT descriptor — the generic
+            #   p150_x4 (RELAXED 2x2) fails on Quietbox because the eth channel count
+            #   assertion in control_plane.cpp:1174 requires STRICT connectivity.
+            # 2-chip: p300 (dims 1,2 RELAXED) works for two P300C-based chips.
+            # 1-chip: p150 (dims 1,1 RELAXED) — standard single-BH card.
             _xla_descs = (
                 Path.home() / "tt-xla" / "third_party" / "tt-mlir" / "install"
                 / "tt-metal" / "tt_metal" / "fabric" / "mesh_graph_descriptors"
             )
+            _qb2_descs = (
+                Path.home() / "tt-xla" / "third_party" / "tt-mlir" / "install"
+                / "tt-metal" / "tests" / "scale_out" / "4x_bh_quietbox"
+                / "mesh_graph_descriptors"
+            )
             _chip_count = len(mesh_chip_ids) if mesh_chip_ids else 1
             if _chip_count >= 4:
-                _xla_desc = _xla_descs / "p150_x4_mesh_graph_descriptor.textproto"
+                # QB2 2x2 STRICT descriptor — tested working on 4× P300C Quietbox
+                _xla_desc = _qb2_descs / "2x2_bh_mesh_graph_descriptor.textproto"
             elif _chip_count >= 2:
                 _xla_desc = _xla_descs / "p300_mesh_graph_descriptor.textproto"
             else:
