@@ -14,6 +14,10 @@
 #
 # Flags compose: --status --forge checks forge steps only, no installs.
 # Log: /tmp/tt-compiletron-install.log
+#
+# Note: install mode is always the default — --status must be passed explicitly.
+# The script does NOT auto-detect non-interactive terminals to avoid silently
+# becoming read-only when called from scripts or CI.
 
 set -uo pipefail
 
@@ -59,8 +63,6 @@ STATUS_ONLY=0
 SETUP_FORGE=1
 SETUP_XLA=1
 SKIP_HARDWARE=0
-
-[[ -t 0 ]] || STATUS_ONLY=1   # non-interactive: auto status-only
 
 while [[ ${1:-} != "" ]]; do
     case "$1" in
@@ -223,18 +225,20 @@ if [[ $SETUP_FORGE -eq 1 ]]; then
             _forge_importable=1
             # Gotcha: PyPI hosts a "forge" package that is a Django form-builder app.
             # TT forge exposes forge.compiled; Django forge does not.
-            # We use that submodule as the discriminator, and also capture __version__.
-            _forge_ver=$("$FORGE_PY" -c "
-import forge, sys
-v = getattr(forge, '__version__', '')
+            # Discriminate by import, then read version from tt-forge pip metadata
+            # (avoids Django forge's __version__ shadowing TT forge's).
+            _forge_is_tt_check=$("$FORGE_PY" -c "
+import forge
 try:
     import forge.compiled   # TT forge has this; Django forge does not
-    print(v)
+    print('tt')
 except ImportError:
-    print('')
+    print('django')
 " 2>/dev/null || echo "")
-            if [[ -n "$_forge_ver" ]]; then
+            if [[ "$_forge_is_tt_check" == "tt" ]]; then
                 _forge_is_tt=1
+                _forge_ver=$("$FORGE_PY" -m pip show tt-forge 2>/dev/null | awk '/^Version:/{print $2}')
+                _forge_ver="${_forge_ver:-?}"
             fi
         fi
     fi
@@ -258,7 +262,9 @@ except ImportError:
             info "Installing forge venv via setup-venvs.sh --forge..."
         fi
         if bash "$SCRIPT_DIR/setup-venvs.sh" --forge >> "$LOG_FILE" 2>&1; then
-            _forge_ver=$("$FORGE_PY" -c "import forge; print(getattr(forge,'__version__','?'))" 2>/dev/null || echo "?")
+            # Read version from tt-forge pip metadata to avoid Django forge namespace collision
+            _forge_ver=$("$FORGE_PY" -m pip show tt-forge 2>/dev/null | awk '/^Version:/{print $2}')
+            _forge_ver="${_forge_ver:-?}"
             pass_s "Forge venv installed  (forge $_forge_ver)"
             _FORGE_OK=1
         else
@@ -274,7 +280,8 @@ fi
 if [[ $SETUP_FORGE -eq 1 && $_FORGE_OK -eq 1 ]]; then
     step 5 "Forge version  (TT PyPI latest)"
 
-    _forge_installed=$("$FORGE_PY" -c "import forge; print(getattr(forge,'__version__',''))" 2>/dev/null || echo "")
+    # Read from pip metadata to avoid Django forge namespace collision
+    _forge_installed=$("$FORGE_PY" -m pip show tt-forge 2>/dev/null | awk '/^Version:/{print $2}')
     _forge_latest=$(_latest_tt_version "forge")
 
     if [[ -z "$_forge_latest" ]]; then

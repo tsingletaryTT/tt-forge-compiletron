@@ -67,13 +67,22 @@ fi
 PY="python3.12"
 ok "Python: $($PY --version)"
 
-for pkg in build-essential git tmux; do
+for pkg in build-essential git; do
     if ! dpkg -s "$pkg" &>/dev/null; then
         info "Installing $pkg..."
         sudo apt-get install -y "$pkg"
     fi
 done
-ok "Build tools, git, tmux present"
+ok "Build tools + git present"
+
+# tmux is a convenience for running expeditions, not a hard dependency
+if ! command -v tmux &>/dev/null; then
+    if sudo apt-get install -y tmux &>/dev/null 2>&1; then
+        ok "tmux installed"
+    else
+        warn "tmux not available in apt — install manually if needed for expedition sessions"
+    fi
+fi
 
 # ── 2. Hugepages ──────────────────────────────────────────────────────────────
 
@@ -120,9 +129,13 @@ if [[ "$SETUP_FORGE" -eq 1 ]]; then
 
     info "Installing forge wheel..."
     "$FORGE_VENV/bin/pip" install -q --upgrade pip
+    # Install forge with TT PyPI as the primary index so the Tenstorrent forge
+    # wheel is resolved instead of the unrelated Django "forge" package on public PyPI.
+    # --index-url makes TT PyPI primary; --extra-index-url adds public PyPI as fallback.
     "$FORGE_VENV/bin/pip" install -q \
         forge \
-        --extra-index-url "$TENSTORRENT_PYPI"
+        --index-url "$TENSTORRENT_PYPI" \
+        --extra-index-url "https://pypi.org/simple/"
 
     info "Installing compiletron application deps..."
     "$FORGE_VENV/bin/pip" install -q -r "$PROJECT_DIR/requirements.txt"
