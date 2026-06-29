@@ -1842,6 +1842,27 @@ def run_worker(chip_id: int, run_number: int, bestiary_path: str,
             "llama/sequence_classification/pytorch",
             "phi4/seq_cls/pytorch",               # phi-4 14B
             "phi4/causal_lm/pytorch",             # phi-4 14B
+            # Low-popularity LLMs (<50k downloads) — weight cost not justified
+            # Downloads checked 2026-06-29 via HuggingFace API
+            "allam/causal_lm/pytorch",            # ALLaM-7B Arabic LLM — 16k dl, hangs compile
+            "arcee/text_generation/pytorch",      # Arcee-Spark — 564 dl
+            "baichuan_m2/pytorch",                # Baichuan-M2-32B — 825 dl
+            "codellama/pytorch",                  # CodeLlama-34B — 10k dl, 34B weights
+            "phind/pytorch",                      # Phind-CodeLlama-34B — large, niche
+            "coherlabs/pytorch",                  # aya-23-35B / aya-expanse-32B / command-r — <25k dl
+            "command/pytorch",                    # command-a-reasoning — 1.5k dl
+            "cohere2/causal_lm/jax",              # c4ai-command-r7b — 27k dl
+            "starcoder2/pytorch",                 # starcoder2-15B — 10k dl
+            "abacusai/pytorch",                   # Smaug-72B — 8k dl, 72B weights
+            "yi_1_5/pytorch",                     # Yi-1.5-34B — 15k dl, 34B weights
+            "olm_ocr/image_text_generation/pytorch",  # olmOCR-7B — <31k dl, multimodal 7B
+            # Massive DeepSeek variants — popular but weight sizes prohibitive
+            "deepseek/deepseek_chat/pytorch",     # deepseek-llm-67B — 67B weights
+            "deepseek/deepseek_coder/pytorch",    # deepseek-coder-33B — 33B weights
+            "deepseek/deepseek_v3_1/pytorch",     # DeepSeek-V3.1 — ~685B MoE
+            "deepseek/deepseek_v3_2_exp/pytorch", # DeepSeek-V3.2-Exp — ~685B MoE
+            "deepseek/llama/pytorch",             # R1-Distill-Llama-70B — 70B weights
+            "deepseek/qwen/pytorch",              # R1-Distill-Qwen-14B/32B — 14-32B weights
         }
         if item.model_id in _OUT_OF_SCOPE:
             continue
