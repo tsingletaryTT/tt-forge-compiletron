@@ -316,3 +316,95 @@ if [[ $SETUP_FORGE -eq 1 ]]; then
         fi
     fi
 fi
+
+# ── [7] XLA venv ──────────────────────────────────────────────────────────────
+_XLA_OK=0
+if [[ $SETUP_XLA -eq 1 ]]; then
+    step 7 "XLA venv  (~/tt-xla/venv)"
+
+    _xla_importable=0
+    if [[ -x "$XLA_PY" ]]; then
+        if "$XLA_PY" -c "import pjrt_plugin_tt" 2>/dev/null; then
+            _xla_importable=1
+        fi
+    fi
+
+    if [[ $_xla_importable -eq 1 ]]; then
+        _pjrt_ver=$(_installed_version "$XLA_PY" "pjrt-plugin-tt")
+        # Warn if it's a dev build (contains '+dev') — explicit pinning was needed
+        if [[ "$_pjrt_ver" == *"+dev"* ]]; then
+            warn_s "XLA venv: pjrt-plugin-tt $_pjrt_ver (dev build — explicit pin recommended)"
+            info "Upgrade: $XLA_VENV/bin/pip install pjrt-plugin-tt==<latest> --extra-index-url $TENSTORRENT_PYPI"
+            _XLA_OK=1   # functional, just not ideal
+        else
+            pass_s "XLA venv: $XLA_VENV  (pjrt-plugin-tt $_pjrt_ver)"
+            _XLA_OK=1
+        fi
+
+        # Note harmless triton/easydel conflict — reassure the user
+        if "$XLA_PY" -m pip check 2>/dev/null | grep -q "easydel\|triton" 2>/dev/null; then
+            info "Note: triton/easydel dep conflict in XLA venv — harmless, XLA compile still works"
+        fi
+    elif [[ $STATUS_ONLY -eq 1 ]]; then
+        fail_s "XLA venv missing or pjrt-plugin-tt not importable"
+        info "Fix: bash scripts/setup-venvs.sh --xla"
+    else
+        info "Installing XLA venv via setup-venvs.sh --xla..."
+        if bash "$SCRIPT_DIR/setup-venvs.sh" --xla >> "$LOG_FILE" 2>&1; then
+            _pjrt_ver=$(_installed_version "$XLA_PY" "pjrt-plugin-tt")
+            pass_s "XLA venv installed  (pjrt-plugin-tt $_pjrt_ver)"
+            _XLA_OK=1
+        else
+            fail_s "XLA venv install failed — see $LOG_FILE"
+            info "Manual fix: bash scripts/setup-venvs.sh --xla"
+        fi
+    fi
+fi
+
+# ── [8] XLA version ───────────────────────────────────────────────────────────
+if [[ $SETUP_XLA -eq 1 && $_XLA_OK -eq 1 ]]; then
+    step 8 "XLA version  (pjrt-plugin-tt, TT PyPI latest)"
+
+    _pjrt_installed=$(_installed_version "$XLA_PY" "pjrt-plugin-tt")
+    # Strip +dev suffix for comparison
+    _pjrt_installed_clean="${_pjrt_installed%%+*}"
+    _pjrt_latest=$(_latest_tt_version "pjrt-plugin-tt")
+
+    if [[ -z "$_pjrt_latest" ]]; then
+        warn_s "XLA version: cannot reach TT PyPI — skipping comparison"
+    elif [[ -z "$_pjrt_installed_clean" ]]; then
+        warn_s "XLA version: installed version unknown"
+    elif _version_behind "$_pjrt_installed_clean" "$_pjrt_latest"; then
+        warn_s "XLA version: $_pjrt_installed installed, $_pjrt_latest available"
+        info "Upgrade: $XLA_VENV/bin/pip install pjrt-plugin-tt==$_pjrt_latest --extra-index-url $TENSTORRENT_PYPI"
+    else
+        pass_s "XLA version: $_pjrt_installed (up to date)"
+    fi
+fi
+
+# ── [9] Mesh descriptor ───────────────────────────────────────────────────────
+if [[ $SETUP_XLA -eq 1 ]]; then
+    step 9 "XLA mesh descriptor  (p100_mesh_graph_descriptor.textproto)"
+
+    _MESH_DIR="$HOME/tt-xla/third_party/tt-mlir/install/tt-metal/tt_metal/fabric/mesh_graph_descriptors"
+    _MESH_FILE="$_MESH_DIR/p100_mesh_graph_descriptor.textproto"
+    _BUNDLED="$PROJECT_DIR/mesh_graph_descriptors/p100_mesh_graph_descriptor.textproto"
+
+    if [[ -f "$_MESH_FILE" ]]; then
+        pass_s "Mesh descriptor: present"
+    elif [[ $STATUS_ONLY -eq 1 ]]; then
+        fail_s "Mesh descriptor missing: $_MESH_FILE"
+        info "Fix: bash scripts/setup-venvs.sh --xla  (links the bundled descriptor)"
+        info "Or:  mkdir -p $_MESH_DIR && ln -sf $_BUNDLED $_MESH_FILE"
+    else
+        if [[ ! -f "$_BUNDLED" ]]; then
+            fail_s "Mesh descriptor: bundled file not found at $_BUNDLED"
+            info "Is the project directory intact? Expected: $PROJECT_DIR/mesh_graph_descriptors/"
+        else
+            info "Linking bundled mesh descriptor..."
+            mkdir -p "$_MESH_DIR"
+            ln -sf "$_BUNDLED" "$_MESH_FILE"
+            pass_s "Mesh descriptor linked"
+        fi
+    fi
+fi
