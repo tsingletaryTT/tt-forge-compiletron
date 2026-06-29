@@ -408,3 +408,30 @@ if [[ $SETUP_XLA -eq 1 ]]; then
         fi
     fi
 fi
+
+# ── [10] tt-forge-models ──────────────────────────────────────────────────────
+step 10 "tt-forge-models  (seed model zoo)"
+
+_MODELS_DIR="$HOME/code/tt-forge-models"
+if [[ -d "$_MODELS_DIR" ]]; then
+    _model_count=$(find "$_MODELS_DIR" -maxdepth 2 -name "*.py" 2>/dev/null | wc -l)
+    pass_s "tt-forge-models: $_MODELS_DIR  (~$_model_count py files)"
+else
+    warn_s "tt-forge-models not found at $_MODELS_DIR"
+    info "Seed model runs need it. Clone:"
+    info "  git clone https://github.com/tenstorrent/tt-forge-models.git $_MODELS_DIR"
+    info "Frontier-only mode works without it: python3 expedition.py run --frontier-only"
+fi
+
+# ── [11] Stale /dev/shm segments ─────────────────────────────────────────────
+step 11 "Stale /dev/shm segments  (leftover from crashed runs)"
+
+_stale=$(find /dev/shm -maxdepth 1 -name "sm_segment.tt-quietbox.*.0" 2>/dev/null)
+if [[ -z "$_stale" ]]; then
+    pass_s "No stale /dev/shm segments"
+else
+    _count=$(echo "$_stale" | wc -l)
+    warn_s "$_count stale segment(s) in /dev/shm — leftover from a crashed expedition"
+    info "These can cause 'address already in use' errors on next run."
+    info "Clean up: find /dev/shm -name 'sm_segment.tt-quietbox.*.0' -delete"
+fi
