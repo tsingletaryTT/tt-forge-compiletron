@@ -517,11 +517,23 @@ _MODELS_DIR="$HOME/code/tt-forge-models"
 if [[ -d "$_MODELS_DIR" ]]; then
     _model_count=$(find "$_MODELS_DIR" -maxdepth 2 -name "*.py" 2>/dev/null | wc -l)
     pass_s "tt-forge-models: $_MODELS_DIR  (~$_model_count py files)"
+elif [[ $STATUS_ONLY -eq 1 ]]; then
+    warn_s "tt-forge-models not found — seed model runs need it"
+    info "Fix: bash scripts/install.sh  (auto-clones on non-status run)"
 else
-    warn_s "tt-forge-models not found at $_MODELS_DIR"
-    info "Seed model runs need it. Clone:"
-    info "  git clone https://github.com/tenstorrent/tt-forge-models.git $_MODELS_DIR"
-    info "Frontier-only mode works without it: python3 expedition.py run --frontier-only"
+    info "Cloning tt-forge-models (depth=1)..."
+    mkdir -p "$(dirname "$_MODELS_DIR")"
+    if git clone --depth=1 https://github.com/tenstorrent/tt-forge-models.git \
+            "$_MODELS_DIR" >> "$LOG_FILE" 2>&1; then
+        _model_count=$(find "$_MODELS_DIR" -maxdepth 2 -name "*.py" 2>/dev/null | wc -l)
+        pass_s "tt-forge-models: cloned at $_MODELS_DIR  (~$_model_count py files)"
+        # Apply compiletron patches to the fresh clone
+        bash "$PROJECT_DIR/patches/apply_tt_forge_models_patches.sh" >> "$LOG_FILE" 2>&1 || true
+    else
+        warn_s "tt-forge-models clone failed — see $LOG_FILE"
+        info "Frontier-only mode still works: python3 expedition.py run --frontier-only"
+        info "Retry: git clone https://github.com/tenstorrent/tt-forge-models.git $_MODELS_DIR"
+    fi
 fi
 
 # ── [11] Stale /dev/shm segments ─────────────────────────────────────────────

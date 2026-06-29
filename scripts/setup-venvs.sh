@@ -235,10 +235,14 @@ MODELS_DIR="$HOME/code/tt-forge-models"
 if [[ -d "$MODELS_DIR" ]]; then
     ok "tt-forge-models found at $MODELS_DIR"
 else
-    warn "tt-forge-models not found at $MODELS_DIR"
-    info "The expedition uses seed models from that repo. Clone it with:"
-    info "  git clone https://github.com/tenstorrent/tt-forge-models.git $MODELS_DIR"
-    info "(Frontier-only mode works without it: expedition.py run --frontier-only)"
+    info "Cloning tt-forge-models into $MODELS_DIR ..."
+    mkdir -p "$(dirname "$MODELS_DIR")"
+    if git clone --depth=1 https://github.com/tenstorrent/tt-forge-models.git "$MODELS_DIR"; then
+        ok "tt-forge-models cloned at $MODELS_DIR"
+    else
+        warn "tt-forge-models clone failed — frontier-only mode still works"
+        info "Retry manually: git clone https://github.com/tenstorrent/tt-forge-models.git $MODELS_DIR"
+    fi
 fi
 
 # ── 7. Summary ────────────────────────────────────────────────────────────────
