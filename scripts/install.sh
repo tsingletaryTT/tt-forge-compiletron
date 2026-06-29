@@ -435,3 +435,36 @@ else
     info "These can cause 'address already in use' errors on next run."
     info "Clean up: find /dev/shm -name 'sm_segment.tt-quietbox.*.0' -delete"
 fi
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+echo ""
+hr
+echo -e "  ${_BLD}Summary${_RST}"
+hr_mid
+
+for s in "${PASSED[@]:-}";  do [[ -n "$s" ]] && echo -e "${_GRN}  ✓${_RST}  $s"; done
+for s in "${WARNED[@]:-}";  do [[ -n "$s" ]] && echo -e "${_YLW}  ⚠${_RST}  $s"; done
+for s in "${FAILED[@]:-}";  do [[ -n "$s" ]] && echo -e "${_RED}  ✗${_RST}  $s"; done
+
+hr_end
+echo ""
+
+if [[ ${#FAILED[@]} -eq 0 ]]; then
+    if [[ $STATUS_ONLY -eq 1 ]]; then
+        echo -e "${_GRN}  All checks passed.${_RST}"
+    else
+        echo -e "${_GRN}  ${_BLD}Ready!${_RST}  Run an expedition:"
+        echo -e "  Forge:  python3 expedition.py run --tui"
+        echo -e "  XLA:    python3 expedition.py run --tui --backend xla"
+        echo -e "  Mixed:  python3 expedition.py run --tui --backend mixed"
+    fi
+    echo ""
+    exit 0
+else
+    echo -e "${_RED}  ${#FAILED[@]} check(s) failed.${_RST}  See $LOG_FILE for details."
+    if [[ $STATUS_ONLY -eq 1 ]]; then
+        echo -e "  Fix the items above, then re-run: bash scripts/install.sh"
+    fi
+    echo ""
+    exit 1
+fi
