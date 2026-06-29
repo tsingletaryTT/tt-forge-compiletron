@@ -130,6 +130,7 @@ FORGE_VENV="$HOME/tt-forge-venv"
 FORGE_PY="$FORGE_VENV/bin/python"
 XLA_VENV="$HOME/tt-xla/venv"
 XLA_PY="$XLA_VENV/bin/python"
+_hw_json=""   # populated by step 1; read by step 8 firmware probe
 
 # ── [1] Hardware presence ─────────────────────────────────────────────────────
 step 1 "Hardware presence"
@@ -361,24 +362,124 @@ if [[ $SETUP_XLA -eq 1 ]]; then
     fi
 fi
 
-# ── [8] XLA version ───────────────────────────────────────────────────────────
+# ── [8] XLA version + device init probe ──────────────────────────────────────
 if [[ $SETUP_XLA -eq 1 && $_XLA_OK -eq 1 ]]; then
-    step 8 "XLA version  (pjrt-plugin-tt, TT PyPI latest)"
+    step 8 "XLA version  (pjrt-plugin-tt) + device init probe"
 
     _pjrt_installed=$(_installed_version "$XLA_PY" "pjrt-plugin-tt")
-    # Strip +dev suffix for comparison
     _pjrt_installed_clean="${_pjrt_installed%%+*}"
     _pjrt_latest=$(_latest_tt_version "pjrt-plugin-tt")
 
+    # Version comparison (advisory)
     if [[ -z "$_pjrt_latest" ]]; then
         warn_s "XLA version: cannot reach TT PyPI — skipping comparison"
     elif [[ -z "$_pjrt_installed_clean" ]]; then
         warn_s "XLA version: installed version unknown"
     elif _version_behind "$_pjrt_installed_clean" "$_pjrt_latest"; then
-        warn_s "XLA version: $_pjrt_installed installed, $_pjrt_latest available"
-        info "Upgrade: $XLA_VENV/bin/pip install pjrt-plugin-tt==$_pjrt_latest --extra-index-url $TENSTORRENT_PYPI"
+        info "XLA version: $_pjrt_installed installed, $_pjrt_latest stable available"
     else
         pass_s "XLA version: $_pjrt_installed (up to date)"
+    fi
+
+    # Device init probe — catches firmware/pjrt-plugin-tt mismatches before
+    # expedition time.  pjrt-plugin-tt stable releases can require newer
+    # tt-metal firmware than the board bundle carries; a dev build from the
+    # matching date avoids this.
+    info "Probing device init (JAX_PLATFORMS=tt jax.devices())..."
+    _probe_out=$(JAX_PLATFORMS=tt TT_METAL_LOGGER_LEVEL=FATAL "$XLA_PY" -c "
+import os, sys
+os.environ.setdefault('TT_METAL_LOGGER_LEVEL', 'FATAL')
+import jax
+try:
+    devs = jax.devices()
+    print(f'ok:{len(devs)}')
+except Exception as e:
+    sys.stderr.write(f'fail:{e}\n')
+    sys.exit(1)
+" 2>/tmp/tt-xla-probe.err)
+    _probe_rc=$?
+
+    if [[ $_probe_rc -eq 0 ]]; then
+        _probe_count="${_probe_out#ok:}"
+        pass_s "XLA device init: ${_probe_count} device(s) detected"
+    else
+        _probe_err=$(cat /tmp/tt-xla-probe.err 2>/dev/null | head -2)
+        warn_s "XLA device init failed: $_probe_err"
+        info "This usually means pjrt-plugin-tt was built against newer firmware than your board carries."
+
+        # Try to find a dev build whose build date predates the current firmware
+        # bundle date.  TT dev build names follow: 1.2.0.devYYYYMMDD######
+        # Firmware bundle FLASH_BUNDLE_VERSION 19.11.0 was current around 2026-05-28.
+        _fw_ver=$(echo "$_hw_json" 2>/dev/null | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+devs=d.get('device_info',[])
+fw=devs[0].get('smbus_telem',{}).get('FLASH_BUNDLE_VERSION','') if devs else ''
+if isinstance(fw,str) and fw.startswith('0x'):
+    v=int(fw,16)
+    fw=f'{v>>24}.{(v>>16)&0xff}.{(v>>8)&0xff}'
+print(fw)
+" 2>/dev/null || echo "")
+
+        _compatible_dev=$(python3 - "$_fw_ver" <<'PYEOF'
+import sys, urllib.request, re
+fw_ver = sys.argv[1] if len(sys.argv) > 1 else ""
+
+# Map known fw bundles to the latest pjrt-plugin-tt dev build that works with them.
+# Key is the fw bundle version string; value is the dev build version to pin.
+FW_COMPAT = {
+    "19.11.0": "1.2.0.dev20260528002737",
+}
+
+if fw_ver in FW_COMPAT:
+    print(FW_COMPAT[fw_ver])
+    sys.exit(0)
+
+# Unknown firmware — try to find the newest dev build older than current stable
+url = "https://pypi.eng.aws.tenstorrent.com/simple/pjrt-plugin-tt/"
+try:
+    html = urllib.request.urlopen(url, timeout=5).read().decode()
+    devs = re.findall(r'pjrt.plugin.tt-(1\.2\.0\.dev\d{14})-', html)
+    if devs:
+        devs.sort()
+        print(devs[-2] if len(devs) > 1 else devs[0])
+except Exception:
+    pass
+PYEOF
+        )
+
+        if [[ -n "$_compatible_dev" ]]; then
+            info "Known-compatible dev build for fw ${_fw_ver:-unknown}: $_compatible_dev"
+            if [[ $STATUS_ONLY -eq 0 ]]; then
+                info "Installing pjrt-plugin-tt==$_compatible_dev ..."
+                if "$XLA_VENV/bin/pip" install "pjrt-plugin-tt==$_compatible_dev" \
+                        --extra-index-url "$TENSTORRENT_PYPI" -q >> "$LOG_FILE" 2>&1; then
+                    # Re-probe
+                    _reprobe=$(JAX_PLATFORMS=tt TT_METAL_LOGGER_LEVEL=FATAL "$XLA_PY" -c "
+import os, sys
+os.environ.setdefault('TT_METAL_LOGGER_LEVEL', 'FATAL')
+import jax
+try:
+    devs = jax.devices()
+    print(f'ok:{len(devs)}')
+except Exception as e:
+    sys.exit(1)
+" 2>/dev/null)
+                    if [[ "$_reprobe" == ok:* ]]; then
+                        pass_s "XLA device init: ${_reprobe#ok:} device(s) after downgrade to $_compatible_dev"
+                    else
+                        warn_s "XLA device init still failing after downgrade — check firmware bundle"
+                    fi
+                else
+                    warn_s "pjrt-plugin-tt downgrade failed — see $LOG_FILE"
+                fi
+            else
+                info "Fix (--status mode): $XLA_VENV/bin/pip install pjrt-plugin-tt==$_compatible_dev --extra-index-url $TENSTORRENT_PYPI"
+            fi
+        else
+            info "Fix: pin pjrt-plugin-tt to a dev build matching your firmware bundle."
+            info "Check: $XLA_VENV/bin/pip install pjrt-plugin-tt==<dev-build> --extra-index-url $TENSTORRENT_PYPI"
+        fi
     fi
 fi
 
