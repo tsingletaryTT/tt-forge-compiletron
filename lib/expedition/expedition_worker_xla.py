@@ -360,6 +360,18 @@ def _setup_jax(chip_id: int):
     for var in ("TT_METAL_HOME", "TT_METAL_LOGGER_LEVEL"):
         os.environ.pop(var, None)
 
+    # Pin TT_METAL_RUNTIME_ROOT to the pjrt wheel's own tt-metal directory so the
+    # kernel file search paths are always correct.  The pjrt __init__.py only sets
+    # this if it's not already in the environment, so an inherited stale value from
+    # a prior run would silently point to a tree missing dispatch kernels.
+    _pjrt_whl_metal = (
+        Path.home() / "tt-xla" / "venv"
+        / "lib" / "python3.12" / "site-packages"
+        / "pjrt_plugin_tt" / "tt-metal"
+    )
+    if _pjrt_whl_metal.exists():
+        os.environ["TT_METAL_RUNTIME_ROOT"] = str(_pjrt_whl_metal)
+
     # P300/P150 boards need a mesh graph descriptor for single-chip CUSTOM cluster
     # mode. Point at the descriptor bundled inside tt-xla's own tt-metal tree so
     # it matches the PJRT plugin version exactly.

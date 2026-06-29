@@ -1433,11 +1433,21 @@ def _dispatch_xla_item(
             _xla_mesh_desc = _xla_descs / "p300_mesh_graph_descriptor.textproto"
         else:
             _xla_mesh_desc = _xla_descs / "p150_mesh_graph_descriptor.textproto"
+        _pjrt_tt_metal = (
+            Path.home() / "tt-xla" / "venv"
+            / "lib" / "python3.12" / "site-packages"
+            / "pjrt_plugin_tt" / "tt-metal"
+        )
         _xla_env = {**os.environ}
         _xla_env.pop("TT_METAL_HOME", None)       # must not bleed forge's tt-metal into XLA
-        _xla_env["TT_MESH_GRAPH_DESC_PATH"] = str(_xla_mesh_desc)
-        _xla_env["TT_METAL_LOGGER_LEVEL"]   = "FATAL"
-        _xla_env["JAX_PLATFORMS"]           = "tt"
+        _xla_env["TT_MESH_GRAPH_DESC_PATH"]   = str(_xla_mesh_desc)
+        _xla_env["TT_METAL_LOGGER_LEVEL"]     = "FATAL"
+        _xla_env["JAX_PLATFORMS"]             = "tt"
+        # Explicitly pin TT_METAL_RUNTIME_ROOT to the pjrt wheel's bundled tt-metal so
+        # the kernel search paths are always correct, regardless of what the parent
+        # process or prior runs may have set.
+        if _pjrt_tt_metal.exists():
+            _xla_env["TT_METAL_RUNTIME_ROOT"] = str(_pjrt_tt_metal)
 
         import fcntl as _fcntl
         with open(_xla_lock_path, "w") as _lf:
