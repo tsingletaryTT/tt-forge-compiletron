@@ -200,7 +200,8 @@
       "best_throughput": 18.1,
       "first_voice": "",
       "prefill_tok_s": 18.1,
-      "ttft_ms": 718.0
+      "ttft_ms": 718.0,
+      "params_m": 7001
     },
     "albert/token_classification/pytorch": {
       "first_compiled": "2026-05-11T21:50:15.461686+00:00",
@@ -244,7 +245,8 @@
       "ttft_ms": 628.8,
       "decode_tok_s": 1.59,
       "decode_context_len": 32,
-      "decode_note": "no KV cache \u2014 full recompute per step"
+      "decode_note": "no KV cache \u2014 full recompute per step",
+      "params_m": 1065
     },
     "alexnet/pytorch": {
       "first_compiled": "2026-05-11T22:12:08.672757+00:00",
@@ -522,7 +524,8 @@
       "ttft_ms": 437.4,
       "decode_tok_s": 2.29,
       "decode_context_len": 256,
-      "decode_note": "no KV cache \u2014 full recompute per step"
+      "decode_note": "no KV cache \u2014 full recompute per step",
+      "params_m": 124
     },
     "deit/pytorch": {
       "first_compiled": "2026-05-13T22:24:03.211581+00:00",
@@ -1265,7 +1268,8 @@
       "ttft_ms": 768.1,
       "decode_tok_s": 1.3,
       "decode_context_len": 136,
-      "decode_note": "no KV cache \u2014 full recompute per step"
+      "decode_note": "no KV cache \u2014 full recompute per step",
+      "params_m": 1237
     },
     "perceiverio_vision/image_classification/onnx": {
       "first_compiled": "2026-05-26T17:20:34.353881+00:00",
@@ -1362,7 +1366,8 @@
       "ttft_ms": 500.2,
       "decode_tok_s": 2.05,
       "decode_context_len": 32,
-      "decode_note": "no KV cache \u2014 full recompute per step"
+      "decode_note": "no KV cache \u2014 full recompute per step",
+      "params_m": 2507
     },
     "phi3/token_cls/pytorch": {
       "first_compiled": "2026-05-26T08:28:49.230803+00:00",
@@ -1906,7 +1911,8 @@
       "ttft_ms": 487.3,
       "decode_tok_s": 1.67,
       "decode_context_len": 32,
-      "decode_note": "no KV cache \u2014 full recompute per step"
+      "decode_note": "no KV cache \u2014 full recompute per step",
+      "params_m": 357
     },
     "deit/image_classification/onnx": {
       "first_compiled": "2026-05-28T15:47:31.197126+00:00",
@@ -2189,7 +2195,8 @@
       "ttft_ms": 603.0,
       "decode_tok_s": 1.66,
       "decode_context_len": 75,
-      "decode_note": "no KV cache \u2014 full recompute per step"
+      "decode_note": "no KV cache \u2014 full recompute per step",
+      "params_m": 1669
     },
     "gemma/text_translation/pytorch": {
       "first_compiled": "2026-05-28T16:08:28.040830+00:00",
@@ -2403,7 +2410,8 @@
       "ttft_ms": 221.0,
       "decode_tok_s": 3.92,
       "decode_context_len": 64,
-      "decode_note": "no KV cache \u2014 full recompute per step"
+      "decode_note": "no KV cache \u2014 full recompute per step",
+      "params_m": 125
     },
     "phi2/causal_lm/pytorch": {
       "first_compiled": "2026-06-30T15:17:50.434207+00:00",
@@ -2430,7 +2438,8 @@
       "ttft_ms": 823.0,
       "decode_tok_s": 0.8,
       "decode_context_len": 64,
-      "decode_note": "no KV cache \u2014 full recompute per step"
+      "decode_note": "no KV cache \u2014 full recompute per step",
+      "params_m": 2780
     }
   },
   "failed": {
