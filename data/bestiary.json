@@ -1236,11 +1236,16 @@
         "forge"
       ],
       "mesh_chips": 1,
-      "best_compile_s": 47.62862229347229,
+      "best_compile_s": 43.8,
       "best_infer_s": 6.984942197799683,
       "throughput_unit": "prefill_tok/s",
-      "best_throughput": 4.581,
-      "prefill_tok_s": 4.581
+      "best_throughput": 159.2,
+      "prefill_tok_s": 159.2,
+      "ttft_ms": 1608.2,
+      "decode_tok_s": 0.62,
+      "decode_context_len": 256,
+      "decode_note": "no KV cache \u2014 full recompute per step",
+      "params_m": 1419
     },
     "llama_lora/causal_lm/pytorch": {
       "first_compiled": "2026-05-26T17:09:58.471050+00:00",
@@ -1414,7 +1419,8 @@
       "best_infer_s": 1.881,
       "throughput_unit": "prefill_tok/s",
       "best_throughput": 17.009,
-      "prefill_tok_s": 17.009
+      "prefill_tok_s": 17.009,
+      "params_m": 494
     },
     "qwen_2_5_lora/causal_lm/pytorch": {
       "first_compiled": "2026-05-26T08:33:26.202566+00:00",
@@ -1438,7 +1444,8 @@
       "best_infer_s": 3.834,
       "throughput_unit": "prefill_tok/s",
       "best_throughput": 8.347,
-      "prefill_tok_s": 8.347
+      "prefill_tok_s": 8.347,
+      "params_m": 1544
     },
     "qwen_3/embedding/pytorch": {
       "first_compiled": "2026-05-26T08:35:15.671723+00:00",

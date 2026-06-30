@@ -82,8 +82,8 @@ STAGES = {
     4: {
         "label": "Qwen 2.5 / LoRA variants",
         "models": [
-            ("qwen_2_5_coder/pytorch",         "qwen_2_5_coder.pytorch.loader",           32, "dict-inputs"),
-            ("qwen_2_5_lora/causal_lm/pytorch","qwen_2_5_lora.causal_lm.pytorch.loader",  32, "dict-inputs"),
+            ("qwen_2_5_coder/pytorch",         "qwen_2_5_coder.pytorch.loader",           32, "single-input"),
+            ("qwen_2_5_lora/causal_lm/pytorch","qwen_2_5_lora.causal_lm.pytorch.loader",  32, "single-input"),
             ("phi1_lora/causal_lm/pytorch",    "phi1_lora.causal_lm.pytorch.loader",      32, "single-input"),
         ],
     },

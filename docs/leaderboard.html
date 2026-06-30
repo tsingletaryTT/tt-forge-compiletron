@@ -320,9 +320,11 @@ footer {
           <th data-col="backend">Backend</th>
           <th data-col="task">Task</th>
           <th data-col="chips">Chips</th>
+          <th data-col="params">Params</th>
           <th data-col="compile_s">Compile</th>
-          <th data-col="infer_s">Infer p50</th>
-          <th data-col="throughput">Throughput</th>
+          <th data-col="ttft">TTFT</th>
+          <th data-col="prefill">Prefill</th>
+          <th data-col="decode">Decode</th>
           <th data-col="successes">Runs</th>
           <th data-col="run">Run #</th>
           <th data-col="chip">Chip</th>
@@ -518,30 +520,48 @@ footer {
 
     var html = '';
     filtered.forEach(function(m, idx) {
-      var rar  = (m.rarity || 'common').toLowerCase();
-      var be   = (m.backend || 'forge').toLowerCase();
-      var ct   = m.best_time_s || m.best_compile_s || 0;
-      var infs = m.best_infer_s || 0;
-      var tp   = m.best_throughput || 0;
-      var tpu  = m.throughput_unit || '';
-      var fv   = m.first_voice || m.artifact || '';
+      var rar   = (m.rarity || 'common').toLowerCase();
+      var be    = (m.backend || 'forge').toLowerCase();
+      var ct    = m.best_time_s || m.best_compile_s || 0;
+      // TTFT: prefer new ttft_ms field, fall back to best_infer_s (legacy)
+      var ttftMs = m.ttft_ms != null ? m.ttft_ms : (m.best_infer_s ? m.best_infer_s * 1000 : 0);
+      var prefill = m.prefill_tok_s || 0;
+      var tp      = m.best_throughput || 0;
+      var tpu     = m.throughput_unit || '';
+      var decode  = m.decode_tok_s;
+      var params  = m.params_m;
+      var fv    = m.first_voice || m.artifact || '';
       var chips = m.mesh_chips || 1;  // mesh_chips stored since run #80+; BLOOM patched to 4
 
-      var rarHtml   = '<span class="r-' + rar + '">' + esc(RARITY_LABEL[rar] || rar) + '</span>';
-      var beHtml    = '<span class="tag t-' + be + '">' + be + '</span>';
-      var seedHtml  = m.source === 'tt-forge-models' ? '<span class="tag t-seed">seed</span>' : '';
+      var rarHtml     = '<span class="r-' + rar + '">' + esc(RARITY_LABEL[rar] || rar) + '</span>';
+      var beHtml      = '<span class="tag t-' + be + '">' + be + '</span>';
+      var seedHtml    = m.source === 'tt-forge-models' ? '<span class="tag t-seed">seed</span>' : '';
       var compileHtml = ct > 0 ? (ct < 5 ? '<span class="compile-fast">' : '<span>') + ct.toFixed(2) + 's</span>' : '—';
-      var inferHtml   = infs > 0 ? (infs * 1000).toFixed(0) + 'ms' : '—';
-      var tputHtml    = '';
-      if (tp > 0) {
-        if (tpu === 'tokens/sec') {
-          tputHtml = '<span class="tput-good">' + tp.toLocaleString(undefined, {maximumFractionDigits:0}) + ' tok/s</span>';
+      var ttftHtml    = ttftMs > 0 ? ttftMs.toFixed(0) + 'ms' : '—';
+      var paramsHtml  = params ? params.toLocaleString() + 'M' : '—';
+
+      // Prefill: prefer new prefill_tok_s; fall back to legacy best_throughput
+      var prefillHtml = '';
+      if (prefill > 0) {
+        prefillHtml = '<span class="tput-good">' + prefill.toLocaleString(undefined, {maximumFractionDigits:0}) + ' tok/s</span>';
+      } else if (tp > 0) {
+        if (tpu === 'tokens/sec' || tpu === 'prefill_tok/s') {
+          prefillHtml = '<span class="tput-good">' + tp.toLocaleString(undefined, {maximumFractionDigits:0}) + ' tok/s</span>';
         } else if (tpu === 'ms/sample') {
-          tputHtml = tp.toFixed(1) + ' ms/smp';
+          prefillHtml = tp.toFixed(1) + ' ms/smp';
         } else {
-          tputHtml = tp.toFixed(1) + ' ' + esc(tpu);
+          prefillHtml = tp.toFixed(1) + (tpu ? ' ' + esc(tpu) : '');
         }
       }
+
+      // Decode tok/s; OOM note if decode_note present and decode_tok_s is absent
+      var decodeHtml = '';
+      if (decode != null) {
+        decodeHtml = '<span class="tput-good">' + decode.toLocaleString(undefined, {maximumFractionDigits:0}) + ' tok/s</span>';
+      } else if (m.decode_note) {
+        decodeHtml = '<span style="color:var(--muted);font-size:0.78rem">' + esc(m.decode_note) + '</span>';
+      }
+
       var dateStr = m.first_compiled ? m.first_compiled.slice(0, 10) : '';
 
       html += '<tr title="First compiled: ' + esc(dateStr) + '">' +
@@ -550,26 +570,30 @@ footer {
         '<td>' + beHtml + seedHtml + '</td>' +
         '<td style="color:var(--muted);font-size:0.78rem">' + esc(m.task || '') + '</td>' +
         '<td style="text-align:center">' + chips + '</td>' +
+        '<td style="text-align:right;color:var(--muted)">' + paramsHtml + '</td>' +
         '<td style="text-align:right">' + compileHtml + '</td>' +
-        '<td style="text-align:right">' + inferHtml + '</td>' +
-        '<td>' + tputHtml + '</td>' +
+        '<td style="text-align:right">' + ttftHtml + '</td>' +
+        '<td style="text-align:right">' + prefillHtml + '</td>' +
+        '<td style="text-align:right">' + decodeHtml + '</td>' +
         '<td style="text-align:center">' + (m.successes || 1) + '</td>' +
         '<td style="text-align:center;color:var(--muted)">#' + (m.run || '?') + '</td>' +
         '<td style="text-align:center;color:var(--muted)">C' + (m.first_chip != null ? m.first_chip : '?') + '</td>' +
         '</tr>';
       if (fv) {
-        html += '<tr class="fv-row"><td colspan="11"><span class="fv">' + esc(String(fv)) + '</span></td></tr>';
+        html += '<tr class="fv-row"><td colspan="13"><span class="fv">' + esc(String(fv)) + '</span></td></tr>';
       }
     });
 
-    document.getElementById('compiled-body').innerHTML = html || '<tr><td colspan="11" style="color:var(--muted);text-align:center;padding:2rem">No models match the current filter.</td></tr>';
+    document.getElementById('compiled-body').innerHTML = html || '<tr><td colspan="13" style="color:var(--muted);text-align:center;padding:2rem">No models match the current filter.</td></tr>';
   }
 
   // ── Sort helper ─────────────────────────────────────────────────────────
   function colVal(col, m) {
     if (col === 'compile_s')    return m.best_time_s || m.best_compile_s || 0;
-    if (col === 'infer_s')      return m.best_infer_s || 0;
-    if (col === 'throughput')   return m.best_throughput || 0;
+    if (col === 'ttft')         return m.ttft_ms != null ? m.ttft_ms : (m.best_infer_s ? m.best_infer_s * 1000 : 0);
+    if (col === 'prefill')      return m.prefill_tok_s || m.best_throughput || 0;
+    if (col === 'decode')       return m.decode_tok_s || 0;
+    if (col === 'params')       return m.params_m || 0;
     if (col === 'successes')    return m.successes || 0;
     if (col === 'run')          return m.run || 0;
     if (col === 'chip')         return m.first_chip != null ? m.first_chip : 99;
