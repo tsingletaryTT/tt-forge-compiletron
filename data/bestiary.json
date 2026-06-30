@@ -160,18 +160,18 @@
       "first_chip": 3,
       "run": 14,
       "best_time_s": 9.413544654846191,
-      "successes": 5,
+      "successes": 7,
       "source": "huggingface",
       "task": "nlp_text_cls",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "shape=(1, 2) dtype=torch.float32 range=[-0.93, 0.50]",
+      "artifact": "shape=(1, 2) dtype=torch.float32 range=[0.15, 0.51]",
       "backend": "forge",
       "backends_succeeded": [
         "forge"
       ],
-      "best_compile_s": 10.121126651763916,
+      "best_compile_s": 9.729511022567749,
       "best_infer_s": 0.3712477684020996,
       "throughput_unit": "tokens/sec",
       "best_throughput": 5.387,
@@ -243,18 +243,18 @@
       "first_chip": 0,
       "run": 17,
       "best_time_s": 2.7909421920776367,
-      "successes": 25,
+      "successes": 27,
       "source": "torchvision",
       "task": "cv_image_cls",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-4.25, 6.11]",
+      "artifact": "shape=(1, 1000) dtype=torch.float32 range=[-4.46, 5.84]",
       "backend": "forge",
       "backends_succeeded": [
         "forge"
       ],
-      "best_compile_s": 2.982311487197876,
+      "best_compile_s": 2.9523677825927734,
       "best_infer_s": 0.16930723190307617,
       "throughput_unit": "ms/sample",
       "best_throughput": 169.307,
@@ -580,20 +580,20 @@
       "first_compiled": "2026-05-20T14:57:19.447318+00:00",
       "first_chip": 2,
       "run": 73,
-      "best_time_s": 2.545340061187744,
-      "successes": 2,
+      "best_time_s": 2.405442476272583,
+      "successes": 3,
       "source": "custom",
       "task": "cv_img_to_img",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "shape=(1, 784) dtype=torch.float32 range=[-0.17, 0.17]",
+      "artifact": "shape=(1, 784) dtype=torch.float32 range=[-0.19, 0.16]",
       "first_voice": "",
       "backend": "forge",
       "backends_succeeded": [
         "forge"
       ],
-      "best_compile_s": 2.451343059539795,
+      "best_compile_s": 2.297464609146118,
       "best_infer_s": 0.09218335151672363,
       "throughput_unit": "ms/sample",
       "best_throughput": 92.183
@@ -1145,14 +1145,14 @@
       "first_compiled": "2026-05-26T15:18:34.693345+00:00",
       "first_chip": 2,
       "run": 102,
-      "best_time_s": 7.527201175689697,
-      "successes": 1,
+      "best_time_s": 7.112884044647217,
+      "successes": 2,
       "source": "custom",
       "task": "cv_img_to_img",
       "rarity": "familiar",
       "hf_downloads": null,
       "hf_created_at": null,
-      "artifact": "shape=(1, 784) dtype=torch.float32 range=[-0.18, 0.19]",
+      "artifact": "shape=(1, 784) dtype=torch.float32 range=[-0.18, 0.25]",
       "first_voice": "",
       "backend": "forge",
       "backends_succeeded": [
@@ -1160,9 +1160,9 @@
       ],
       "mesh_chips": 1,
       "best_compile_s": 2.4126689434051514,
-      "best_infer_s": 5.114532232284546,
+      "best_infer_s": 0.08854198455810547,
       "throughput_unit": "ms/sample",
-      "best_throughput": 5114.532
+      "best_throughput": 88.542
     },
     "inception/image_classification/onnx": {
       "first_compiled": "2026-05-26T15:21:25.256897+00:00",
@@ -2267,6 +2267,52 @@
       "best_infer_s": 0.052965402603149414,
       "throughput_unit": "tokens/sec",
       "best_throughput": 604.168
+    },
+    "dinov2/image_classification/jax": {
+      "first_compiled": "2026-06-29T20:40:40.551185+00:00",
+      "first_chip": 3,
+      "run": 146,
+      "best_time_s": 7.56563138961792,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "cv_image_cls",
+      "rarity": "familiar",
+      "hf_downloads": null,
+      "hf_created_at": null,
+      "artifact": "shape=(1, 2)  max=-0.002",
+      "first_voice": "",
+      "backend": "xla",
+      "backends_succeeded": [
+        "xla"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 7.56563138961792,
+      "best_infer_s": 0.05019950866699219,
+      "throughput_unit": "ms/sample",
+      "best_throughput": 50.2
+    },
+    "answerdotai/ModernBERT-base": {
+      "first_compiled": "2026-06-29T23:38:32.678784+00:00",
+      "first_chip": 0,
+      "run": 153,
+      "best_time_s": 27.973,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "fill-mask",
+      "rarity": "common",
+      "hf_downloads": 10100000,
+      "hf_created_at": null,
+      "artifact": "fill-mask top-1: Paris 93.2%, language 99.8%, Earth 64.0% (factual gaps in base model)",
+      "first_voice": "The capital of France is [MASK]. \u2192 Paris (93.2%)",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 26.9,
+      "best_infer_s": 0.433,
+      "best_throughput": 73.9,
+      "throughput_unit": "tokens/sec"
     }
   },
   "failed": {
@@ -2418,7 +2464,7 @@
     },
     "blenderbot/summarization/jax": {
       "run_first_failed": 73,
-      "attempts": 1,
+      "attempts": 2,
       "last_error": "XlaRuntimeError: INTERNAL: Error code: 13",
       "error_category": "xla_runtime_error"
     },
@@ -2474,9 +2520,9 @@
     },
     "clip/image_classification/jax": {
       "run_first_failed": 74,
-      "attempts": 2,
-      "last_error": "XlaRuntimeError: INTERNAL: Error code: 13",
-      "error_category": "xla_runtime_error"
+      "attempts": 3,
+      "last_error": "AttributeError: 'FlaxCLIPOutput' object has no attribute 'block_until_ready'",
+      "error_category": "other"
     },
     "electra/causal_lm/jax": {
       "run_first_failed": 76,
@@ -2570,12 +2616,12 @@
     "bert/masked_lm/pytorch": {
       "first_failed": "2026-05-20T20:16:59.004404+00:00",
       "run": 82,
-      "attempts": 2,
+      "attempts": 3,
       "error_category": "other",
       "error_label": "SIGSEGV in forge.compile",
       "error_hint": "BERT segfaults during forge.compile on TT hardware; worker process killed",
       "source": "huggingface",
-      "last_error": "",
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "env_fingerprint": {
         "torch": "2.7.0+cpu",
         "transformers": "4.52.4",
@@ -2603,12 +2649,12 @@
     "bert/sequence_classification/pytorch": {
       "first_failed": "2026-05-20T20:16:59.004404+00:00",
       "run": 82,
-      "attempts": 2,
+      "attempts": 3,
       "error_category": "other",
       "error_label": "SIGSEGV in forge.compile",
       "error_hint": "BERT segfaults during forge.compile on TT hardware; worker process killed",
       "source": "huggingface",
-      "last_error": "",
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "env_fingerprint": {
         "torch": "2.7.0+cpu",
         "transformers": "4.52.4",
@@ -2648,9 +2694,9 @@
       "error_hint": "DeepseekOCRForCausalLM segfaults during forge.compile",
       "first_failed": "2026-05-20T20:24:54.713395+00:00",
       "run": 84,
-      "attempts": 2,
+      "attempts": 3,
       "source": "huggingface",
-      "last_error": "RuntimeError: Expected tensor for argument #1 'indices' to have one of the following scalar types: Long, Int; but got torch.FloatTensor instead (while checking arguments for embedding)",
+      "last_error": "ImportError: /home/ttuser/.tenstorrent-venv/lib/python3.12/site-packages/forge/_C.so: undefined symbol: _ZN4mlir2tt4ttnn27createTTNNResolveCompositesEv",
       "env_fingerprint": {
         "torch": "2.7.0+cpu",
         "transformers": "4.52.4",
@@ -2726,9 +2772,9 @@
       "error_hint": "DetrForObjectDetection segfaults in forge.compile",
       "first_failed": "2026-05-20T20:28:33.920910+00:00",
       "run": 85,
-      "attempts": 2,
+      "attempts": 3,
       "source": "huggingface",
-      "last_error": "",
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "env_fingerprint": {
         "torch": "2.7.0+cpu",
         "transformers": "4.52.4",
@@ -4342,9 +4388,14 @@
     },
     "glpn_kitti/depth_estimation/onnx": {
       "run_first_failed": 106,
-      "attempts": 1,
-      "last_error": "FileNotFoundError: [Errno 2] No such file or directory: '/home/ttuser/.cache/huggingface/hub/datasets--huggingface--cats-image/snapshots/4613f5f1d3642cc2d56ffdf1b58c9d0f912cdc1f/cats_image.jpeg'",
-      "error_category": "other"
+      "attempts": 2,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
     },
     "omnigen/pytorch": {
       "run_first_failed": 106,
@@ -4431,8 +4482,8 @@
     },
     "albert/sequence_classification/pytorch": {
       "run_first_failed": 125,
-      "attempts": 1,
-      "last_error": "",
+      "attempts": 2,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other",
       "env_fingerprint": {
         "torch": "2.7.0+cpu",
@@ -4453,8 +4504,8 @@
     },
     "albert/masked_lm/pytorch": {
       "run_first_failed": 125,
-      "attempts": 1,
-      "last_error": "",
+      "attempts": 2,
+      "last_error": "ImportError: /home/ttuser/.tenstorrent-venv/lib/python3.12/site-packages/forge/_C.so: undefined symbol: _ZN4mlir2tt4ttnn27createTTNNResolveCompositesEv",
       "error_category": "other",
       "env_fingerprint": {
         "torch": "2.7.0+cpu",
@@ -4464,8 +4515,8 @@
     },
     "albert/question_answering/pytorch": {
       "run_first_failed": 125,
-      "attempts": 1,
-      "last_error": "",
+      "attempts": 2,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other",
       "env_fingerprint": {
         "torch": "2.7.0+cpu",
@@ -4486,8 +4537,8 @@
     },
     "albert/token_classification/pytorch": {
       "run_first_failed": 125,
-      "attempts": 1,
-      "last_error": "",
+      "attempts": 3,
+      "last_error": "ImportError: /home/ttuser/.tenstorrent-venv/lib/python3.12/site-packages/forge/_C.so: undefined symbol: _ZN4mlir2tt4ttnn27createTTNNResolveCompositesEv",
       "error_category": "other",
       "env_fingerprint": {
         "torch": "2.7.0+cpu",
@@ -4508,8 +4559,8 @@
     },
     "allam/causal_lm/pytorch": {
       "run_first_failed": 125,
-      "attempts": 1,
-      "last_error": "",
+      "attempts": 2,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other",
       "env_fingerprint": {
         "torch": "2.7.0+cpu",
@@ -4519,8 +4570,8 @@
     },
     "autoencoder/pytorch": {
       "run_first_failed": 125,
-      "attempts": 1,
-      "last_error": "",
+      "attempts": 2,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other",
       "env_fingerprint": {
         "torch": "2.7.0+cpu",
@@ -4530,8 +4581,8 @@
     },
     "autoencoder/image_classification/onnx": {
       "run_first_failed": 125,
-      "attempts": 1,
-      "last_error": "",
+      "attempts": 2,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "other",
       "env_fingerprint": {
         "torch": "2.7.0+cpu",
@@ -4574,8 +4625,8 @@
     },
     "deepcogito/pytorch": {
       "run_first_failed": 125,
-      "attempts": 1,
-      "last_error": "",
+      "attempts": 2,
+      "last_error": "ImportError: /home/ttuser/.tenstorrent-venv/lib/python3.12/site-packages/forge/_C.so: undefined symbol: _ZN4mlir2tt4ttnn27createTTNNResolveCompositesEv",
       "error_category": "other",
       "env_fingerprint": {
         "torch": "2.7.0+cpu",
@@ -4596,8 +4647,8 @@
     },
     "deepseek/deepseek_math/pytorch": {
       "run_first_failed": 125,
-      "attempts": 1,
-      "last_error": "",
+      "attempts": 2,
+      "last_error": "ImportError: /home/ttuser/.tenstorrent-venv/lib/python3.12/site-packages/forge/_C.so: undefined symbol: _ZN4mlir2tt4ttnn27createTTNNResolveCompositesEv",
       "error_category": "other",
       "env_fingerprint": {
         "torch": "2.7.0+cpu",
@@ -4673,6 +4724,435 @@
       "missing_packages": [
         "janus"
       ]
+    },
+    "Benjamin-png/swahili-gpt-71m": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "UnsupportedArch: model_type='transformer' is not registered in transformers AutoConfig and requires trust_remote_code (not supported by forge)",
+      "error_category": "custom_code",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "AutoArk-AI/ARK-ASR-3B": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "MissingDependency: custom class 'configuration_arkasr.ArkasrConfig' requires importable module 'configuration_arkasr'",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "kogai/laneformer-2b-it": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "MissingDependency: custom class 'configuration_laneformer.LaneformerConfig' requires importable module 'configuration_laneformer'",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "SpeechAntiSpoofingBenchmarks/DF_Arena_1B_V_1": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "MissingDependency: custom class 'configuration_antispoofing.DF_Arena_1B_Config' requires importable module 'configuration_antispoofing'",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "Abiray/Kshana-170M-Base": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "devshaheen/qwen3.5_0.6B_rlvr_grpo_checkpoints": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "OSError: devshaheen/qwen3.5_0.6B_rlvr_grpo_checkpoints does not appear to have a file named pytorch_model.bin, model.safetensors, tf_model.h5, model.ckpt or flax_model.msgpack.",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "hardcoreerik/Llama-3.1-Nemotron-Nano-4B-v1.1-heretic": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "Muse-research/Muse-2-350M": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "UnsupportedArch: model_type='muse_nova_transformer' is not registered in transformers AutoConfig and requires trust_remote_code (not supported by forge)",
+      "error_category": "custom_code",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "xxrickyxx/Ailo152m-v2-ita": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "MissingDependency: custom class 'configuration_ailo.AILOConfig' requires importable module 'configuration_ailo'",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "xxrickyxx/Ailo152m-v2": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "MissingDependency: custom class 'configuration_ailo.AILOConfig' requires importable module 'configuration_ailo'",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "leopard-Ai/rb-nano": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "AveroLabs/Avero-1B-Text": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "UnsupportedArch: model_type='sage_1b' is not registered in transformers AutoConfig and requires trust_remote_code (not supported by forge)",
+      "error_category": "custom_code",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "tjarvis91/Q-Coder-50M-Sovereign": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "UnsupportedArch: model_type='qovaryx_finance_decoder' is not registered in transformers AutoConfig and requires trust_remote_code (not supported by forge)",
+      "error_category": "custom_code",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "Banaxi-Tech/BananaMind-TTS-V2": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "MissingDependency: custom class 'configuration_bananamind_tts.BananaMindTTSConfig' requires importable module 'configuration_bananamind_tts'",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "rishi-r-rishi-r/Mintaka-E-170M-HMT": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "UnsupportedArch: model_type='mintaka_micro' is not registered in transformers AutoConfig and requires trust_remote_code (not supported by forge)",
+      "error_category": "custom_code",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "AutoArk-AI/ARK-ASR-0.6B": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "MissingDependency: custom class 'configuration_arkasr.ArkasrConfig' requires importable module 'configuration_arkasr'",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "neuroturk/HYZ-01-0.6B": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "tjarvis91/qovaryx-350m-scratch-base": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "MissingDependency: custom class 'configuration_qovaryx.QovaryxConfig' requires importable module 'configuration_qovaryx'",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "sKT-Ai-Labs/SKT-ST-X-0-3B": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "dr-tkxx/Enigma": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "MissingDependency: custom class 'enigma_module.EnigmaConfig' requires importable module 'enigma_module'",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "Surpem/Supertron2.1-0.6B": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "SafetensorError: Error while deserializing header: incomplete metadata, file not fully covered",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "nishantup/nanogpt-rlvr-slm-tinystories-124m": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "UnsupportedArch: model_type='3-stage pipeline: pretrained -> SFT -> RLVR' is not registered in transformers AutoConfig and requires trust_remote_code (not supported by forge)",
+      "error_category": "custom_code",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "anshullpal/ByteZira-Vaani-350M-pretrain-base-model": {
+      "run_first_failed": 138,
+      "attempts": 1,
+      "last_error": "MissingDependency: custom class 'modeling_bytezira_vaani.BharatGPTConfig' requires importable module 'modeling_bytezira_vaani'",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "abacusai/pytorch": {
+      "run_first_failed": 139,
+      "attempts": 1,
+      "last_error": "ImportError: /home/ttuser/.tenstorrent-venv/lib/python3.12/site-packages/forge/_C.so: undefined symbol: _ZN4mlir2tt4ttnn27createTTNNResolveCompositesEv",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "baichuan_m2/pytorch": {
+      "run_first_failed": 139,
+      "attempts": 1,
+      "last_error": "ImportError: /home/ttuser/.tenstorrent-venv/lib/python3.12/site-packages/forge/_C.so: undefined symbol: _ZN4mlir2tt4ttnn27createTTNNResolveCompositesEv",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "bagel/pytorch": {
+      "run_first_failed": 139,
+      "attempts": 2,
+      "last_error": "AttributeError: 'PositionEmbedding' object has no attribute '_initialize_weights'",
+      "error_category": "model_bug",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "bria_2_3/pytorch": {
+      "run_first_failed": 139,
+      "attempts": 2,
+      "last_error": "OSError: Cannot load model briaai/BRIA-2.3: model is not cached locally and an error occurred while trying to fetch metadata from the Hub. Please check out the root cause in the stacktrace above.",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "codellama/pytorch": {
+      "run_first_failed": 139,
+      "attempts": 1,
+      "last_error": "ImportError: /home/ttuser/.tenstorrent-venv/lib/python3.12/site-packages/forge/_C.so: undefined symbol: _ZN4mlir2tt4ttnn27createTTNNResolveCompositesEv",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "coherlabs/pytorch": {
+      "run_first_failed": 139,
+      "attempts": 1,
+      "last_error": "ImportError: /home/ttuser/.tenstorrent-venv/lib/python3.12/site-packages/forge/_C.so: undefined symbol: _ZN4mlir2tt4ttnn27createTTNNResolveCompositesEv",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "convnext_v2/pytorch": {
+      "run_first_failed": 139,
+      "attempts": 3,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "deepseek/deepseek_chat/pytorch": {
+      "run_first_failed": 139,
+      "attempts": 1,
+      "last_error": "ImportError: /home/ttuser/.tenstorrent-venv/lib/python3.12/site-packages/forge/_C.so: undefined symbol: _ZN4mlir2tt4ttnn27createTTNNResolveCompositesEv",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "diffusiongemma/pytorch": {
+      "run_first_failed": 143,
+      "attempts": 2,
+      "last_error": "ImportError: cannot import name 'DiffusionGemmaForBlockDiffusion' from 'transformers' (/opt/ttforge-toolchain/venv/lib/python3.12/site-packages/transformers/__init__.py)",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "exaone_4/pytorch": {
+      "run_first_failed": 143,
+      "attempts": 1,
+      "last_error": "ValueError: The checkpoint you are trying to load has model type `exaone4` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.\n\nYou can update Transformers with the command `pip install --upgrade tr",
+      "error_category": "unsupported_arch",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "flux2/pytorch": {
+      "run_first_failed": 143,
+      "attempts": 2,
+      "last_error": "ImportError: cannot import name 'Flux2Transformer2DModel' from 'diffusers' (/opt/ttforge-toolchain/venv/lib/python3.12/site-packages/diffusers/__init__.py)",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "gemma4/pytorch": {
+      "run_first_failed": 143,
+      "attempts": 2,
+      "last_error": "AttributeError: 'list' object has no attribute 'keys'",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "donut/pytorch": {
+      "run_first_failed": 144,
+      "attempts": 2,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "fibo/pytorch": {
+      "run_first_failed": 144,
+      "attempts": 2,
+      "last_error": "GatedRepoError: 403 Client Error. (Request ID: Root=1-6a42d7eb-24bf4d5816ba520640f1990b;16e35848-de54-4de0-b7b2-b5605b6e58cb)\n\nCannot access gated repo for url https://huggingface.co/briaai/FIBO/resolve/main/model_index.json.\nAccess to model briaai/FIBO is restricted and you are not in the authorized list. Visit ht",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "exaone_3_5/pytorch": {
+      "run_first_failed": 144,
+      "attempts": 1,
+      "last_error": "ImportError: cannot import name 'RopeParameters' from 'transformers.modeling_rope_utils' (/opt/ttforge-toolchain/venv/lib/python3.12/site-packages/transformers/modeling_rope_utils.py)",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
+    },
+    "hiera/pytorch": {
+      "run_first_failed": 145,
+      "attempts": 2,
+      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
+      "error_category": "other",
+      "env_fingerprint": {
+        "torch": "2.7.0+cpu",
+        "transformers": "4.52.4",
+        "huggingface_hub": "0.36.2"
+      }
     }
   },
   "chip_totals": {
@@ -4687,12 +5167,12 @@
       "best_streak": 2
     },
     "3": {
-      "pts": 3445,
+      "pts": 3595,
       "first_evers": 8,
       "best_streak": 4
     },
     "1": {
-      "pts": 6795,
+      "pts": 6945,
       "first_evers": 7,
       "best_streak": 4
     }
