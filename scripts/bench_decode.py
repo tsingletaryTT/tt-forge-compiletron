@@ -119,6 +119,53 @@ STAGES = {
             # gpt_neo/sequence_classification: skipped — classifier, not a generative decoder
         ],
     },
+    6: {
+        "label": "Unbenchmarked compiled text-gen frontier models",
+        # 2026-06-30 run results: all 8 models failed.
+        #
+        # Two failure patterns observed:
+        #
+        # 1. AutoClass config loading: 'list' object has no attribute 'keys'
+        #    Same issue as SpiceeChat/Bio2Tags-Lite (Stage 5).  Affects Llama/Qwen
+        #    derivatives that have a non-standard config.json the AutoClass loader
+        #    can't parse.  Not fixable without patching load_model().
+        #    Affected: OvercastLab/Quark-50m-Instruct, Xerv-AI/Ada
+        #
+        # 2. forge FATAL: Invalid input index at runtime.cpp:956
+        #    (inputIndex < program->inputs()->size())
+        #    forge folds attention_mask away as a constant during prefill compilation
+        #    (identical to GPT-2's behavior in Stage 1).  bench_decode uses list-inputs
+        #    (forward_2 passes both input_ids + attention_mask) so the binary receives
+        #    more inputs than it declared.  Fix: switch these entries to single-input.
+        #    Affected: SentienceTrial1, lumasik/quark-1-248m-base,
+        #              snehangshu511/gpt2-medium-instruct, OpceanAI/Yuuki-RxG-nano,
+        #              itstechuse/akeno-mergedv8
+        #
+        # 3. Tokenizer class not found: TokenizersBackend does not exist
+        #    Non-standard tokenizer class requires a package not in the forge venv.
+        #    Same failure mode as NovaCorp/Ultimate-RPG.System-3.2-1B (Stage 5).
+        #    Affected: abubakaraabi786/tinyllama-peft-merged
+        #
+        # Models left commented to avoid repeated failed runs; fix note above.
+        "models": [
+            # OvercastLab/Quark-50m-Instruct: FAILED — 'list' object has no attribute 'keys'
+            # ("OvercastLab/Quark-50m-Instruct", "hf:OvercastLab/Quark-50m-Instruct", 64, "list-inputs"),
+            # ULTR0N/SentienceTrial1: FAILED — forge FATAL invalid input index; retry with single-input
+            # ("ULTR0N/SentienceTrial1",          "hf:ULTR0N/SentienceTrial1",          64, "single-input"),
+            # Xerv-AI/Ada: FAILED — 'list' object has no attribute 'keys'
+            # ("Xerv-AI/Ada",                     "hf:Xerv-AI/Ada",                     32, "list-inputs"),
+            # lumasik/quark-1-248m-base: FAILED — forge FATAL invalid input index; retry with single-input
+            # ("lumasik/quark-1-248m-base",        "hf:lumasik/quark-1-248m-base",       64, "single-input"),
+            # snehangshu511/gpt2-medium-instruct: FAILED — forge FATAL invalid input index; retry with single-input
+            # ("snehangshu511/gpt2-medium-instruct", "hf:snehangshu511/gpt2-medium-instruct", 64, "single-input"),
+            # abubakaraabi786/tinyllama-peft-merged: FAILED — TokenizersBackend not found
+            # ("abubakaraabi786/tinyllama-peft-merged", "hf:abubakaraabi786/tinyllama-peft-merged", 32, "list-inputs"),
+            # OpceanAI/Yuuki-RxG-nano: FAILED — forge FATAL invalid input index; retry with single-input
+            # ("OpceanAI/Yuuki-RxG-nano",          "hf:OpceanAI/Yuuki-RxG-nano",         64, "single-input"),
+            # itstechuse/akeno-mergedv8: FAILED — forge FATAL invalid input index; retry with single-input
+            # ("itstechuse/akeno-mergedv8",         "hf:itstechuse/akeno-mergedv8",       32, "single-input"),
+        ],
+    },
 }
 
 # ── Generic causal LM wrapper ─────────────────────────────────────────────────
