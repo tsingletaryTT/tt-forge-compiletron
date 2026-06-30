@@ -722,11 +722,16 @@
       "backends_succeeded": [
         "forge"
       ],
-      "best_compile_s": 35.6501,
+      "best_compile_s": 32.8,
       "best_infer_s": 10.1264,
       "throughput_unit": "prefill_tok/s",
-      "best_throughput": 10126.44,
-      "prefill_tok_s": 10126.44
+      "best_throughput": 244.2,
+      "prefill_tok_s": 244.2,
+      "ttft_ms": 2408.1,
+      "decode_tok_s": 0.42,
+      "decode_context_len": 588,
+      "decode_note": "no KV cache \u2014 full recompute per step",
+      "params_m": 1346
     },
     "deepcogito/pytorch": {
       "first_compiled": "2026-05-20T15:10:50.619999+00:00",
@@ -745,11 +750,16 @@
       "backends_succeeded": [
         "forge"
       ],
-      "best_compile_s": 48.1163,
+      "best_compile_s": 43.5,
       "best_infer_s": 8.310149908065796,
       "throughput_unit": "prefill_tok/s",
-      "best_throughput": 3.851,
-      "prefill_tok_s": 3.851
+      "best_throughput": 53.5,
+      "prefill_tok_s": 53.5,
+      "ttft_ms": 821.8,
+      "decode_tok_s": 1.22,
+      "decode_context_len": 44,
+      "decode_note": "no KV cache \u2014 full recompute per step",
+      "params_m": 3213
     },
     "densenet/image_classification/onnx": {
       "first_compiled": "2026-05-20T15:15:22.129063+00:00",

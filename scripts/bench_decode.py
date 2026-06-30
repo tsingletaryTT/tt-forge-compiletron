@@ -95,7 +95,8 @@ STAGES = {
             # DeepSeek Coder 1.3B: load_inputs() returns a plain tensor (pad_inputs output)
             ("deepseek/deepseek_coder/pytorch", "deepseek.deepseek_coder.pytorch.loader",  32, "single-input"),
             # Frontier community models — loaded directly from HuggingFace
-            ("NovaCorp/Ultimate-RPG.System-3.2-1B", "hf:NovaCorp/Ultimate-RPG.System-3.2-1B", 32, "single-input"),
+            # NovaCorp/Ultimate-RPG.System-3.2-1B: skipped — uses TokenizersBackend
+            #   tokenizer class which is not available in the forge venv.
             ("SpiceeChat/Bio2Tags-Lite",             "hf:SpiceeChat/Bio2Tags-Lite",             32, "single-input"),
             # smeft-qwen-7b: 7B — likely decode OOM like Allam 7B (bank_manager)
             ("ahammad115566/smeft-qwen-7b",          "hf:ahammad115566/smeft-qwen-7b",          32, "single-input"),
@@ -108,20 +109,25 @@ STAGES = {
 # ── Generic causal LM wrapper ─────────────────────────────────────────────────
 def _make_wrapper(torch):
     class CausalLMWrapper(torch.nn.Module):
-        """Returns only logits — strips DynamicCache / CausalLMOutput wrappers."""
+        """Returns only logits — strips DynamicCache / CausalLMOutput wrappers.
+
+        Uses return_dict=False so the model returns a plain tuple; logits are
+        always out[0].  This avoids conflicts where config.return_dict=False
+        overrides a return_dict=True kwarg (seen in some frontier Qwen models).
+        """
         def __init__(self, model):
             super().__init__()
             self.model = model
 
         def forward_2(self, input_ids, attention_mask):
             out = self.model(input_ids=input_ids, attention_mask=attention_mask,
-                             use_cache=False, return_dict=True)
-            return out.logits
+                             use_cache=False, return_dict=False)
+            return out[0] if isinstance(out, (tuple, list)) else out.logits
 
         def forward_1(self, input_ids):
             out = self.model(input_ids=input_ids,
-                             use_cache=False, return_dict=True)
-            return out.logits
+                             use_cache=False, return_dict=False)
+            return out[0] if isinstance(out, (tuple, list)) else out.logits
 
         forward = forward_2  # default; may be swapped to forward_1 below
 
@@ -131,8 +137,8 @@ def _make_wrapper(torch):
             super().__init__()
             self.model = model
         def forward(self, input_ids):
-            out = self.model(input_ids=input_ids, use_cache=False, return_dict=True)
-            return out.logits
+            out = self.model(input_ids=input_ids, use_cache=False, return_dict=False)
+            return out[0] if isinstance(out, (tuple, list)) else out.logits
 
     return CausalLMWrapper, Single
 
@@ -227,9 +233,18 @@ def _run_bench(model_key, loader_dotpath, decode_len, input_mode,
             model = transformers.AutoModelForCausalLM.from_pretrained(
                 hf_model_id, trust_remote_code=True
             )
-            model.config.return_dict = False
-            raw_inputs = tokenizer("The quick brown fox jumps over the lazy dog",
-                                   return_tensors="pt")
+            # Do NOT set config.return_dict = False — wrappers use return_dict=False
+            # explicitly in their forward() calls so the kwarg always wins.
+            tok_out = tokenizer("The quick brown fox jumps over the lazy dog",
+                                return_tensors="pt")
+            # Some tokenizers return a list or tensor rather than BatchEncoding;
+            # normalise to a dict with input_ids so _norm_inputs can handle it.
+            if hasattr(tok_out, 'keys'):
+                raw_inputs = tok_out
+            elif isinstance(tok_out, (list, tuple)):
+                raw_inputs = {"input_ids": tok_out[0]}
+            else:
+                raw_inputs = {"input_ids": tok_out}
         else:
             _register_forgems()
             mod = importlib.import_module(f"_forgems.{loader_dotpath}")
