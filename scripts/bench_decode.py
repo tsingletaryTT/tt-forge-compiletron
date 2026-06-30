@@ -64,7 +64,8 @@ STAGES = {
         "models": [
             ("phi2/causal_lm/pytorch",   "phi2.causal_lm.pytorch.loader",          64, "single-input"),
             ("bloom/pytorch",            "bloom.pytorch.loader",                    32, "dict-inputs"),
-            ("codegen/pytorch",          "codegen.pytorch.loader",                  32, "dict-inputs"),
+            # CodeGen: forge folds attention_mask into a constant — single-input only
+            ("codegen/pytorch",          "codegen.pytorch.loader",                  32, "single-input"),
         ],
     },
     3: {
