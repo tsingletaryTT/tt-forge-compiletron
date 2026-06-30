@@ -205,12 +205,13 @@ if [[ "$SETUP_XLA" -eq 1 ]]; then
     info "Installing pjrt-plugin-tt and JAX stack..."
     "$XLA_VENV/bin/pip" install -q --upgrade pip
 
-    # Install torch/torchvision/timm from the PyTorch CPU wheel index first so
-    # all three get ABI-matched +cpu builds.  Resolving torchvision from the
-    # default PyPI or TT PyPI produces a CUDA-flavoured build that fails to load
-    # against the CPU torch (RuntimeError: operator torchvision::nms does not exist).
+    # Install torch + torchvision from the PyTorch CPU wheel index so both get
+    # ABI-matched +cpu builds.  Resolving torchvision via public PyPI produces a
+    # CUDA-flavoured build that fails to load against the CPU torch
+    # (RuntimeError: operator torchvision::nms does not exist).
+    # timm is pure-Python and only exists on PyPI — install it separately.
     "$XLA_VENV/bin/pip" install -q \
-        torch torchvision timm \
+        torch torchvision \
         --index-url https://download.pytorch.org/whl/cpu
 
     "$XLA_VENV/bin/pip" install -q \
@@ -218,6 +219,7 @@ if [[ "$SETUP_XLA" -eq 1 ]]; then
         jax jaxlib \
         flax \
         "transformers<5.0" \
+        timm \
         pyfiglet \
         --extra-index-url "$TENSTORRENT_PYPI"
 
