@@ -54,16 +54,17 @@ STAGES = {
             # GPT-2: no attention_mask in load_inputs() output (single-input mode)
             ("gpt2/pytorch",             "gpt2.pytorch.loader",                    64, "single-input"),
             ("opt/causal_lm/pytorch",    "opt.causal_lm.pytorch.loader",           64, "list-inputs"),
-            # XGLM: full dict with attention_mask
-            ("xglm/pytorch",             "xglm.pytorch.loader",                    64, "dict-inputs"),
+            # XGLM 1.7B: compile works but per-step inference is ~68s (7GB fp32 model);
+            # removed from active benchmarking — prefill=3.77 tok/s is in the bestiary.
+            # ("xglm/pytorch",           "xglm.pytorch.loader",                    64, "dict-inputs"),
         ],
     },
     2: {
         "label": "Medium causal LMs (500M – 3B params)",
         "models": [
             ("phi2/causal_lm/pytorch",   "phi2.causal_lm.pytorch.loader",          64, "single-input"),
-            ("bloom/pytorch",            "bloom.causal_lm.pytorch.loader",          32, "dict-inputs"),
-            ("codegen/pytorch",          "codegen.causal_lm.pytorch.loader",        32, "dict-inputs"),
+            ("bloom/pytorch",            "bloom.pytorch.loader",                    32, "dict-inputs"),
+            ("codegen/pytorch",          "codegen.pytorch.loader",                  32, "dict-inputs"),
         ],
     },
     3: {
@@ -381,22 +382,48 @@ def _cleanup_stale_shm():
                 pass
 
 
-def _hw_health_check() -> tuple[bool, str]:
+def _try_reset_devices() -> bool:
+    """Attempt tt-smi -r all to recover hung chips. Returns True if reset ran."""
+    try:
+        proc = subprocess.run([TT_SMI, "-r", "all"], capture_output=True, text=True, timeout=60)
+        return proc.returncode == 0
+    except Exception:
+        return False
+
+
+def _hw_health_check(auto_reset: bool = True) -> tuple[bool, str]:
     """Run tt-smi -s and verify all chips are alive and cool.
+
+    If auto_reset=True (default) and tt-smi exits non-zero (hung chip),
+    attempts tt-smi -r all once before re-checking.
 
     Returns (ok, message).  ok=False means skip the model.
     """
-    try:
-        proc = subprocess.run(
-            [TT_SMI, "-s"], capture_output=True, text=True, timeout=15
-        )
-        if proc.returncode != 0:
-            return False, f"tt-smi exited {proc.returncode}: {proc.stderr.strip()[:120]}"
-        data = json.loads(proc.stdout)
-    except subprocess.TimeoutExpired:
-        return False, "tt-smi timed out — driver may be hung"
-    except Exception as e:
-        return False, f"tt-smi error: {e}"
+    def _query() -> tuple[bool, str, dict | None]:
+        try:
+            proc = subprocess.run(
+                [TT_SMI, "-s"], capture_output=True, text=True, timeout=15
+            )
+            if proc.returncode != 0:
+                return False, f"tt-smi exited {proc.returncode}: {proc.stderr.strip()[:120]}", None
+            return True, "", json.loads(proc.stdout)
+        except subprocess.TimeoutExpired:
+            return False, "tt-smi timed out — driver may be hung", None
+        except Exception as e:
+            return False, f"tt-smi error: {e}", None
+
+    ok, err, data = _query()
+    if not ok and auto_reset:
+        print(f"  [preflight] tt-smi reported error ({err[:60]}) — attempting tt-smi -r all ...", flush=True)
+        if _try_reset_devices():
+            ok, err, data = _query()
+            if ok:
+                print("  [preflight] reset succeeded, re-checking ...", flush=True)
+        if not ok:
+            return False, f"tt-smi still unhealthy after reset: {err}"
+
+    if not ok:
+        return False, err
 
     chips = data.get("device_info", [])
     if not chips:
