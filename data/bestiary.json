@@ -2313,6 +2313,50 @@
       "best_infer_s": 0.433,
       "best_throughput": 73.9,
       "throughput_unit": "tokens/sec"
+    },
+    "opt/causal_lm/pytorch": {
+      "first_compiled": "2026-06-30T15:08:19.740039+00:00",
+      "first_chip": 0,
+      "run": 108,
+      "best_time_s": 10.5,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_causal_lm",
+      "rarity": "common",
+      "artifact": "causal LM \u2014 OPT-125M (Meta, 2022). Prefill logits (1, 8, 50272). Next-token: 'a' (id=724).",
+      "first_voice": "My name is Thomas and my main \u2192 a (next-token prediction on TT silicon)",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 10.5,
+      "best_infer_s": 0.212,
+      "best_throughput": 37.8,
+      "throughput_unit": "tokens/sec",
+      "notes": "Prev: SIGSEGV in forge <1.3.0. Now compiles+runs in forge 1.3.0. Standard MHA, no GQA."
+    },
+    "phi2/causal_lm/pytorch": {
+      "first_compiled": "2026-06-30T15:17:50.434207+00:00",
+      "first_chip": 0,
+      "run": 109,
+      "best_time_s": 53.9,
+      "successes": 1,
+      "source": "huggingface",
+      "task": "nlp_causal_lm",
+      "rarity": "common",
+      "artifact": "causal LM \u2014 Phi-2 (2.7B, Microsoft, Dec 2023). Logits (1, 10, 51200). Partial-RoPE + parallel attn.",
+      "first_voice": "Write a detailed analogy between mathematics and a lighthouse. \u2192 TT-compiled 2.7B prefill",
+      "backend": "forge",
+      "backends_succeeded": [
+        "forge"
+      ],
+      "mesh_chips": 1,
+      "best_compile_s": 53.9,
+      "best_infer_s": 0.797,
+      "best_throughput": 12.6,
+      "throughput_unit": "tokens/sec",
+      "notes": "Fix: forge folds attention_mask to constant \u2014 must compile with single input (input_ids only). prev SIGSEGV on forge <1.3.0."
     }
   },
   "failed": {
@@ -3516,12 +3560,6 @@
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
       "error_category": "forge_internal"
     },
-    "phi2/causal_lm/pytorch": {
-      "run_first_failed": 95,
-      "attempts": 3,
-      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
-      "error_category": "forge_internal"
-    },
     "phi3/causal_lm/pytorch": {
       "run_first_failed": 95,
       "attempts": 3,
@@ -3655,12 +3693,6 @@
       "error_category": "other"
     },
     "oft/pytorch": {
-      "run_first_failed": 96,
-      "attempts": 3,
-      "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
-      "error_category": "other"
-    },
-    "opt/causal_lm/pytorch": {
       "run_first_failed": 96,
       "attempts": 3,
       "last_error": "SIGSEGV: forge.compile() killed by signal 11 (forge_internal)",
