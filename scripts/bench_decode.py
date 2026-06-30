@@ -71,13 +71,12 @@ STAGES = {
     3: {
         "label": "Larger causal LMs (3B+ params or slower compile)",
         "models": [
-            # falcon.causal_lm doesn't exist — loader is directly at falcon/pytorch/
-            ("falcon/pytorch",           "falcon.pytorch.loader",                   32, "dict-inputs"),
-            # Allam/LLaMA-LoRA: forge folds attention_mask — single-input only
+            # Falcon/Allam/LLaMA-LoRA/Gemma-LoRA: forge folds attention_mask — single-input only
+            ("falcon/pytorch",           "falcon.pytorch.loader",                   32, "single-input"),
             ("allam/causal_lm/pytorch",  "allam.causal_lm.pytorch.loader",          32, "single-input"),
+            # Allam decode: TT_FATAL bank_manager OOM at 32-token ctx (7B model too large)
             ("llama_lora/causal_lm/pytorch", "llama_lora.causal_lm.pytorch.loader", 32, "single-input"),
-            # gemma_lora.causal_lm doesn't exist — loader is directly at gemma_lora/pytorch/
-            ("gemma_lora/pytorch",       "gemma_lora.pytorch.loader",               32, "list-inputs"),
+            ("gemma_lora/pytorch",       "gemma_lora.pytorch.loader",               32, "single-input"),
         ],
     },
     4: {
@@ -587,7 +586,7 @@ def main():
         return
 
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--model",       help="Bestiary key, e.g. opt/causal_lm/pytorch")
+    p.add_argument("--model",       action="append", help="Bestiary key (repeatable): --model foo --model bar")
     p.add_argument("--stage",       type=int, choices=STAGES.keys(), help="Run a predefined stage")
     p.add_argument("--decode-len",  type=int, default=None, help="Override decode context length")
     p.add_argument("--list-stages", action="store_true", help="Show stage plan and exit")
@@ -627,16 +626,15 @@ def main():
         print(f"\nStage {args.stage}: {info['label']}")
         targets = [(k, l, args.decode_len or d, m) for k, l, d, m in info["models"]]
     elif args.model:
-        # Find the model in stages
-        found = False
-        for sinfo in STAGES.values():
-            for k, l, d, m in sinfo["models"]:
-                if k == args.model:
-                    targets.append((k, l, args.decode_len or d, m))
-                    found = True
-                    break
-        if not found:
-            print(f"Model '{args.model}' not in stage list — use --decode-len and specify loader manually")
+        # Find each requested model key in stages
+        stage_map = {k: (k, l, d, m) for sinfo in STAGES.values() for k, l, d, m in sinfo["models"]}
+        for req in args.model:
+            if req in stage_map:
+                k, l, d, m = stage_map[req]
+                targets.append((k, l, args.decode_len or d, m))
+            else:
+                print(f"Model '{req}' not in stage list — skipping")
+        if not targets:
             return
     else:
         p.print_help()
