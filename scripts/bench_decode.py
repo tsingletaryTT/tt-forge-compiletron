@@ -87,6 +87,22 @@ STAGES = {
             ("phi1_lora/causal_lm/pytorch",    "phi1_lora.causal_lm.pytorch.loader",      32, "single-input"),
         ],
     },
+    5: {
+        "label": "Seed causal LMs + frontier community models",
+        "models": [
+            # deepcogito: 3B LLaMA-based; forge folds attention_mask — single-input
+            ("deepcogito/pytorch",              "deepcogito.pytorch.loader",               32, "single-input"),
+            # DeepSeek Coder 1.3B: load_inputs() returns a plain tensor (pad_inputs output)
+            ("deepseek/deepseek_coder/pytorch", "deepseek.deepseek_coder.pytorch.loader",  32, "single-input"),
+            # Frontier community models — loaded directly from HuggingFace
+            ("NovaCorp/Ultimate-RPG.System-3.2-1B", "hf:NovaCorp/Ultimate-RPG.System-3.2-1B", 32, "single-input"),
+            ("SpiceeChat/Bio2Tags-Lite",             "hf:SpiceeChat/Bio2Tags-Lite",             32, "single-input"),
+            # smeft-qwen-7b: 7B — likely decode OOM like Allam 7B (bank_manager)
+            ("ahammad115566/smeft-qwen-7b",          "hf:ahammad115566/smeft-qwen-7b",          32, "single-input"),
+            # XGLM 1.7B: skipped — per-step inference ~68s (fp32 7GB model), too slow to benchmark
+            # gpt_neo/sequence_classification: skipped — classifier, not a generative decoder
+        ],
+    },
 }
 
 # ── Generic causal LM wrapper ─────────────────────────────────────────────────
@@ -127,7 +143,13 @@ def _norm_inputs(raw, torch, input_mode):
 
     BatchEncoding is a UserDict subclass — fails isinstance(raw, dict) — so we
     use hasattr(raw, 'keys') to catch all mapping types.
+
+    Plain 2D tensors (e.g. deepseek_coder pad_inputs return value) are returned
+    directly — raw[0] would give a 1D tensor and break shape[1] lookups.
     """
+    # Plain tensor — already (batch, seq): return as-is.
+    if hasattr(raw, 'shape') and not hasattr(raw, 'keys'):
+        return raw, None
     is_mapping = hasattr(raw, 'keys')
     if input_mode == "single-input":
         if is_mapping:
@@ -193,11 +215,27 @@ def _run_bench(model_key, loader_dotpath, decode_len, input_mode,
 
     # ── 1. Load model ──────────────────────────────────────────────────────
     try:
-        _register_forgems()
-        mod = importlib.import_module(f"_forgems.{loader_dotpath}")
-        inst = mod.ModelLoader()
-        model = inst.load_model()
-        raw_inputs = inst.load_inputs()
+        if loader_dotpath.startswith("hf:"):
+            # Frontier model — load directly via AutoModelForCausalLM.
+            # These were compiled by the dynamic loader in the expedition;
+            # bench_decode re-loads them the same way and tokenizes a fixed prompt.
+            import transformers
+            hf_model_id = loader_dotpath[3:]
+            tokenizer = transformers.AutoTokenizer.from_pretrained(
+                hf_model_id, trust_remote_code=True
+            )
+            model = transformers.AutoModelForCausalLM.from_pretrained(
+                hf_model_id, trust_remote_code=True
+            )
+            model.config.return_dict = False
+            raw_inputs = tokenizer("The quick brown fox jumps over the lazy dog",
+                                   return_tensors="pt")
+        else:
+            _register_forgems()
+            mod = importlib.import_module(f"_forgems.{loader_dotpath}")
+            inst = mod.ModelLoader()
+            model = inst.load_model()
+            raw_inputs = inst.load_inputs()
         model.eval()
     except Exception as e:
         result["error"] = f"load_model failed: {e}"
