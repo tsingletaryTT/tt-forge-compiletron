@@ -71,10 +71,13 @@ STAGES = {
     3: {
         "label": "Larger causal LMs (3B+ params or slower compile)",
         "models": [
-            ("falcon/pytorch",           "falcon.causal_lm.pytorch.loader",         32, "dict-inputs"),
-            ("allam/causal_lm/pytorch",  "allam.causal_lm.pytorch.loader",          32, "dict-inputs"),
-            ("llama_lora/causal_lm/pytorch", "llama_lora.causal_lm.pytorch.loader", 32, "dict-inputs"),
-            ("gemma_lora/pytorch",       "gemma_lora.causal_lm.pytorch.loader",     32, "list-inputs"),
+            # falcon.causal_lm doesn't exist — loader is directly at falcon/pytorch/
+            ("falcon/pytorch",           "falcon.pytorch.loader",                   32, "dict-inputs"),
+            # Allam/LLaMA-LoRA: forge folds attention_mask — single-input only
+            ("allam/causal_lm/pytorch",  "allam.causal_lm.pytorch.loader",          32, "single-input"),
+            ("llama_lora/causal_lm/pytorch", "llama_lora.causal_lm.pytorch.loader", 32, "single-input"),
+            # gemma_lora.causal_lm doesn't exist — loader is directly at gemma_lora/pytorch/
+            ("gemma_lora/pytorch",       "gemma_lora.pytorch.loader",               32, "list-inputs"),
         ],
     },
     4: {
