@@ -24,7 +24,15 @@
       "rarity": "common",
       "hf_downloads": 380,
       "hf_created_at": "2026-04-25T22:01:31+00:00",
-      "artifact": "shape=(1, 32, 32000) dtype=torch.float32 range=[-26.88, 11.49]"
+      "artifact": "shape=(1, 32, 32000) dtype=torch.float32 range=[-26.88, 11.49]",
+      "prefill_tok_s": 52.5,
+      "throughput_unit": "prefill_tok/s",
+      "best_throughput": 52.5,
+      "ttft_ms": 228.7,
+      "decode_tok_s": 5.35,
+      "decode_context_len": 64,
+      "decode_note": "StaticCache KV cache",
+      "best_compile_s": 15.8
     },
     "OpceanAI/Yuuki-RxG-nano": {
       "first_compiled": "2026-04-28T00:27:10.247397+00:00",
@@ -37,7 +45,15 @@
       "rarity": "common",
       "hf_downloads": 128,
       "hf_created_at": "2026-04-26T14:45:03+00:00",
-      "artifact": "shape=(1, 32, 151936) dtype=torch.float32 range=[-8.04, 12.91]"
+      "artifact": "shape=(1, 32, 151936) dtype=torch.float32 range=[-8.04, 12.91]",
+      "prefill_tok_s": 14.8,
+      "throughput_unit": "prefill_tok/s",
+      "best_throughput": 14.8,
+      "ttft_ms": 607.2,
+      "decode_tok_s": 2.02,
+      "decode_context_len": 64,
+      "decode_note": "StaticCache KV cache",
+      "best_compile_s": 43.8
     },
     "Xerv-AI/Ada": {
       "first_compiled": "2026-04-28T21:09:46.521452+00:00",
@@ -63,7 +79,15 @@
       "rarity": "common",
       "hf_downloads": 477,
       "hf_created_at": "2026-04-25T01:54:26+00:00",
-      "artifact": "\u00e9l volnas\u00e1g,adonkor,,,\u00e9j:\u00e1rae\u00e9nenk\u00e9nt,.\u00e1ra,\u00e9nenk\u00e9ntunk,,\u00e1nak\u00e1ny,,AAAA"
+      "artifact": "\u00e9l volnas\u00e1g,adonkor,,,\u00e9j:\u00e1rae\u00e9nenk\u00e9nt,.\u00e1ra,\u00e9nenk\u00e9ntunk,,\u00e1nak\u00e1ny,,AAAA",
+      "prefill_tok_s": 85.2,
+      "throughput_unit": "prefill_tok/s",
+      "best_throughput": 85.2,
+      "ttft_ms": 199.5,
+      "decode_tok_s": 5.53,
+      "decode_context_len": 64,
+      "decode_note": "StaticCache KV cache",
+      "best_compile_s": 12.1
     },
     "snehangshu511/gpt2-medium-instruct": {
       "first_compiled": "2026-04-28T22:09:08.226913+00:00",
@@ -76,7 +100,15 @@
       "rarity": "common",
       "hf_downloads": 614,
       "hf_created_at": "2026-04-25T12:11:45+00:00",
-      "artifact": "shape=(1, 32, 50257) dtype=torch.float32 range=[-56.02, -1.71]"
+      "artifact": "shape=(1, 32, 50257) dtype=torch.float32 range=[-56.02, -1.71]",
+      "prefill_tok_s": 22.8,
+      "throughput_unit": "prefill_tok/s",
+      "best_throughput": 22.8,
+      "ttft_ms": 395.4,
+      "decode_tok_s": 2.78,
+      "decode_context_len": 64,
+      "decode_note": "StaticCache KV cache",
+      "best_compile_s": 21.8
     },
     "itstechuse/akeno-mergedv8": {
       "first_compiled": "2026-04-28T22:57:09.557947+00:00",
@@ -89,7 +121,12 @@
       "rarity": "common",
       "hf_downloads": 230,
       "hf_created_at": "2026-04-26T09:10:51+00:00",
-      "artifact": "shape=(1, 32, 32000) dtype=torch.float32 range=[-11.92, 12.83]"
+      "artifact": "shape=(1, 32, 32000) dtype=torch.float32 range=[-11.92, 12.83]",
+      "prefill_tok_s": 16.5,
+      "throughput_unit": "prefill_tok/s",
+      "best_throughput": 16.5,
+      "ttft_ms": 728.7,
+      "best_compile_s": 61.2
     },
     "abubakaraabi786/tinyllama-peft-merged": {
       "first_compiled": "2026-04-28T23:07:31.570796+00:00",

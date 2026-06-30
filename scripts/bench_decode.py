@@ -166,6 +166,20 @@ STAGES = {
             # ("itstechuse/akeno-mergedv8",         "hf:itstechuse/akeno-mergedv8",       32, "single-input"),
         ],
     },
+    7: {
+        "label": "Stage 6 single-input retries (forge folds attention_mask)",
+        # Retry the 5 models that failed stage 6 with forge FATAL invalid input index.
+        # Root cause: forge folds attention_mask to a constant at compile time, so the
+        # compiled binary only accepts input_ids.  list-inputs passes both → index OOB.
+        # These use single-input mode (CausalLMWrapper.forward_1 — input_ids only).
+        "models": [
+            ("ULTR0N/SentienceTrial1",               "hf:ULTR0N/SentienceTrial1",               64, "single-input"),
+            ("lumasik/quark-1-248m-base",             "hf:lumasik/quark-1-248m-base",            64, "single-input"),
+            ("snehangshu511/gpt2-medium-instruct",    "hf:snehangshu511/gpt2-medium-instruct",   64, "single-input"),
+            ("OpceanAI/Yuuki-RxG-nano",               "hf:OpceanAI/Yuuki-RxG-nano",              64, "single-input"),
+            ("itstechuse/akeno-mergedv8",             "hf:itstechuse/akeno-mergedv8",            32, "single-input"),
+        ],
+    },
 }
 
 # ── Generic causal LM wrapper ─────────────────────────────────────────────────
