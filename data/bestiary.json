@@ -730,8 +730,7 @@
       "ttft_ms": 2408.1,
       "decode_tok_s": 0.42,
       "decode_context_len": 588,
-      "decode_note": "no KV cache \u2014 full recompute per step",
-      "params_m": 1346
+      "decode_note": "no KV cache \u2014 full recompute per step"
     },
     "deepcogito/pytorch": {
       "first_compiled": "2026-05-20T15:10:50.619999+00:00",
@@ -758,8 +757,7 @@
       "ttft_ms": 821.8,
       "decode_tok_s": 1.22,
       "decode_context_len": 44,
-      "decode_note": "no KV cache \u2014 full recompute per step",
-      "params_m": 3213
+      "decode_note": "no KV cache \u2014 full recompute per step"
     },
     "densenet/image_classification/onnx": {
       "first_compiled": "2026-05-20T15:15:22.129063+00:00",
@@ -1716,11 +1714,14 @@
         "forge"
       ],
       "mesh_chips": 4,
-      "best_compile_s": 60.937663555145264,
+      "best_compile_s": 54.2,
       "best_infer_s": 4.717727184295654,
       "throughput_unit": "prefill_tok/s",
-      "best_throughput": 6.783,
-      "prefill_tok_s": 6.783
+      "best_throughput": 14.0,
+      "prefill_tok_s": 14.0,
+      "ttft_ms": 642.6,
+      "params_m": 7616,
+      "decode_note": "OOM \u2014 bank_manager (7B fp32)"
     },
     "SpiceeChat/Bio2Tags-Lite": {
       "first_compiled": "2026-05-26T20:15:38.568612+00:00",

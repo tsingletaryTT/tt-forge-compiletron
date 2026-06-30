@@ -97,7 +97,10 @@ STAGES = {
             # Frontier community models — loaded directly from HuggingFace
             # NovaCorp/Ultimate-RPG.System-3.2-1B: skipped — uses TokenizersBackend
             #   tokenizer class which is not available in the forge venv.
-            ("SpiceeChat/Bio2Tags-Lite",             "hf:SpiceeChat/Bio2Tags-Lite",             32, "single-input"),
+            # SpiceeChat/Bio2Tags-Lite: skipped — AutoModelForCausalLM.from_pretrained
+            #   raises 'list' object has no attribute 'keys' internally (likely custom
+            #   non-standard architecture that doesn't fully support AutoClass loading).
+            # ("SpiceeChat/Bio2Tags-Lite", "hf:SpiceeChat/Bio2Tags-Lite", 32, "single-input"),
             # smeft-qwen-7b: 7B — likely decode OOM like Allam 7B (bank_manager)
             ("ahammad115566/smeft-qwen-7b",          "hf:ahammad115566/smeft-qwen-7b",          32, "single-input"),
             # XGLM 1.7B: skipped — per-step inference ~68s (fp32 7GB model), too slow to benchmark
