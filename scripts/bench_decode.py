@@ -222,7 +222,13 @@ def _try_kv_decode(model, loader_inst, tokenizer_override, decode_len, torch, fo
     # cache with realistic K/V content, then returns the single-token decode
     # inputs dict: {input_ids (1,1), past_key_values (StaticCache),
     #               cache_position (1,), use_cache: True}.
+    # Use the model's actual dtype for the cache to avoid attention dtype
+    # mismatches (e.g. float32 model with bfloat16 StaticCache default).
     try:
+        try:
+            model_dtype = next(model.parameters()).dtype
+        except StopIteration:
+            model_dtype = torch.float32
         dec_in = _get_dec(
             tokenizer=tok,
             config=model.config,
@@ -230,6 +236,7 @@ def _try_kv_decode(model, loader_inst, tokenizer_override, decode_len, torch, fo
             batch_size=1,
             max_cache_len=decode_len,
             device="cpu",
+            dtype=model_dtype,
         )
     except Exception as e:
         log(f"decode KV: pre-fill StaticCache failed: {e}")
@@ -261,8 +268,16 @@ def _try_kv_decode(model, loader_inst, tokenizer_override, decode_len, torch, fo
             return out[0] if isinstance(out, (tuple, list)) else out.logits
 
     # ── forge.compile decode graph ────────────────────────────────────────
+    # Disable grad on all parameters before compile.  During forge's internal
+    # TVM trace the forward pass runs with real tensors; with use_cache=True
+    # the attention K/V projections write into the StaticCache, and if those
+    # intermediate tensors require grad the TVM constant-folding pass calls
+    # .numpy() on them and raises RuntimeError.  Prefill works fine (use_cache
+    # =False never writes to the cache), so only the decode graph needs this.
     try:
         kv_wrapper = KVDecodeWrapper(model, static_cache)
+        for p in kv_wrapper.parameters():
+            p.requires_grad_(False)
         log(f"compiling decode KV cache (StaticCache, ctx={decode_len}) ...")
         compiled_dec = forge.compile(kv_wrapper, sample_inputs=[input_ids_1, cache_pos])
         log("decode KV cache compile OK")
@@ -441,56 +456,57 @@ def _run_bench(model_key, loader_dotpath, decode_len, input_mode,
     #     with the cache as a submodule, and calls forge.compile() on the
     #     single-token decode graph.
     #   - Each timed step calls compiled_dec(input_ids_1tok, cache_pos) where
-    #     cache_pos is fixed (we benchmark step speed, not generation accuracy).
+    #     cache_pos is fixed at max_cache_len-1 (we benchmark step speed, not
+    #     generation accuracy; overwriting the same slot is fine for timing).
     #   - forge handles in-place cache writes via FillCache/UpdateCache ops.
+    #   - NOTE: prompt_len has no bearing on the KV decode benchmark — the
+    #     cache is pre-filled independently using decode_len as max_cache_len.
+    #     Always attempt KV decode regardless of prompt_len vs decode_len.
     #
     # Fallback (when KV compile fails):
-    #   Pad the prompt to decode_len and re-run the full forward pass each step
-    #   (use_cache=False). This measures full-recompute cost, not real decode
-    #   speed, and is labeled "no KV cache — full recompute" in the bestiary.
-    #
-    # Derived path (prompt_len >= decode_len):
-    #   No second compile needed — TTFT already measures the per-step cost at
-    #   that context length.
+    #   If prompt_len >= decode_len: derive decode cost from prefill latency
+    #   (one full forward pass of prompt_len tokens per step).
+    #   Otherwise: compile at decode_len with use_cache=False and measure.
+    #   Both are labeled "no KV cache — full recompute" in the bestiary.
     try:
-        if prompt_len >= decode_len:
-            # Derive from prefill — the prompt already spans the decode window
-            ttft_s = result["ttft_ms"] / 1000.0
-            result["decode_tok_s"]         = round(1.0 / ttft_s, 2)
-            result["decode_context_len"]   = prompt_len
-            result["decode_note"]          = "derived from prefill (prompt >= decode_len)"
-            log(f"decode (derived from prefill, ctx={prompt_len}): "
-                f"{result['decode_tok_s']:.2f} tok/s")
+        # ── 3a. Try StaticCache KV cache decode (always — independent of prompt_len)
+        kv = _try_kv_decode(
+            model=model,
+            loader_inst=loader_inst,
+            tokenizer_override=tokenizer_hf,
+            decode_len=decode_len,
+            torch=torch, forge=forge, log=log,
+        )
+        if kv is not None:
+            compiled_dec, input_ids_1, cache_pos = kv
+
+            for _ in range(WARMUP):
+                compiled_dec(input_ids_1, cache_pos)
+
+            times_dc = []
+            for _ in range(DECODE_N):
+                t = time.time()
+                compiled_dec(input_ids_1, cache_pos)
+                times_dc.append(time.time() - t)
+
+            mean_step = statistics.mean(times_dc[2:])
+            result["decode_tok_s"]       = round(1.0 / mean_step, 2)
+            result["decode_context_len"] = decode_len
+            result["decode_note"]        = "StaticCache KV cache"
+            log(f"decode (KV cache, StaticCache): "
+                f"{mean_step*1000:.0f}ms/step → {result['decode_tok_s']:.2f} tok/s  (ctx={decode_len})")
+
         else:
-            # ── 3a. Try StaticCache KV cache decode ───────────────────────
-            kv = _try_kv_decode(
-                model=model,
-                loader_inst=loader_inst,
-                tokenizer_override=tokenizer_hf,
-                decode_len=decode_len,
-                torch=torch, forge=forge, log=log,
-            )
-            if kv is not None:
-                compiled_dec, input_ids_1, cache_pos = kv
-
-                for _ in range(WARMUP):
-                    compiled_dec(input_ids_1, cache_pos)
-
-                times_dc = []
-                for _ in range(DECODE_N):
-                    t = time.time()
-                    compiled_dec(input_ids_1, cache_pos)
-                    times_dc.append(time.time() - t)
-
-                mean_step = statistics.mean(times_dc[2:])
-                result["decode_tok_s"]       = round(1.0 / mean_step, 2)
-                result["decode_context_len"] = decode_len
-                result["decode_note"]        = "StaticCache KV cache"
-                log(f"decode (KV cache, StaticCache): "
-                    f"{mean_step*1000:.0f}ms/step → {result['decode_tok_s']:.2f} tok/s  (ctx={decode_len})")
-
+            # ── 3b. KV decode not available — fall back ───────────────────
+            if prompt_len >= decode_len:
+                # Derive from prefill — no second compile needed
+                ttft_s = result["ttft_ms"] / 1000.0
+                result["decode_tok_s"]         = round(1.0 / ttft_s, 2)
+                result["decode_context_len"]   = prompt_len
+                result["decode_note"]          = "no KV cache — full recompute (derived from prefill)"
+                log(f"decode (no KV cache, derived from prefill, ctx={prompt_len}): "
+                    f"{result['decode_tok_s']:.2f} tok/s")
             else:
-                # ── 3b. Full-recompute fallback ───────────────────────────
                 ids_dec, mask_dec = _pad_inputs(input_ids_orig, attn_mask_orig, decode_len, torch)
 
                 if input_mode == "single-input":

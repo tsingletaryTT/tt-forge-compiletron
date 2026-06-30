@@ -194,13 +194,13 @@
       "backends_succeeded": [
         "forge"
       ],
-      "best_compile_s": 51.8,
+      "best_compile_s": 53.8,
       "best_infer_s": 6.876738786697388,
       "throughput_unit": "prefill_tok/s",
-      "best_throughput": 18.1,
+      "best_throughput": 18.0,
       "first_voice": "",
-      "prefill_tok_s": 18.1,
-      "ttft_ms": 718.0,
+      "prefill_tok_s": 18.0,
+      "ttft_ms": 722.2,
       "params_m": 7001
     },
     "albert/token_classification/pytorch": {
@@ -236,16 +236,16 @@
       "backends_succeeded": [
         "forge"
       ],
-      "best_compile_s": 23.8,
+      "best_compile_s": 24.4,
       "best_infer_s": 13.184977769851685,
       "throughput_unit": "prefill_tok/s",
-      "best_throughput": 50.9,
+      "best_throughput": 50.8,
       "first_voice": "",
-      "prefill_tok_s": 50.9,
-      "ttft_ms": 628.8,
+      "prefill_tok_s": 50.8,
+      "ttft_ms": 630.0,
       "decode_tok_s": 1.59,
       "decode_context_len": 32,
-      "decode_note": "no KV cache \u2014 full recompute per step",
+      "decode_note": "no KV cache \u2014 full recompute (derived from prefill)",
       "params_m": 1065
     },
     "alexnet/pytorch": {
@@ -516,15 +516,15 @@
       "backends_succeeded": [
         "forge"
       ],
-      "best_compile_s": 24.0,
+      "best_compile_s": 12.0,
       "best_infer_s": 4.069573402404785,
       "throughput_unit": "prefill_tok/s",
-      "best_throughput": 585.2,
-      "prefill_tok_s": 585.2,
-      "ttft_ms": 437.4,
-      "decode_tok_s": 2.29,
-      "decode_context_len": 256,
-      "decode_note": "no KV cache \u2014 full recompute per step",
+      "best_throughput": 584.6,
+      "prefill_tok_s": 584.6,
+      "ttft_ms": 437.9,
+      "decode_tok_s": 5.52,
+      "decode_context_len": 64,
+      "decode_note": "StaticCache KV cache",
       "params_m": 124
     },
     "deit/pytorch": {
@@ -722,15 +722,15 @@
       "backends_succeeded": [
         "forge"
       ],
-      "best_compile_s": 32.8,
+      "best_compile_s": 33.8,
       "best_infer_s": 10.1264,
       "throughput_unit": "prefill_tok/s",
-      "best_throughput": 244.2,
-      "prefill_tok_s": 244.2,
-      "ttft_ms": 2408.1,
-      "decode_tok_s": 0.42,
-      "decode_context_len": 588,
-      "decode_note": "no KV cache \u2014 full recompute per step"
+      "best_throughput": 240.1,
+      "prefill_tok_s": 240.1,
+      "ttft_ms": 2449.1,
+      "decode_tok_s": 2.52,
+      "decode_context_len": 32,
+      "decode_note": "StaticCache KV cache"
     },
     "deepcogito/pytorch": {
       "first_compiled": "2026-05-20T15:10:50.619999+00:00",
@@ -749,15 +749,15 @@
       "backends_succeeded": [
         "forge"
       ],
-      "best_compile_s": 43.5,
+      "best_compile_s": 44.8,
       "best_infer_s": 8.310149908065796,
       "throughput_unit": "prefill_tok/s",
-      "best_throughput": 53.5,
-      "prefill_tok_s": 53.5,
-      "ttft_ms": 821.8,
-      "decode_tok_s": 1.22,
-      "decode_context_len": 44,
-      "decode_note": "no KV cache \u2014 full recompute per step"
+      "best_throughput": 54.0,
+      "prefill_tok_s": 54.0,
+      "ttft_ms": 815.1,
+      "decode_tok_s": 2.04,
+      "decode_context_len": 32,
+      "decode_note": "StaticCache KV cache"
     },
     "densenet/image_classification/onnx": {
       "first_compiled": "2026-05-20T15:15:22.129063+00:00",
@@ -1244,15 +1244,15 @@
         "forge"
       ],
       "mesh_chips": 1,
-      "best_compile_s": 43.8,
+      "best_compile_s": 44.3,
       "best_infer_s": 6.984942197799683,
       "throughput_unit": "prefill_tok/s",
-      "best_throughput": 159.2,
-      "prefill_tok_s": 159.2,
-      "ttft_ms": 1608.2,
-      "decode_tok_s": 0.62,
-      "decode_context_len": 256,
-      "decode_note": "no KV cache \u2014 full recompute per step",
+      "best_throughput": 156.7,
+      "prefill_tok_s": 156.7,
+      "ttft_ms": 1633.7,
+      "decode_tok_s": 1.61,
+      "decode_context_len": 32,
+      "decode_note": "StaticCache KV cache",
       "params_m": 1419
     },
     "llama_lora/causal_lm/pytorch": {
@@ -1273,15 +1273,15 @@
         "forge"
       ],
       "mesh_chips": 1,
-      "best_compile_s": 26.2,
+      "best_compile_s": 37.1,
       "best_infer_s": 4.422700643539429,
       "throughput_unit": "prefill_tok/s",
-      "best_throughput": 177.1,
-      "prefill_tok_s": 177.1,
-      "ttft_ms": 768.1,
-      "decode_tok_s": 1.3,
-      "decode_context_len": 136,
-      "decode_note": "no KV cache \u2014 full recompute per step",
+      "best_throughput": 178.3,
+      "prefill_tok_s": 178.3,
+      "ttft_ms": 763.0,
+      "decode_tok_s": 2.86,
+      "decode_context_len": 32,
+      "decode_note": "StaticCache KV cache",
       "params_m": 1237
     },
     "perceiverio_vision/image_classification/onnx": {
@@ -1371,15 +1371,15 @@
         "forge"
       ],
       "mesh_chips": 1,
-      "best_compile_s": 33.6,
+      "best_compile_s": 35.1,
       "best_infer_s": 7.686,
       "throughput_unit": "prefill_tok/s",
-      "best_throughput": 32.0,
-      "prefill_tok_s": 32.0,
-      "ttft_ms": 500.2,
-      "decode_tok_s": 2.05,
+      "best_throughput": 31.6,
+      "prefill_tok_s": 31.6,
+      "ttft_ms": 505.9,
+      "decode_tok_s": 2.4,
       "decode_context_len": 32,
-      "decode_note": "no KV cache \u2014 full recompute per step",
+      "decode_note": "StaticCache KV cache",
       "params_m": 2507
     },
     "phi3/token_cls/pytorch": {
@@ -1423,16 +1423,16 @@
         "forge"
       ],
       "mesh_chips": 1,
-      "best_compile_s": 33.7,
+      "best_compile_s": 33.9,
       "best_infer_s": 1.881,
       "throughput_unit": "prefill_tok/s",
-      "best_throughput": 65.0,
-      "prefill_tok_s": 65.0,
+      "best_throughput": 64.3,
+      "prefill_tok_s": 64.3,
       "params_m": 494,
-      "ttft_ms": 538.5,
-      "decode_tok_s": 1.86,
-      "decode_context_len": 35,
-      "decode_note": "no KV cache \u2014 full recompute per step"
+      "ttft_ms": 544.3,
+      "decode_tok_s": 2.5,
+      "decode_context_len": 32,
+      "decode_note": "StaticCache KV cache"
     },
     "qwen_2_5_lora/causal_lm/pytorch": {
       "first_compiled": "2026-05-26T08:33:26.202566+00:00",
@@ -1452,16 +1452,16 @@
         "forge"
       ],
       "mesh_chips": 1,
-      "best_compile_s": 49.0,
+      "best_compile_s": 50.4,
       "best_infer_s": 3.834,
       "throughput_unit": "prefill_tok/s",
-      "best_throughput": 38.1,
-      "prefill_tok_s": 38.1,
+      "best_throughput": 37.6,
+      "prefill_tok_s": 37.6,
       "params_m": 1544,
-      "ttft_ms": 762.1,
-      "decode_tok_s": 1.31,
+      "ttft_ms": 770.6,
+      "decode_tok_s": 1.52,
       "decode_context_len": 32,
-      "decode_note": "no KV cache \u2014 full recompute per step"
+      "decode_note": "StaticCache KV cache"
     },
     "qwen_3/embedding/pytorch": {
       "first_compiled": "2026-05-26T08:35:15.671723+00:00",
@@ -1714,12 +1714,12 @@
         "forge"
       ],
       "mesh_chips": 4,
-      "best_compile_s": 54.2,
+      "best_compile_s": 56.4,
       "best_infer_s": 4.717727184295654,
       "throughput_unit": "prefill_tok/s",
-      "best_throughput": 14.0,
-      "prefill_tok_s": 14.0,
-      "ttft_ms": 642.6,
+      "best_throughput": 13.7,
+      "prefill_tok_s": 13.7,
+      "ttft_ms": 654.6,
       "params_m": 7616,
       "decode_note": "OOM \u2014 bank_manager (7B fp32)"
     },
@@ -1929,13 +1929,13 @@
         "forge"
       ],
       "mesh_chips": 1,
-      "best_compile_s": 29.5,
+      "best_compile_s": 30.6,
       "best_infer_s": 8.241779804229736,
       "throughput_unit": "prefill_tok/s",
-      "best_throughput": 10.3,
-      "prefill_tok_s": 10.3,
-      "ttft_ms": 487.3,
-      "decode_tok_s": 1.67,
+      "best_throughput": 9.9,
+      "prefill_tok_s": 9.9,
+      "ttft_ms": 503.4,
+      "decode_tok_s": 1.66,
       "decode_context_len": 32,
       "decode_note": "no KV cache \u2014 full recompute per step",
       "params_m": 357
@@ -2213,15 +2213,15 @@
         "forge"
       ],
       "mesh_chips": 1,
-      "best_compile_s": 26.6,
+      "best_compile_s": 26.4,
       "best_infer_s": 4.318072557449341,
       "throughput_unit": "prefill_tok/s",
-      "best_throughput": 124.4,
-      "prefill_tok_s": 124.4,
-      "ttft_ms": 603.0,
-      "decode_tok_s": 1.66,
-      "decode_context_len": 75,
-      "decode_note": "no KV cache \u2014 full recompute per step",
+      "best_throughput": 127.6,
+      "prefill_tok_s": 127.6,
+      "ttft_ms": 587.8,
+      "decode_tok_s": 3.3,
+      "decode_context_len": 32,
+      "decode_note": "StaticCache KV cache",
       "params_m": 1669
     },
     "gemma/text_translation/pytorch": {
@@ -2427,16 +2427,16 @@
         "forge"
       ],
       "mesh_chips": 1,
-      "best_compile_s": 10.5,
+      "best_compile_s": 10.6,
       "best_infer_s": 0.212,
-      "best_throughput": 36.2,
+      "best_throughput": 36.5,
       "throughput_unit": "prefill_tok/s",
       "notes": "Prev: SIGSEGV in forge <1.3.0. Now compiles+runs in forge 1.3.0. Standard MHA, no GQA.",
-      "prefill_tok_s": 36.2,
-      "ttft_ms": 221.0,
-      "decode_tok_s": 3.92,
+      "prefill_tok_s": 36.5,
+      "ttft_ms": 219.0,
+      "decode_tok_s": 5.05,
       "decode_context_len": 64,
-      "decode_note": "no KV cache \u2014 full recompute per step",
+      "decode_note": "StaticCache KV cache",
       "params_m": 125
     },
     "phi2/causal_lm/pytorch": {
@@ -2455,16 +2455,16 @@
         "forge"
       ],
       "mesh_chips": 1,
-      "best_compile_s": 52.9,
+      "best_compile_s": 54.1,
       "best_infer_s": 0.797,
       "best_throughput": 12.1,
       "throughput_unit": "prefill_tok/s",
       "notes": "Fix: forge folds attention_mask to constant \u2014 must compile with single input (input_ids only). prev SIGSEGV on forge <1.3.0.",
       "prefill_tok_s": 12.1,
-      "ttft_ms": 823.0,
-      "decode_tok_s": 0.8,
+      "ttft_ms": 829.7,
+      "decode_tok_s": 1.48,
       "decode_context_len": 64,
-      "decode_note": "no KV cache \u2014 full recompute per step",
+      "decode_note": "StaticCache KV cache",
       "params_m": 2780
     }
   },
